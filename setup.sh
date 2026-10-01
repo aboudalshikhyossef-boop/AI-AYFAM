@@ -149,6 +149,11 @@ StartupNotify=true
 EOF
 sudo chmod 644 "$DESKTOP_FILE"
 command -v update-desktop-database >/dev/null 2>&1 && sudo update-desktop-database /usr/share/applications >/dev/null 2>&1 || true
+if [[ -d "$HOME/Desktop" ]]; then
+    cp "$DESKTOP_FILE" "$HOME/Desktop/AI-AYFAM.desktop"
+    chmod +x "$HOME/Desktop/AI-AYFAM.desktop"
+    command -v gio >/dev/null 2>&1 && gio set "$HOME/Desktop/AI-AYFAM.desktop" metadata::trusted true 2>/dev/null || true
+fi
 success "أيقونة AI AYFAM أُضيفت إلى قائمة التطبيقات"
 
 # ── تفعيل UFW ─────────────────────────────────────────────────────────────────
