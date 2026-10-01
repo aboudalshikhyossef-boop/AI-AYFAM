@@ -55,7 +55,7 @@ info "تثبيت مكتبات Python في البيئة المعزولة — سي
 PIP_LOG="$HOME/.cache/ayfam/setup-pip.log"
 mkdir -p "$(dirname "$PIP_LOG")"
 if ! "$APP_PYTHON" -m pip install --progress-bar on --disable-pip-version-check \
-    --timeout 30 --retries 2 -r requirements.txt 2>&1 | tee "$PIP_LOG"; then
+    --timeout 120 --retries 5 -r requirements.txt 2>&1 | tee "$PIP_LOG"; then
     error "فشل تثبيت مكتبات Python. راجع السجل: $PIP_LOG"
 fi
 success "مكتبات Python المعزولة جاهزة (بما فيها PyQt6 ومحركات التحليل)"
@@ -101,14 +101,27 @@ if [ "$QT_MISSING" -eq 1 ]; then
 fi
 success "مكتبات Qt/X11 جاهزة"
 
-# افحص بعد تثبيت مكتبات النظام التي تعتمد عليها PyQt عند بدء QApplication.
+# افحص اتساق الحزم ثم اختبر استيراد المكتبات وبدء Qt دون الحاجة لشاشة فعلية.
+"$APP_PYTHON" -m pip check || error "تعارض في إصدارات مكتبات Python؛ راجع متطلبات pip أعلاه"
+if ! QT_QPA_PLATFORM=offscreen "$APP_PYTHON" - <<'PY'
+import rich, requests, pypdf, sklearn, numpy, scipy
+from PyQt6.QtWidgets import QApplication
+
+app = QApplication([])
+print("فحص استيراد مكتبات Python وبدء Qt: OK")
+PY
+then
+    error "تعذر تحميل مكتبات Python أو بدء Qt. راجع سجل pip ومكتبات Qt/X11"
+fi
+
+# اجعل USB متطلباً صريحاً، لا تحذيراً اختيارياً بعد نجاح التثبيت.
 "$APP_PYTHON" - <<'PY'
 from utils.preflight import check_requirements
-report = check_requirements({"gui"})
+report = check_requirements({"gui", "usb"})
 if not report.ok:
     print(report.text())
-    raise SystemExit("متطلبات GUI الأساسية ناقصة")
-print("فحص متطلبات GUI: OK")
+    raise SystemExit("متطلبات GUI وUSB الأساسية ناقصة")
+print("فحص متطلبات GUI وUSB: OK")
 PY
 
 # ── fail2ban (اختياري) ───────────────────────────────────────────────────────
@@ -184,12 +197,24 @@ StartupNotify=true
 EOF
 sudo chmod 644 "$DESKTOP_FILE"
 command -v update-desktop-database >/dev/null 2>&1 && sudo update-desktop-database /usr/share/applications >/dev/null 2>&1 || true
-if [[ -d "$HOME/Desktop" ]]; then
-    cp "$DESKTOP_FILE" "$HOME/Desktop/AI-AYFAM.desktop"
-    chmod +x "$HOME/Desktop/AI-AYFAM.desktop"
-    command -v gio >/dev/null 2>&1 && gio set "$HOME/Desktop/AI-AYFAM.desktop" metadata::trusted true 2>/dev/null || true
+DESKTOP_USER="${SUDO_USER:-$(id -un)}"
+DESKTOP_HOME="$(getent passwd "$DESKTOP_USER" | cut -d: -f6)"
+[[ -n "$DESKTOP_HOME" ]] || error "تعذر تحديد مجلد المستخدم $DESKTOP_USER لإنشاء أيقونة سطح المكتب"
+DESKTOP_DIR="$DESKTOP_HOME/Desktop"
+if command -v xdg-user-dir >/dev/null 2>&1; then
+    XDG_DESKTOP_DIR="$(sudo -u "$DESKTOP_USER" xdg-user-dir DESKTOP 2>/dev/null || true)"
+    [[ -z "$XDG_DESKTOP_DIR" ]] || DESKTOP_DIR="$XDG_DESKTOP_DIR"
 fi
-success "أيقونة AI AYFAM أُضيفت إلى قائمة التطبيقات (سجل التشغيل: ~/.local/state/ayfam/gui.log)"
+DESKTOP_GROUP="$(id -gn "$DESKTOP_USER")"
+sudo install -d -o "$DESKTOP_USER" -g "$DESKTOP_GROUP" "$DESKTOP_DIR"
+USER_DESKTOP_FILE="$DESKTOP_DIR/AI-AYFAM.desktop"
+sudo install -m 755 -o "$DESKTOP_USER" -g "$DESKTOP_GROUP" "$DESKTOP_FILE" "$USER_DESKTOP_FILE"
+if command -v gio >/dev/null 2>&1; then
+    sudo -u "$DESKTOP_USER" gio set "$USER_DESKTOP_FILE" metadata::trusted true 2>/dev/null || true
+fi
+[[ -x "$USER_DESKTOP_FILE" ]] || error "تعذر إنشاء أيقونة سطح المكتب: $USER_DESKTOP_FILE"
+success "أيقونة AI AYFAM أُضيفت إلى قائمة التطبيقات وسطح مكتب $DESKTOP_USER"
+info "سجل تشغيل الواجهة: $DESKTOP_HOME/.local/state/ayfam/gui.log"
 
 # ── تفعيل UFW ─────────────────────────────────────────────────────────────────
 if command -v ufw &>/dev/null; then

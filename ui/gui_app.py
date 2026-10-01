@@ -23,6 +23,8 @@ from core.agent import AYFAMAgent
 from brain import library, relevance_engine
 from engine.live_recon import LiveReconEngine
 from engine.risk import RiskEngine
+from tools.usb import analyze_mounted_filesystem, list_usb_devices, scan_mounted_drives
+from tools.usb_control import authorize_device, deauthorize_device
 from ui.terminal import TerminalUI
 from utils.preflight import check_requirements, root_error, is_root
 
@@ -30,25 +32,27 @@ from utils.preflight import check_requirements, root_error, is_root
 ROOT_DIR = Path(__file__).resolve().parents[1]
 
 THEME = """
-QMainWindow, QWidget { background: #171d1c; color: #e9eee9; font-family: "Noto Sans Arabic", "DejaVu Sans", sans-serif; font-size: 13px; }
-QFrame#header { background: #293a35; border: 1px solid #40534b; border-radius: 7px; }
-QGroupBox, QFrame.card { background: #222b28; border: 1px solid #394741; border-radius: 6px; }
-QGroupBox { margin-top: 12px; padding: 14px 10px 10px; font-weight: 700; color: #8fd0bd; }
+QMainWindow, QWidget { background: #11191f; color: #e7eef0; font-family: "Noto Sans Arabic", "DejaVu Sans", sans-serif; font-size: 13px; }
+QFrame#header { background: #182832; border: 1px solid #31505a; border-radius: 5px; }
+QGroupBox, QFrame#card { background: #19252d; border: 1px solid #2c3d46; border-radius: 4px; }
+QGroupBox { margin-top: 12px; padding: 14px 10px 10px; font-weight: 700; color: #62d7cf; }
 QGroupBox::title { subcontrol-origin: margin; left: 12px; padding: 0 6px; }
-QTabWidget::pane { border: 1px solid #394741; border-radius: 6px; background: #1d2422; }
-QTabBar::tab { background: #202725; color: #aab7b0; padding: 10px 15px; border: none; border-bottom: 2px solid transparent; margin-right: 2px; }
-QTabBar::tab:selected { background: #303e38; color: #a3dfcd; border-bottom: 2px solid #64b99f; font-weight: 700; }
-QPushButton { background: #376757; color: #f4f7f4; border: 1px solid #4c806c; border-radius: 4px; padding: 8px 12px; font-weight: 600; }
-QPushButton:hover { background: #447965; }
-QPushButton:disabled { color: #7f8b85; background: #29312e; border-color: #39423e; }
-QLineEdit, QComboBox, QPlainTextEdit, QTextEdit { background: #171d1b; color: #eef2ee; border: 1px solid #43514a; border-radius: 4px; padding: 7px; selection-background-color: #426d5d; }
-QLineEdit:focus, QComboBox:focus, QPlainTextEdit:focus, QTextEdit:focus { border: 1px solid #70bda5; }
-QTableWidget { background: #1b2220; color: #e8eee9; alternate-background-color: #222a27; gridline-color: #303b36; border: 1px solid #394741; border-radius: 4px; }
-QHeaderView::section { background: #2b3732; color: #b9d7cb; padding: 8px; border: none; font-weight: 700; }
-QProgressBar { background: #303a35; border: none; border-radius: 3px; text-align: center; min-height: 5px; max-height: 5px; }
-QProgressBar::chunk { background: #d9a45f; border-radius: 3px; }
-QScrollBar:vertical { background: #202725; width: 10px; margin: 0; }
-QScrollBar::handle:vertical { background: #53645a; min-height: 24px; border-radius: 4px; }
+QTabWidget::pane { border: 1px solid #2c3d46; border-radius: 4px; background: #131e25; }
+QTabBar::tab { background: #17232a; color: #a9bac0; padding: 10px 15px; border: none; border-bottom: 2px solid transparent; margin-right: 2px; }
+QTabBar::tab:selected { background: #20343d; color: #72e2d8; border-bottom: 2px solid #39c7bd; font-weight: 700; }
+QPushButton { background: #176e70; color: #f1fbfa; border: 1px solid #268a88; border-radius: 3px; padding: 8px 12px; font-weight: 600; }
+QPushButton:hover { background: #218487; }
+QPushButton#danger { background: #6d343c; border-color: #9b4b52; }
+QPushButton#danger:hover { background: #88404a; }
+QPushButton:disabled { color: #718188; background: #202c32; border-color: #314149; }
+QLineEdit, QComboBox, QPlainTextEdit, QTextEdit { background: #10191f; color: #e7eef0; border: 1px solid #354953; border-radius: 3px; padding: 7px; selection-background-color: #176e70; }
+QLineEdit:focus, QComboBox:focus, QPlainTextEdit:focus, QTextEdit:focus { border: 1px solid #39c7bd; }
+QTableWidget { background: #131e24; color: #e3ecee; alternate-background-color: #19262e; gridline-color: #263941; border: 1px solid #2c3d46; border-radius: 3px; }
+QHeaderView::section { background: #20343d; color: #b9d9dc; padding: 8px; border: none; font-weight: 700; }
+QProgressBar { background: #2a3940; border: none; border-radius: 2px; text-align: center; min-height: 5px; max-height: 5px; }
+QProgressBar::chunk { background: #e4ac56; border-radius: 2px; }
+QScrollBar:vertical { background: #17232a; width: 10px; margin: 0; }
+QScrollBar::handle:vertical { background: #46616a; min-height: 24px; border-radius: 3px; }
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
 """
 
@@ -111,6 +115,7 @@ class UnifiedCockpitWindow(QMainWindow):
         self.visible_events: list[tuple[str, str, str]] = []
         self.current_findings: list[dict] = []
         self.task_buttons: list[QPushButton] = []
+        self.usb_inventory_loaded = False
         self.init_ui()
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update_live_telemetry)
@@ -149,22 +154,25 @@ class UnifiedCockpitWindow(QMainWindow):
         self.tabs = QTabWidget()
         self.tabs.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
         self.tab_dashboard, self.tab_scans = QWidget(), QWidget()
-        self.tab_tools, self.tab_chat = QWidget(), QWidget()
+        self.tab_tools, self.tab_chat, self.tab_usb = QWidget(), QWidget(), QWidget()
         self.tab_playbooks, self.tab_reports, self.tab_library = QWidget(), QWidget(), QWidget()
         self.setup_dashboard_tab()
         self.setup_scans_tab()
+        self.setup_usb_tab()
         self.setup_tools_tab()
         self.setup_chat_tab()
         self.setup_playbooks_tab()
         self.setup_reports_tab()
         self.setup_library_tab()
         for page, label in (
-            (self.tab_dashboard, "لوحة المتابعة"), (self.tab_scans, "مركز الفحوصات"),
+            (self.tab_dashboard, "غرفة العمليات"), (self.tab_scans, "الفحوصات"),
+            (self.tab_usb, "USB والأجهزة"),
             (self.tab_tools, "الترسانة المتقدمة"), (self.tab_chat, "المحادثة"),
             (self.tab_library, "مكتبة المعرفة"), (self.tab_playbooks, "خطط العمل"), (self.tab_reports, "التقارير"),
         ):
             self.tabs.addTab(page, label)
         root.addWidget(self.tabs)
+        self.tabs.currentChanged.connect(self.on_tab_changed)
 
         footer = QLabel(f"المضيف: {os.uname().nodename}  |  الإصدار: v7  |  التنفيذ محليًا")
         footer.setStyleSheet("color: #9aa79f; font-size: 11px;")
@@ -189,10 +197,13 @@ class UnifiedCockpitWindow(QMainWindow):
 
         group = QGroupBox("الاتصالات الحية")
         group_layout = QVBoxLayout(group)
-        self.table_conns = QTableWidget(0, 6)
-        self.table_conns.setHorizontalHeaderLabels(["البروتوكول", "الحالة", "العنوان المحلي", "العنوان البعيد", "البرنامج", "PID"])
-        self.table_conns.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        self.connection_summary = QLabel("جارٍ قراءة حالة الشبكة...")
+        self.connection_summary.setStyleSheet("color: #91a8ae; padding: 2px 4px;")
+        group_layout.addWidget(self.connection_summary)
+        self.table_conns = QTableWidget(0, 7)
+        self.table_conns.setHorizontalHeaderLabels(["البروتوكول", "الحالة", "النطاق", "العنوان المحلي", "العنوان البعيد", "العملية", "PID"])
         self.table_conns.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        self.table_conns.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
         self.table_conns.setAlternatingRowColors(True)
         group_layout.addWidget(self.table_conns)
         layout.addWidget(group)
@@ -235,7 +246,7 @@ class UnifiedCockpitWindow(QMainWindow):
             ("فحص النظام", lambda: self.run_background_task(self.agent._scan_system, "فحص النظام")),
             ("تحليل السجلات", lambda: self.run_background_task(self.agent._scan_logs, "تحليل السجلات")),
             ("الفحص الشامل", lambda: self.run_background_task(self.agent._full_scan, "الفحص الشامل")),
-            ("USB والأجهزة", lambda: self.run_background_task(self.agent._usb_control_center, "USB والأجهزة")),
+            ("مركز USB والأجهزة", lambda: self.tabs.setCurrentWidget(self.tab_usb)),
             ("فحص الموقع", self.start_website_scan),
             ("سمعة IP", self.start_ip_reputation),
         ]
@@ -277,13 +288,223 @@ class UnifiedCockpitWindow(QMainWindow):
         self.table_findings.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
         self.table_findings.setAlternatingRowColors(True)
         self.table_findings.cellClicked.connect(self.show_finding_details)
-        box.addWidget(self.table_findings)
-        box.addWidget(QLabel("تفاصيل ودليل النتيجة المحددة"))
+        self.table_findings.setMinimumHeight(150)
+        detail_panel = QWidget()
+        detail_layout = QVBoxLayout(detail_panel)
+        detail_layout.setContentsMargins(0, 4, 0, 0)
+        detail_layout.addWidget(QLabel("تحليل النتيجة المحددة"))
         self.finding_detail = QPlainTextEdit(readOnly=True)
         self.finding_detail.setPlaceholderText("حدد نتيجة لعرض التفاصيل والدليل والتوصية.")
-        self.finding_detail.setMaximumHeight(190)
-        box.addWidget(self.finding_detail)
+        self.finding_detail.setMinimumHeight(120)
+        detail_layout.addWidget(self.finding_detail)
+        findings_splitter = QSplitter(Qt.Orientation.Vertical)
+        findings_splitter.addWidget(self.table_findings)
+        findings_splitter.addWidget(detail_panel)
+        findings_splitter.setStretchFactor(0, 3)
+        findings_splitter.setStretchFactor(1, 2)
+        box.addWidget(findings_splitter)
         layout.addWidget(group)
+
+    def setup_usb_tab(self) -> None:
+        layout = QVBoxLayout(self.tab_usb)
+        heading = QHBoxLayout()
+        self.usb_status = QLabel("لم يتم تحديث قائمة الأجهزة بعد")
+        self.usb_status.setStyleSheet("color: #91a8ae; font-weight: 600;")
+        heading.addWidget(self.usb_status)
+        heading.addStretch()
+        self.usb_refresh_button = QPushButton("تحديث الأجهزة")
+        self.usb_refresh_button.clicked.connect(self.refresh_usb_inventory)
+        self.task_buttons.append(self.usb_refresh_button)
+        heading.addWidget(self.usb_refresh_button)
+        layout.addLayout(heading)
+
+        devices_group = QGroupBox("الأجهزة المتصلة")
+        devices_layout = QVBoxLayout(devices_group)
+        self.usb_devices_table = QTableWidget(0, 5)
+        self.usb_devices_table.setHorizontalHeaderLabels(["Bus / Device", "الشركة والمنتج", "الفئة", "VID:PID", "مستوى المخاطر"])
+        self.usb_devices_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        self.usb_devices_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.usb_devices_table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
+        self.usb_devices_table.setAlternatingRowColors(True)
+        self.usb_devices_table.cellClicked.connect(self.show_usb_device_details)
+        devices_layout.addWidget(self.usb_devices_table)
+        layout.addWidget(devices_group, 2)
+
+        actions = QHBoxLayout()
+        self.usb_allow_button = QPushButton("السماح بالجهاز المحدد")
+        self.usb_allow_button.clicked.connect(lambda: self.control_selected_usb_device(True))
+        self.usb_block_button = QPushButton("حجب الجهاز المحدد")
+        self.usb_block_button.setObjectName("danger")
+        self.usb_block_button.clicked.connect(lambda: self.control_selected_usb_device(False))
+        self.usb_scan_button = QPushButton("تحليل وحدة التخزين المحددة")
+        self.usb_scan_button.clicked.connect(self.scan_selected_usb_storage)
+        for button in (self.usb_allow_button, self.usb_block_button, self.usb_scan_button):
+            self.task_buttons.append(button)
+            actions.addWidget(button)
+        layout.addLayout(actions)
+
+        drives_group = QGroupBox("وحدات التخزين ومؤشرات الفحص")
+        drives_layout = QVBoxLayout(drives_group)
+        self.usb_drives_table = QTableWidget(0, 4)
+        self.usb_drives_table.setHorizontalHeaderLabels(["الجهاز", "الطراز", "الحجم", "نقطة التوصيل"])
+        self.usb_drives_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        self.usb_drives_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        self.usb_drives_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.usb_drives_table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
+        self.usb_drives_table.setAlternatingRowColors(True)
+        self.usb_drives_table.cellClicked.connect(self.show_usb_drive_details)
+        drives_layout.addWidget(self.usb_drives_table)
+        self.usb_detail = QPlainTextEdit(readOnly=True)
+        self.usb_detail.setPlaceholderText("حدد جهازًا أو وحدة تخزين لعرض التفاصيل والمخاطر والتوصيات.")
+        self.usb_detail.setMaximumHeight(150)
+        drives_layout.addWidget(self.usb_detail)
+        layout.addWidget(drives_group, 2)
+
+    def on_tab_changed(self, index: int) -> None:
+        if self.tabs.widget(index) is self.tab_usb and not self.usb_inventory_loaded:
+            self.refresh_usb_inventory()
+
+    def refresh_usb_inventory(self) -> None:
+        self.run_background_task(
+            lambda: {"devices": list_usb_devices(), "drives": scan_mounted_drives(usb_only=True)},
+            "تحديث مخزون USB",
+            preserve_findings=True,
+            result_handler=self.render_usb_inventory,
+        )
+
+    def render_usb_inventory(self, inventory: dict) -> None:
+        devices = inventory.get("devices", [])
+        drives = [drive for drive in inventory.get("drives", []) if drive.get("is_usb")]
+        self.usb_inventory_loaded = True
+        self.usb_devices_table.setRowCount(0)
+        for device in devices:
+            row = self.usb_devices_table.rowCount()
+            self.usb_devices_table.insertRow(row)
+            name = device.get("product") or device.get("description") or device.get("manufacturer") or "جهاز غير معرّف"
+            risk = str(device.get("risk", "low")).lower()
+            risk_labels = {"critical": "حرج", "high": "مرتفع", "medium": "متوسط", "low": "منخفض"}
+            values = [
+                f"{device.get('bus', '—')} / {device.get('device', '—')}",
+                name,
+                device.get("class_name") or device.get("device_class") or "غير محدد",
+                f"{device.get('vendor_id', '—')}:{device.get('product_id', '—')}",
+                risk_labels.get(risk, risk),
+            ]
+            for column, value in enumerate(values):
+                item = QTableWidgetItem(str(value))
+                if column == 0:
+                    item.setData(Qt.ItemDataRole.UserRole, device)
+                if column == 4:
+                    item.setForeground(QColor({"critical": "#ff7078", "high": "#f09b64", "medium": "#e7bd66", "low": "#65d2aa"}.get(risk, "#a9bac0")))
+                self.usb_devices_table.setItem(row, column, item)
+
+        self.usb_drives_table.setRowCount(0)
+        for drive in drives:
+            partitions = drive.get("partitions", []) or [{"name": drive.get("name", ""), "mountpoint": drive.get("mountpoint", ""), "analysis": drive.get("analysis", {})}]
+            for partition in partitions:
+                row = self.usb_drives_table.rowCount()
+                self.usb_drives_table.insertRow(row)
+                mountpoint = partition.get("mountpoint") or "غير موصول"
+                values = [drive.get("name", "—") + (f" / {partition.get('name')}" if partition.get("name") else ""),
+                          " ".join(str(part) for part in (drive.get("vendor"), drive.get("model")) if part) or "غير محدد",
+                          partition.get("size") or drive.get("size", "—"), mountpoint]
+                partition_data = {**partition, "drive": drive}
+                for column, value in enumerate(values):
+                    item = QTableWidgetItem(str(value))
+                    if column == 0:
+                        item.setData(Qt.ItemDataRole.UserRole, partition_data)
+                    self.usb_drives_table.setItem(row, column, item)
+
+        self.usb_status.setText(f"الأجهزة: {len(devices)}  |  وحدات تخزين USB: {len(drives)}  |  الحالة: محدثة الآن")
+        if not devices and not drives:
+            self.usb_detail.setPlainText("لا توجد أجهزة USB أو وحدات تخزين متصلة حاليًا.")
+
+    def show_usb_device_details(self, row: int, _column: int) -> None:
+        item = self.usb_devices_table.item(row, 0)
+        if not item:
+            return
+        device = item.data(Qt.ItemDataRole.UserRole) or {}
+        details = [
+            f"الجهاز: {device.get('product') or device.get('description') or 'غير معروف'}",
+            f"الشركة المصنّعة: {device.get('manufacturer') or 'غير محددة'}",
+            f"Bus / Device: {device.get('bus', '—')} / {device.get('device', '—')}",
+            f"VID:PID: {device.get('vendor_id', '—')}:{device.get('product_id', '—')}",
+            f"التصنيف: {device.get('class_name') or device.get('device_class') or 'غير محدد'}",
+            f"مستوى المخاطر: {device.get('risk', 'low')}",
+            f"المؤشرات: {'؛ '.join(device.get('flags', [])) or 'لا توجد مؤشرات مسجلة'}",
+            f"التوصيات: {'؛ '.join(device.get('recommendations', [])) or 'لا توجد توصيات إضافية'}",
+        ]
+        self.usb_detail.setPlainText("\n".join(details))
+
+    def show_usb_drive_details(self, row: int, _column: int) -> None:
+        item = self.usb_drives_table.item(row, 0)
+        if not item:
+            return
+        partition = item.data(Qt.ItemDataRole.UserRole) or {}
+        self.render_usb_drive_analysis(partition.get("analysis", {}), partition.get("mountpoint", ""))
+
+    def render_usb_drive_analysis(self, analysis: dict, mountpoint: str) -> None:
+        suspicious = analysis.get("suspicious_files", [])
+        autorun = analysis.get("autorun_files", [])
+        lines = [
+            f"نقطة التوصيل: {mountpoint or 'غير موصولة'}",
+            f"الملفات المفحوصة: {analysis.get('total_files_checked', 0)}",
+            f"الملفات التنفيذية: {analysis.get('executable_count', 0)}",
+            f"الملفات المشبوهة: {len(suspicious)}",
+            f"ملفات التشغيل التلقائي: {len(autorun)}",
+        ]
+        for finding in analysis.get("findings", []):
+            lines.extend(["", f"[{finding.get('severity', 'info').upper()}] {finding.get('title', '')}",
+                          str(finding.get("detail") or ""), f"التوصية: {finding.get('fix') or 'لا توجد'}"])
+        if not analysis:
+            lines.append("لا يتوفر تحليل مسبق. حدد وحدة تخزين موصولة ثم شغّل التحليل.")
+        self.usb_detail.setPlainText("\n".join(lines))
+
+    def control_selected_usb_device(self, allow: bool) -> None:
+        row = self.usb_devices_table.currentRow()
+        item = self.usb_devices_table.item(row, 0) if row >= 0 else None
+        device = item.data(Qt.ItemDataRole.UserRole) if item else None
+        if not device:
+            QMessageBox.information(self, "اختر جهازًا", "حدد جهاز USB من القائمة أولًا.")
+            return
+        action = "السماح" if allow else "الحجب"
+        name = device.get("product") or device.get("description") or "الجهاز المحدد"
+        answer = QMessageBox.question(
+            self, f"تأكيد {action} USB", f"هل تريد {action} «{name}»؟ قد يؤدي الحجب إلى فصل الجهاز فورًا.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        operation = authorize_device if allow else deauthorize_device
+        self.run_background_task(
+            lambda: operation(device.get("bus", ""), device.get("device", "")),
+            f"{action} جهاز USB",
+            preserve_findings=True,
+            result_handler=self.complete_usb_control,
+        )
+
+    def complete_usb_control(self, result: dict) -> None:
+        if result.get("success"):
+            QMessageBox.information(self, "اكتملت العملية", "تم تحديث حالة الجهاز.")
+            QTimer.singleShot(250, self.refresh_usb_inventory)
+        else:
+            QMessageBox.warning(self, "تعذر تنفيذ العملية", result.get("error") or "لم يتمكن النظام من تحديث حالة الجهاز.")
+
+    def scan_selected_usb_storage(self) -> None:
+        row = self.usb_drives_table.currentRow()
+        item = self.usb_drives_table.item(row, 0) if row >= 0 else None
+        partition = item.data(Qt.ItemDataRole.UserRole) if item else None
+        mountpoint = partition.get("mountpoint") if partition else ""
+        if not mountpoint:
+            QMessageBox.information(self, "لا توجد وحدة موصولة", "اختر قسمًا موصولًا قبل بدء التحليل.")
+            return
+        self.run_background_task(
+            lambda: analyze_mounted_filesystem(mountpoint),
+            "تحليل وحدة تخزين USB",
+            preserve_findings=True,
+            result_handler=lambda analysis: self.render_usb_drive_analysis(analysis, mountpoint),
+        )
 
     def setup_tools_tab(self) -> None:
         layout = QVBoxLayout(self.tab_tools)
@@ -414,13 +635,14 @@ class UnifiedCockpitWindow(QMainWindow):
             conns = LiveReconEngine.get_live_connections()
             self.table_conns.setRowCount(0)
             for c in conns[:30]:
-                values = [c.get("proto", ""), c.get("state", ""), c.get("local", ""), c.get("remote", ""), c.get("process", ""), c.get("pid", "")]
+                values = [c.get("proto", ""), c.get("state", ""), "خارجي" if c.get("is_foreign") else "محلي",
+                          c.get("local", ""), c.get("remote", ""), c.get("process", ""), c.get("pid", "")]
                 row = self.table_conns.rowCount()
                 self.table_conns.insertRow(row)
                 for col, value in enumerate(values):
                     item = QTableWidgetItem(str(value))
-                    if col == 3 and c.get("is_foreign"):
-                        item.setForeground(QColor("#f87171"))
+                    if col == 2:
+                        item.setForeground(QColor("#f0a05e" if c.get("is_foreign") else "#65d2aa"))
                     self.table_conns.setItem(row, col, item)
             procs = LiveReconEngine.get_top_processes(15)
             self.table_procs.setRowCount(0)
@@ -432,6 +654,10 @@ class UnifiedCockpitWindow(QMainWindow):
                     self.table_procs.setItem(row, col, QTableWidgetItem(str(value)))
             self.metric_labels["connections"].setText(str(len(conns)))
             self.metric_labels["processes"].setText(str(len(procs)))
+            external = sum(1 for connection in conns if connection.get("is_foreign"))
+            self.connection_summary.setText(
+                f"{len(conns)} اتصال نشط  |  {external} عنوانًا خارجيًا  |  تحديث تلقائي كل 3 ثوانٍ"
+            )
         except Exception as exc:
             self.chat_display.append(f"[تحذير الرادار] {exc}")
 

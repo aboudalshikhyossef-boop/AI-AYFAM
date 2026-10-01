@@ -143,13 +143,15 @@ def _analyze_usb_device(dev):
     return dev
 
 
-def scan_mounted_drives():
+def scan_mounted_drives(usb_only: bool = False):
     drives = []
     out, _ = _run("lsblk -J -o NAME,SIZE,TYPE,MOUNTPOINT,VENDOR,MODEL,TRAN,HOTPLUG 2>/dev/null")
     try:
         data = json.loads(out)
         for block in data.get("blockdevices", []):
             is_usb = block.get("tran") == "usb" or block.get("hotplug") == "1"
+            if usb_only and not is_usb:
+                continue
             if is_usb or block.get("type") in ("disk",):
                 info = {
                     "name": block.get("name", ""),
