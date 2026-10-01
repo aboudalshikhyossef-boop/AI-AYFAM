@@ -10,6 +10,10 @@ chmod +x setup.sh
 ./setup.sh
 ```
 
+يستخدم `setup.sh` **Python النظام مباشرة** ولا ينشئ `venv` أو أي بيئة افتراضية.
+تُثبت المكتبات على مستوى النظام عبر `sudo`، ويعمل الأمر `ayfam` على Python النظام
+مع فحص root الحقيقي من النواة.
+
 ## الطريقة 2: رفع المشروع على GitHub / Method 2: Push to GitHub
 
 ### الخطوات / Steps:

@@ -39,16 +39,18 @@ else
     error "Python $PY_VER غير مدعوم — يلزم $REQUIRED+"
 fi
 
-# ── Virtual env ───────────────────────────────────────────────────────────────
-info "إنشاء بيئة Python افتراضية..."
-python3 -m venv .venv 2>/dev/null || true
-source .venv/bin/activate
-python -m pip install --quiet --upgrade pip
-python -m pip install --quiet -r requirements.txt
-success "مكتبات Python جاهزة (بما فيها PyQt6 ومحركات التحليل)"
+# ── System Python (بدون venv) ─────────────────────────────────────────────────
+info "تثبيت مكتبات Python في Python النظام — بدون بيئة افتراضية..."
+PIP_SYSTEM_FLAG=""
+if python3 -m pip help install 2>/dev/null | grep -q -- '--break-system-packages'; then
+    PIP_SYSTEM_FLAG="--break-system-packages"
+fi
+sudo python3 -m pip install --quiet --upgrade pip $PIP_SYSTEM_FLAG
+sudo python3 -m pip install --quiet -r requirements.txt $PIP_SYSTEM_FLAG
+success "مكتبات Python النظام جاهزة (بما فيها PyQt6 ومحركات التحليل)"
 
 # فحص سريع بعد التثبيت — لا يثبت أدوات النظام تلقائياً من داخل Python.
-python3 - <<'PY'
+sudo python3 - <<'PY'
 from utils.preflight import check_requirements
 report = check_requirements()
 if not report.ok:
@@ -105,8 +107,7 @@ info "إنشاء أمر 'ayfam' عالمي..."
 LAUNCHER="/usr/local/bin/ayfam"
 sudo tee "$LAUNCHER" > /dev/null <<EOF
 #!/bin/bash
-source "$SCRIPT_DIR/.venv/bin/activate"
-exec python3 "$SCRIPT_DIR/main.py" "\$@"
+exec /usr/bin/python3 "$SCRIPT_DIR/main.py" "\$@"
 EOF
 sudo chmod +x "$LAUNCHER"
 success "الأمر 'ayfam' جاهز"
