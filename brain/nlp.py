@@ -434,7 +434,7 @@ class NLPEngine:
             # المكتبة دفعة واحدة كخط دفاع ثانٍ قبل الاستسلام تماماً.
             try:
                 from brain import relevance_engine
-                if relevance_engine.is_index_built():
+                if relevance_engine.is_index_current(self.kb):
                     ranked = relevance_engine.search(target, self.kb, top_k=3)
                     ranked = [r for r in ranked if "error" not in r]
                     if ranked:

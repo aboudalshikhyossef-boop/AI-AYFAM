@@ -516,10 +516,10 @@ class AYFAMAgent(AgentV5Mixin):
             return
         self.ui.section(self._t(f"🧭 استكشاف مفهوم: {concept}", f"🧭 Exploring concept: {concept}"))
 
-        if not relevance_engine.is_index_built():
+        if not relevance_engine.is_index_current(self.kb):
             self.ui.warning(self._t(
-                "فهرس الذكاء غير مبني بعد — شغّل 'إعادة بناء فهرس الذكاء' أولاً لتفعيل هذا.",
-                "Intelligence index not built yet — run 'rebuild intelligence index' first."))
+            "فهرس الذكاء غير موجود أو لا يطابق الكتب الحالية — شغّل 'إعادة بناء فهرس الذكاء' أولاً.",
+            "The intelligence index is missing or out of date — rebuild it first."))
             return
 
         matches = self.kb.get_concept_matches(concept, limit=8)
@@ -571,10 +571,10 @@ class AYFAMAgent(AgentV5Mixin):
             return
         self.ui.section(self._t(f"🔗 الرابط بين: {concept_a} ↔ {concept_b}", f"🔗 Link between: {concept_a} ↔ {concept_b}"))
 
-        if not relevance_engine.is_index_built():
+        if not relevance_engine.is_index_current(self.kb):
             self.ui.warning(self._t(
-                "فهرس الذكاء غير مبني بعد — شغّل 'إعادة بناء فهرس الذكاء' أولاً.",
-                "Intelligence index not built yet — run 'rebuild intelligence index' first."))
+            "فهرس الذكاء غير موجود أو لا يطابق الكتب الحالية — شغّل 'إعادة بناء فهرس الذكاء' أولاً.",
+            "The intelligence index is missing or out of date — rebuild it first."))
             return
 
         link = self.kb.get_direct_concept_link(concept_a, concept_b)

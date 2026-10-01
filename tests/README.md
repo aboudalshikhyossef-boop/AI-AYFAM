@@ -12,7 +12,7 @@ python3 test_web_new.py            # 25 — بحث ويب/CVE/OSV/ExploitDB/IP (
 python3 test_intelligence_new.py   # 21 — ربط النتائج + المقارنة التاريخية
 python3 test_system_new.py         #  6 — اكتشاف الحزم القابلة للترقية
 python3 test_nlp_new.py            # 14 — التوجيه للأوامر (v3 + v4)
-python3 test_relevance_engine.py   # 27 — محرك TF-IDF/TextRank/خريطة المفاهيم
+python3 test_relevance_engine.py   # 28 — محرك TF-IDF/TextRank/خريطة المفاهيم واكتشاف الفهرس القديم
 python3 test_integration.py        # 21 — تشغيل الوكيل الحقيقي كاملاً محلياً (v3)
 python3 test_cve_enrichment.py     #  4 — مسار نجاح ربط CVE (بمحاكاة اتصال)
 python3 test_v4_integration.py     # 20 — تعلّم كتب حقيقية + بناء الفهرس + كل أوامر v4

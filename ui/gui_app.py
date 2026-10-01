@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import sys
 import ipaddress
+import json
 from pathlib import Path
 from typing import Callable, Any
 
@@ -19,6 +20,7 @@ from PyQt6.QtWidgets import (
 
 from config.settings import Settings
 from core.agent import AYFAMAgent
+from brain import library, relevance_engine
 from engine.live_recon import LiveReconEngine
 from engine.risk import RiskEngine
 from ui.terminal import TerminalUI
@@ -28,25 +30,25 @@ from utils.preflight import check_requirements, root_error, is_root
 ROOT_DIR = Path(__file__).resolve().parents[1]
 
 THEME = """
-QMainWindow, QWidget { background: #f2f6f3; color: #1c302b; font-family: "Noto Sans Arabic", "DejaVu Sans", sans-serif; font-size: 13px; }
-QFrame#header { background: #164a43; border: none; border-radius: 8px; }
-QGroupBox, QFrame.card { background: #ffffff; border: 1px solid #d5e1dc; border-radius: 7px; }
-QGroupBox { margin-top: 12px; padding: 14px 10px 10px; font-weight: 700; color: #17695b; }
+QMainWindow, QWidget { background: #171d1c; color: #e9eee9; font-family: "Noto Sans Arabic", "DejaVu Sans", sans-serif; font-size: 13px; }
+QFrame#header { background: #293a35; border: 1px solid #40534b; border-radius: 7px; }
+QGroupBox, QFrame.card { background: #222b28; border: 1px solid #394741; border-radius: 6px; }
+QGroupBox { margin-top: 12px; padding: 14px 10px 10px; font-weight: 700; color: #8fd0bd; }
 QGroupBox::title { subcontrol-origin: margin; left: 12px; padding: 0 6px; }
-QTabWidget::pane { border: 1px solid #d5e1dc; border-radius: 7px; background: #ffffff; }
-QTabBar::tab { background: #e6eeea; color: #536a62; padding: 11px 18px; border: none; border-bottom: 2px solid transparent; margin-right: 2px; }
-QTabBar::tab:selected { background: #ffffff; color: #145c50; border-bottom: 2px solid #16836f; font-weight: 700; }
-QPushButton { background: #167a68; color: #ffffff; border: 1px solid #126858; border-radius: 5px; padding: 8px 12px; font-weight: 600; }
-QPushButton:hover { background: #105f52; }
-QPushButton:disabled { color: #84958f; background: #e7eeeb; border-color: #d5e1dc; }
-QLineEdit, QComboBox, QPlainTextEdit, QTextEdit { background: #ffffff; color: #1c302b; border: 1px solid #c8d7d1; border-radius: 5px; padding: 7px; selection-background-color: #b6dfd3; }
-QLineEdit:focus, QComboBox:focus, QPlainTextEdit:focus, QTextEdit:focus { border: 1px solid #16836f; }
-QTableWidget { background: #ffffff; alternate-background-color: #f1f6f3; gridline-color: #e2ebe7; border: 1px solid #d5e1dc; border-radius: 5px; }
-QHeaderView::section { background: #e7f0ec; color: #20594e; padding: 8px; border: none; font-weight: 700; }
-QProgressBar { background: #e4ece8; border: none; border-radius: 3px; text-align: center; min-height: 5px; max-height: 5px; }
-QProgressBar::chunk { background: #e39b3b; border-radius: 3px; }
-QScrollBar:vertical { background: #edf2ef; width: 10px; margin: 0; }
-QScrollBar::handle:vertical { background: #b8cbc3; min-height: 24px; border-radius: 4px; }
+QTabWidget::pane { border: 1px solid #394741; border-radius: 6px; background: #1d2422; }
+QTabBar::tab { background: #202725; color: #aab7b0; padding: 10px 15px; border: none; border-bottom: 2px solid transparent; margin-right: 2px; }
+QTabBar::tab:selected { background: #303e38; color: #a3dfcd; border-bottom: 2px solid #64b99f; font-weight: 700; }
+QPushButton { background: #376757; color: #f4f7f4; border: 1px solid #4c806c; border-radius: 4px; padding: 8px 12px; font-weight: 600; }
+QPushButton:hover { background: #447965; }
+QPushButton:disabled { color: #7f8b85; background: #29312e; border-color: #39423e; }
+QLineEdit, QComboBox, QPlainTextEdit, QTextEdit { background: #171d1b; color: #eef2ee; border: 1px solid #43514a; border-radius: 4px; padding: 7px; selection-background-color: #426d5d; }
+QLineEdit:focus, QComboBox:focus, QPlainTextEdit:focus, QTextEdit:focus { border: 1px solid #70bda5; }
+QTableWidget { background: #1b2220; color: #e8eee9; alternate-background-color: #222a27; gridline-color: #303b36; border: 1px solid #394741; border-radius: 4px; }
+QHeaderView::section { background: #2b3732; color: #b9d7cb; padding: 8px; border: none; font-weight: 700; }
+QProgressBar { background: #303a35; border: none; border-radius: 3px; text-align: center; min-height: 5px; max-height: 5px; }
+QProgressBar::chunk { background: #d9a45f; border-radius: 3px; }
+QScrollBar:vertical { background: #202725; width: 10px; margin: 0; }
+QScrollBar::handle:vertical { background: #53645a; min-height: 24px; border-radius: 4px; }
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
 """
 
@@ -105,7 +107,9 @@ class UnifiedCockpitWindow(QMainWindow):
         self.agent = AYFAMAgent(settings=self.settings, ui=GuiTerminalUI(no_color=True))
         self.worker: WorkerThread | None = None
         self.active_task_title = ""
+        self.active_result_handler: Callable[[Any], None] | None = None
         self.visible_events: list[tuple[str, str, str]] = []
+        self.current_findings: list[dict] = []
         self.task_buttons: list[QPushButton] = []
         self.init_ui()
         self.timer = QTimer(self)
@@ -146,23 +150,24 @@ class UnifiedCockpitWindow(QMainWindow):
         self.tabs.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
         self.tab_dashboard, self.tab_scans = QWidget(), QWidget()
         self.tab_tools, self.tab_chat = QWidget(), QWidget()
-        self.tab_playbooks, self.tab_reports = QWidget(), QWidget()
+        self.tab_playbooks, self.tab_reports, self.tab_library = QWidget(), QWidget(), QWidget()
         self.setup_dashboard_tab()
         self.setup_scans_tab()
         self.setup_tools_tab()
         self.setup_chat_tab()
         self.setup_playbooks_tab()
         self.setup_reports_tab()
+        self.setup_library_tab()
         for page, label in (
             (self.tab_dashboard, "لوحة المتابعة"), (self.tab_scans, "مركز الفحوصات"),
             (self.tab_tools, "الترسانة المتقدمة"), (self.tab_chat, "المحادثة"),
-            (self.tab_playbooks, "خطط العمل"), (self.tab_reports, "التقارير"),
+            (self.tab_library, "مكتبة المعرفة"), (self.tab_playbooks, "خطط العمل"), (self.tab_reports, "التقارير"),
         ):
             self.tabs.addTab(page, label)
         root.addWidget(self.tabs)
 
         footer = QLabel(f"المضيف: {os.uname().nodename}  |  الإصدار: v7  |  التنفيذ محليًا")
-        footer.setStyleSheet("color: #64748b; font-size: 11px;")
+        footer.setStyleSheet("color: #9aa79f; font-size: 11px;")
         root.addWidget(footer)
         self.setCentralWidget(central)
 
@@ -175,8 +180,8 @@ class UnifiedCockpitWindow(QMainWindow):
             box = QVBoxLayout(card)
             box.addWidget(QLabel(label))
             value = QLabel("—")
-            value.setFont(QFont("Segoe UI", 20, QFont.Weight.Bold))
-            value.setStyleSheet("color: #67d7ff;")
+            value.setFont(QFont("Noto Sans Arabic", 20, QFont.Weight.Bold))
+            value.setStyleSheet("color: #a3dfcd;")
             box.addWidget(value)
             self.metric_labels[key] = value
             metrics.addWidget(card, 0, col)
@@ -234,8 +239,19 @@ class UnifiedCockpitWindow(QMainWindow):
             ("فحص الموقع", self.start_website_scan),
             ("سمعة IP", self.start_ip_reputation),
         ]
+        scan_help = {
+            "فحص الشبكة": "يفحص الواجهات والاتصالات النشطة والجدار الناري وإشارات تسريب البيانات.",
+            "فحص المنافذ": "يفحص الهدف والنطاق المحددين. استخدمه فقط على أنظمة لديك تصريح بفحصها.",
+            "فحص النظام": "يراجع SSH والمستخدمين والتحديثات والملفات ذات الصلاحيات الخطرة.",
+            "تحليل السجلات": "يبحث في السجلات المحلية عن محاولات دخول وأحداث تستحق المراجعة.",
+            "الفحص الشامل": "يجمع فحوصات النظام والشبكة والسجلات وقد يستغرق وقتًا أطول.",
+            "USB والأجهزة": "يعرض الأجهزة المتصلة؛ لا ينفذ إجراءً تغييريًا دون تأكيد.",
+            "فحص الموقع": "يفحص أمان الاتصال والترويسات لموقع تملكه أو لديك تصريح بفحصه.",
+            "سمعة IP": "يستعلم من المصادر المتاحة؛ قد تكون البيانات محدودة دون مفتاح API.",
+        }
         for i, (text, callback) in enumerate(buttons):
             btn = QPushButton(text)
+            btn.setToolTip(scan_help[text])
             btn.clicked.connect(callback)
             self.task_buttons.append(btn)
             grid.addWidget(btn, 4 + i // 4, i % 4)
@@ -245,8 +261,8 @@ class UnifiedCockpitWindow(QMainWindow):
         self.scan_progress.setRange(0, 0)
         self.scan_progress.hide()
         layout.addWidget(self.scan_progress)
-        self.scan_hint = QLabel("الفحوصات تعمل في الخلفية حتى تبقى الواجهة مستجيبة. النتائج التفصيلية تظهر في جدول النتائج.")
-        self.scan_hint.setStyleSheet("color: #61766e;")
+        self.scan_hint = QLabel("مرّر المؤشر على الفحص لمعرفة نطاقه. اضغط على النتيجة لعرض تفاصيلها ودليلها.")
+        self.scan_hint.setStyleSheet("color: #aab8b0;")
         layout.addWidget(self.scan_hint)
         self.setup_findings_table(layout)
 
@@ -254,11 +270,19 @@ class UnifiedCockpitWindow(QMainWindow):
         group = QGroupBox("نتائج الفحص الأخيرة")
         box = QVBoxLayout(group)
         self.table_findings = QTableWidget(0, 4)
-        self.table_findings.setHorizontalHeaderLabels(["الخطورة", "النتيجة", "الفئة", "الإجراء المقترح"])
+        self.table_findings.setHorizontalHeaderLabels(["الخطورة", "النتيجة", "الفئة", "الثقة"])
+        self.table_findings.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         self.table_findings.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        self.table_findings.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        self.table_findings.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        self.table_findings.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
         self.table_findings.setAlternatingRowColors(True)
+        self.table_findings.cellClicked.connect(self.show_finding_details)
         box.addWidget(self.table_findings)
+        box.addWidget(QLabel("تفاصيل ودليل النتيجة المحددة"))
+        self.finding_detail = QPlainTextEdit(readOnly=True)
+        self.finding_detail.setPlaceholderText("حدد نتيجة لعرض التفاصيل والدليل والتوصية.")
+        self.finding_detail.setMaximumHeight(190)
+        box.addWidget(self.finding_detail)
         layout.addWidget(group)
 
     def setup_tools_tab(self) -> None:
@@ -338,6 +362,53 @@ class UnifiedCockpitWindow(QMainWindow):
         layout.addWidget(self.reports_table)
         self.refresh_reports()
 
+    def setup_library_tab(self) -> None:
+        layout = QVBoxLayout(self.tab_library)
+        intro = QLabel(
+            "تُستخرج النصوص من ملفاتك وتُخزّن محليًا في مكتبة الأداة. "
+            "البحث النصي يعمل بعد الإضافة مباشرة؛ أعد بناء الفهرس لتفعيل ترتيب الصلة والربط بين الكتب."
+        )
+        intro.setWordWrap(True)
+        intro.setStyleSheet("color: #bcc9c1; padding: 4px;")
+        layout.addWidget(intro)
+
+        actions = QHBoxLayout()
+        self.add_books_button = QPushButton("إضافة كتب أو ملفات")
+        self.add_books_button.clicked.connect(self.choose_books)
+        self.rebuild_index_button = QPushButton("إعادة بناء فهرس الذكاء")
+        self.rebuild_index_button.clicked.connect(self.rebuild_library_index)
+        refresh = QPushButton("تحديث المكتبة")
+        refresh.clicked.connect(self.refresh_library)
+        actions.addWidget(self.add_books_button)
+        actions.addWidget(self.rebuild_index_button)
+        actions.addWidget(refresh)
+        layout.addLayout(actions)
+
+        self.library_status = QLabel("جارٍ تحميل المكتبة...")
+        self.library_status.setStyleSheet("color: #a3dfcd;")
+        layout.addWidget(self.library_status)
+        self.library_table = QTableWidget(0, 4)
+        self.library_table.setHorizontalHeaderLabels(["العنوان", "النوع", "المقاطع", "تاريخ الإضافة"])
+        self.library_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        self.library_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        self.library_table.setAlternatingRowColors(True)
+        self.library_table.cellClicked.connect(self.show_library_document)
+        layout.addWidget(self.library_table, 2)
+
+        search_row = QHBoxLayout()
+        self.library_query = QLineEdit()
+        self.library_query.setPlaceholderText("ابحث في نص الكتب التي أضفتها")
+        self.library_query.returnPressed.connect(self.search_library)
+        search_button = QPushButton("بحث في المكتبة")
+        search_button.clicked.connect(self.search_library)
+        search_row.addWidget(self.library_query)
+        search_row.addWidget(search_button)
+        layout.addLayout(search_row)
+        self.library_results = QPlainTextEdit(readOnly=True)
+        self.library_results.setPlaceholderText("ستظهر المقاطع المطابقة مع اسم الكتاب ورقم الصفحة هنا.")
+        layout.addWidget(self.library_results, 2)
+        self.refresh_library()
+
     def update_live_telemetry(self) -> None:
         try:
             conns = LiveReconEngine.get_live_connections()
@@ -382,11 +453,77 @@ class UnifiedCockpitWindow(QMainWindow):
         cmd = self.agent.nlp.parse(text)
         self.chat_display.append(f"[الوكيل] فهمت الطلب: {self.agent.nlp.describe_intent(cmd.intent, 'ar')}")
         if cmd.intent == "explain":
-            self.chat_display.append(self.agent.nlp.explain(cmd.explain_target or text))
+            target = cmd.explain_target or text
+            self.run_background_task(
+                lambda: self.agent.nlp.explain(target),
+                "شرح السؤال",
+                preserve_findings=True,
+                result_handler=lambda answer: self.chat_display.append(f"[الوكيل]\n{answer}"),
+            )
             return
-        self.chat_display.append("[الوكيل] لتنفيذ الفحص استخدم زر الوظيفة المقابل في مركز الفحوصات أو الترسانة.")
 
-    def run_background_task(self, fn: Callable[..., Any], title: str, preserve_findings: bool = False) -> None:
+        entities = cmd.entities
+        routes: dict[str, tuple[str, Callable[[], Any]]] = {
+            "scan_network": ("فحص الشبكة", self.agent._scan_network),
+            "scan_system": ("فحص النظام", self.agent._scan_system),
+            "scan_logs": ("تحليل السجلات", self.agent._scan_logs),
+            "full_scan": ("الفحص الشامل", self.agent._full_scan),
+            "usb_control": ("فحص USB والأجهزة", self.agent._usb_control_center),
+            "check_firewall": ("فحص جدار الحماية", self.agent._check_firewall),
+            "wifi": ("فحص شبكات Wi-Fi", self.agent._wifi_status),
+            "scan_trend": ("مقارنة الفحوص السابقة", self.agent._show_trend),
+            "rebuild_index": ("إعادة بناء فهرس الذكاء", self.agent._rebuild_index),
+            "show_learned": ("عرض ما تعلمته الأداة", self.agent._show_learned),
+            "concept_explore": ("استكشاف مفهوم", lambda: self.agent._concept_explore(entities.get("concept", ""))),
+            "concept_link": ("ربط مفهومين", lambda: self.agent._concept_link(entities.get("concept_a", ""), entities.get("concept_b", ""))),
+            "summarize_doc": ("تلخيص كتاب", lambda: self.agent._summarize_doc(entities.get("book_title", ""))),
+            "teach": ("حفظ معلومة للتذكر", lambda: self.agent._teach(entities.get("fact", ""))),
+            "cve_search": ("البحث عن ثغرات CVE", lambda: self.agent._cve_search(entities.get("cve") or entities.get("keyword") or text)),
+            "pkg_vuln_search": ("فحص ثغرات حزمة", lambda: self.agent._pkg_vuln_search(entities.get("package", ""))),
+            "web_search": ("البحث في الويب", lambda: self.agent._web_search(entities.get("keyword") or text)),
+            "update_intel": ("تحديث معلومات التهديدات", self.agent._update_intel),
+        }
+        if cmd.intent in routes:
+            title, handler = routes[cmd.intent]
+            self.run_background_task(handler, title, preserve_findings=cmd.intent in {"rebuild_index", "show_learned"})
+            return
+        target = entities.get("ip", "")
+        if cmd.intent == "scan_ports":
+            ports_target = target or self.scan_target.text().strip() or "127.0.0.1"
+            port_range = self.port_range.text().strip() or "1-1024"
+            self.run_background_task(lambda: self.agent._scan_ports(ports_target, port_range), "فحص المنافذ")
+            return
+        if cmd.intent == "scan_website":
+            url = entities.get("url") or self.website_input.text().strip()
+            if url:
+                self.run_background_task(lambda: self.agent._test_website(url), "فحص الموقع")
+                return
+        if cmd.intent == "check_ip" and target:
+            self.ip_target.setText(target)
+            self.start_ip_reputation()
+            return
+        if cmd.intent == "learn_file":
+            filepath = entities.get("filepath", "")
+            if filepath:
+                self.run_background_task(
+                    lambda: self.agent._learn_from_file(filepath),
+                    "استيعاب كتاب",
+                    preserve_findings=True,
+                    result_handler=lambda _result: self.refresh_library(),
+                )
+            else:
+                self.tabs.setCurrentWidget(self.tab_library)
+                self.chat_display.append("[الوكيل] اختر «إضافة كتب أو ملفات» من مكتبة المعرفة.")
+            return
+        self.chat_display.append("[الوكيل] لم أنفذ هذا الطلب تلقائيًا. استخدم التبويب المناسب؛ لا أطبق إصلاحات النظام دون تأكيد.")
+
+    def run_background_task(
+        self,
+        fn: Callable[..., Any],
+        title: str,
+        preserve_findings: bool = False,
+        result_handler: Callable[[Any], None] | None = None,
+    ) -> None:
         if self.worker and self.worker.isRunning():
             QMessageBox.information(self, "مهمة قيد التنفيذ", "انتظر انتهاء المهمة الحالية قبل تشغيل مهمة أخرى.")
             return
@@ -396,19 +533,27 @@ class UnifiedCockpitWindow(QMainWindow):
         self.scan_progress.show()
         self.scan_hint.setText(f"جارٍ التنفيذ: {title}")
         self.active_task_title = title
+        self.active_result_handler = result_handler
         for button in self.task_buttons:
             button.setEnabled(False)
-        self.worker = WorkerThread(self._execute_gui_task, fn, preserve_findings)
+        self.worker = WorkerThread(self._execute_gui_task, fn, preserve_findings, result_handler is None)
         self.worker.task_result.connect(self.on_worker_result)
         self.worker.start()
 
     def on_worker_result(self, result: Any) -> None:
         self.task_done(result, self.active_task_title)
 
-    def _execute_gui_task(self, fn: Callable[..., Any], preserve_findings: bool = False) -> list:
-        if not preserve_findings:
+    def _execute_gui_task(
+        self,
+        fn: Callable[..., Any],
+        preserve_findings: bool = False,
+        manage_findings: bool = True,
+    ) -> Any:
+        if not preserve_findings and manage_findings:
             self.agent._last_findings = []
         result = fn()
+        if not manage_findings:
+            return result
         findings = result if isinstance(result, list) else self.agent._last_findings
         self.agent._last_findings = findings or []
         return self.agent._last_findings
@@ -442,15 +587,168 @@ class UnifiedCockpitWindow(QMainWindow):
         path = self.tool_path.text().strip() or "."
         self.run_background_task(lambda: self.agent._scan_secrets_cli(path), "كشف الأسرار")
 
+    def choose_books(self) -> None:
+        paths, _ = QFileDialog.getOpenFileNames(
+            self,
+            "إضافة كتب أو ملفات إلى المكتبة المحلية",
+            str(Path.home()),
+            "الكتب والملفات المدعومة (*.pdf *.txt *.md *.markdown)",
+        )
+        if not paths:
+            return
+
+        def ingest_books() -> dict:
+            imported, errors = [], []
+            for path in paths:
+                try:
+                    imported.append(library.ingest_file(path, self.agent.kb))
+                except Exception as exc:
+                    errors.append({"path": path, "error": str(exc)})
+            return {"imported": imported, "errors": errors}
+
+        self.run_background_task(
+            ingest_books,
+            "استيعاب الكتب",
+            preserve_findings=True,
+            result_handler=self.show_ingest_results,
+        )
+
+    def show_ingest_results(self, result: dict) -> None:
+        self.refresh_library()
+        lines = []
+        for document in result.get("imported", []):
+            lines.append(
+                f"تمت إضافة: {document['title']} | "
+                f"{document['chunks']} مقطع | {document['total_chars']:,} حرف"
+            )
+            lines.extend(document.get("diagnostics", []))
+        for failure in result.get("errors", []):
+            lines.append(f"تعذر استيعاب {failure['path']}: {failure['error']}")
+        self.library_results.setPlainText("\n\n".join(lines) or "لم تتم إضافة أي ملف.")
+
+    def rebuild_library_index(self) -> None:
+        if not self.agent.kb.list_library_documents():
+            QMessageBox.information(self, "المكتبة فارغة", "أضف كتابًا أو ملفًا قبل بناء الفهرس.")
+            return
+        self.run_background_task(
+            self.agent._rebuild_index,
+            "إعادة بناء فهرس الذكاء",
+            preserve_findings=True,
+            result_handler=lambda _result: self.refresh_library(),
+        )
+
+    def refresh_library(self) -> None:
+        documents = self.agent.kb.list_library_documents()
+        self.library_table.setRowCount(0)
+        for document in documents:
+            row = self.library_table.rowCount()
+            self.library_table.insertRow(row)
+            title = QTableWidgetItem(str(document.get("title", "")))
+            title.setData(Qt.ItemDataRole.UserRole, document["id"])
+            values = [title, QTableWidgetItem(str(document.get("file_type", ""))),
+                      QTableWidgetItem(str(document.get("chunk_count", 0))),
+                      QTableWidgetItem(str(document.get("added_at", "")))]
+            for column, item in enumerate(values):
+                self.library_table.setItem(row, column, item)
+
+        if relevance_engine.is_index_current(self.agent.kb):
+            meta = relevance_engine.get_index_meta()
+            status = f"{len(documents)} كتاب | الفهرس مبني: {meta.get('chunks_indexed', 0)} مقطع"
+        elif relevance_engine.is_index_built():
+            status = f"{len(documents)} كتاب | الفهرس قديم؛ أعد بناءه لإدخال الكتب الجديدة"
+        else:
+            status = f"{len(documents)} كتاب | البحث النصي متاح، والفهرس المرتب لم يُبنَ بعد"
+        self.library_status.setText(status)
+
+    def show_library_document(self, row: int, _column: int) -> None:
+        item = self.library_table.item(row, 0)
+        if not item:
+            return
+        document_id = item.data(Qt.ItemDataRole.UserRole)
+        content = self.agent.kb.get_doc_full_text(document_id, max_chars=5000)
+        self.library_results.setPlainText(f"معاينة من {item.text()}\n\n{content}")
+
+    def search_library(self) -> None:
+        query = self.library_query.text().strip()
+        if not query:
+            return
+        if relevance_engine.is_index_current(self.agent.kb):
+            results = relevance_engine.search(query, self.agent.kb, top_k=8)
+            if any("error" in item for item in results):
+                results = self.agent.kb.search_library(query, limit=8)
+                ranked = False
+            else:
+                ranked = True
+        else:
+            results = self.agent.kb.search_library(query, limit=8)
+            ranked = False
+
+        if not results:
+            self.library_results.setPlainText("لم أجد مقاطع مطابقة في الكتب التي أُضيفت.")
+            return
+        output = ["نتائج مرتبة حسب الصلة" if ranked else "نتائج بحث نصي محلي؛ أعد بناء الفهرس لتحديث ترتيب الصلة"]
+        for index, result in enumerate(results, 1):
+            if "error" in result:
+                output.append(result["error"])
+                continue
+            location = result.get("page_hint") or f"المقطع {result.get('chunk_index', '')}"
+            relevance = f" | الصلة: {result['relevance']:.3f}" if ranked and "relevance" in result else ""
+            output.append(
+                f"\n{index}. {result.get('title', 'كتاب غير معروف')} | {location}{relevance}\n"
+                f"{result.get('content', '').strip()}"
+            )
+        self.library_results.setPlainText("\n".join(output))
+
+    def show_finding_details(self, row: int, _column: int) -> None:
+        if row >= len(self.current_findings):
+            return
+        finding = self.current_findings[row]
+        confidence = finding.get("confidence")
+        confidence_text = f"{float(confidence):.0%}" if isinstance(confidence, (int, float)) else "غير محددة"
+        evidence = finding.get("evidence") or {}
+        lines = [
+            f"النتيجة: {finding.get('title', 'بلا عنوان')}",
+            f"الخطورة: {str(finding.get('severity', 'info')).upper()} | الثقة: {confidence_text}",
+            f"الفئة: {finding.get('category', 'غير مصنفة')}",
+            "",
+            "ماذا رُصد:",
+            str(finding.get("detail") or "لم يوفر الفاحص تفاصيل إضافية لهذه النتيجة."),
+            "",
+            "التوصية:",
+            str(finding.get("fix") or "لا توجد توصية آلية مسجلة؛ راجع إعداد الخدمة يدويًا."),
+        ]
+        if evidence:
+            lines.extend(["", "الدليل المسجل:", json.dumps(evidence, ensure_ascii=False, indent=2, default=str)])
+        tags = finding.get("tags") or []
+        if tags:
+            lines.extend(["", f"الوسوم: {', '.join(str(tag) for tag in tags)}"])
+        attack_ids = finding.get("attack_ids") or []
+        if attack_ids:
+            lines.extend([f"معرّفات ATT&CK: {', '.join(str(item) for item in attack_ids)}"])
+        self.finding_detail.setPlainText("\n".join(lines))
+
     def task_done(self, result: Any, title: str) -> None:
         self.scan_progress.hide()
         for button in self.task_buttons:
             button.setEnabled(True)
         if isinstance(result, Exception):
+            self.active_result_handler = None
             self.status_badge.setText("الحالة: فشل")
             self.status_badge.setStyleSheet("color: #fca5a5; font-weight: 700; padding: 8px 12px; border: 1px solid #ef4444; border-radius: 6px;")
             self.chat_display.append(f"[خطأ] {title}: {result}")
             self.scan_hint.setText(f"تعذر إكمال المهمة: {title}")
+            return
+        if self.active_result_handler:
+            handler, self.active_result_handler = self.active_result_handler, None
+            try:
+                handler(result)
+            except Exception as exc:
+                self.status_badge.setText("الحالة: فشل")
+                self.chat_display.append(f"[خطأ في عرض نتيجة {title}] {exc}")
+                return
+            self.status_badge.setText("الحالة: جاهز")
+            self.scan_hint.setText(f"اكتملت المهمة: {title}")
+            self.chat_display.append(f"[اكتمل] {title}")
             return
         findings = result if isinstance(result, list) else []
         self.render_findings(findings)
@@ -460,14 +758,21 @@ class UnifiedCockpitWindow(QMainWindow):
         self.chat_display.append(f"[اكتمل] {title} | النتائج: {len(findings)}")
 
     def render_findings(self, findings: list) -> None:
+        self.current_findings = findings
         self.table_findings.setRowCount(0)
+        self.finding_detail.clear()
+        if not findings:
+            self.finding_detail.setPlaceholderText("لم يسجل هذا الفحص نتائج أمنية.")
         for finding in findings:
             row = self.table_findings.rowCount()
             self.table_findings.insertRow(row)
             severity = str(finding.get("severity", "info")).upper()
-            item = QTableWidgetItem(severity)
-            item.setForeground(QColor({"CRITICAL": "#f87171", "HIGH": "#fb923c", "MEDIUM": "#facc15", "LOW": "#60a5fa"}.get(severity, "#86efac")))
-            values = [item, QTableWidgetItem(str(finding.get("title", ""))), QTableWidgetItem(str(finding.get("category", ""))), QTableWidgetItem(str(finding.get("fix", "")))]
+            severity_item = QTableWidgetItem(severity)
+            severity_item.setForeground(QColor({"CRITICAL": "#ff7780", "HIGH": "#f1a361", "MEDIUM": "#e7c36b", "LOW": "#82b9df"}.get(severity, "#78c6a6")))
+            confidence = finding.get("confidence")
+            confidence_text = f"{float(confidence):.0%}" if isinstance(confidence, (int, float)) else "—"
+            values = [severity_item, QTableWidgetItem(str(finding.get("title", ""))),
+                      QTableWidgetItem(str(finding.get("category", ""))), QTableWidgetItem(confidence_text)]
             for col, cell in enumerate(values):
                 self.table_findings.setItem(row, col, cell)
         evaluation = RiskEngine.evaluate(findings)

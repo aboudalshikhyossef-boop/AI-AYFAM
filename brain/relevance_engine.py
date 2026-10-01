@@ -85,6 +85,19 @@ def get_index_meta() -> dict:
     return {}
 
 
+def is_index_current(kb) -> bool:
+    """Return whether the saved index covers the current library contents."""
+    if not is_index_built():
+        return False
+    try:
+        indexed_ids = json.loads(CHUNK_IDS_PATH.read_text())
+        current_ids = kb.get_library_chunk_ids()
+        indexed_count = int(get_index_meta().get("chunks_indexed", -1))
+        return indexed_ids == current_ids and indexed_count == len(current_ids)
+    except (AttributeError, OSError, TypeError, ValueError, json.JSONDecodeError):
+        return False
+
+
 def _load_index():
     if not is_index_built():
         raise IndexNotBuiltError(
@@ -167,6 +180,8 @@ def search(query: str, kb, top_k: int = 8) -> list:
         vectorizer, matrix, chunk_ids = _load_index()
     except IndexNotBuiltError as e:
         return [{"error": str(e)}]
+    if not is_index_current(kb):
+        return [{"error": "الفهرس قديم أو لا يطابق المكتبة الحالية — أعد بناء فهرس الذكاء."}]
 
     q_vec = vectorizer.transform([query])
     if q_vec.nnz == 0:
@@ -193,6 +208,8 @@ def related_chunks(chunk_id: int, kb, top_k: int = 5) -> list:
         vectorizer, matrix, chunk_ids = _load_index()
     except IndexNotBuiltError as e:
         return [{"error": str(e)}]
+    if not is_index_current(kb):
+        return [{"error": "الفهرس قديم أو لا يطابق المكتبة الحالية — أعد بناء فهرس الذكاء."}]
     if chunk_id not in chunk_ids:
         return []
     idx = chunk_ids.index(chunk_id)

@@ -3,7 +3,7 @@
 #  AI AYFAM v3 — سكريبت التثبيت — Linux Mint
 # ====================================================
 
-set -e
+set -eo pipefail
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
 CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\033[0m'; BGREEN='\033[1;32m'
@@ -39,26 +39,26 @@ else
     error "Python $PY_VER غير مدعوم — يلزم $REQUIRED+"
 fi
 
-# ── System Python (بدون venv) ─────────────────────────────────────────────────
-info "تثبيت مكتبات Python في Python النظام — بدون بيئة افتراضية..."
-PIP_SYSTEM_FLAG=""
-if python3 -m pip help install 2>/dev/null | grep -q -- '--break-system-packages'; then
-    PIP_SYSTEM_FLAG="--break-system-packages"
+# ── Python virtual environment ────────────────────────────────────────────────
+VENV_DIR="$SCRIPT_DIR/.venv"
+APP_PYTHON="$VENV_DIR/bin/python"
+info "إعداد بيئة Python معزولة للأداة..."
+if ! python3 -m venv "$VENV_DIR"; then
+    warn "حزمة venv غير متاحة؛ تثبيت python3-venv..."
+    sudo apt-get update
+    sudo apt-get install -y python3-venv || error "تعذر تثبيت python3-venv"
+    python3 -m venv --clear "$VENV_DIR" || error "تعذر إنشاء بيئة Python الافتراضية"
 fi
-# لا نحدّث pip نفسه: توزيعات Ubuntu/Mint تدير pip عبر apt وقد ترفض إزالته.
-# --ignore-installed يمنع pip من محاولة إزالة ملفات Python التي يملكها apt.
-sudo python3 -m pip install --quiet --ignore-installed -r requirements.txt $PIP_SYSTEM_FLAG
-success "مكتبات Python النظام جاهزة (بما فيها PyQt6 ومحركات التحليل)"
+success "بيئة Python جاهزة: $VENV_DIR"
 
-# فحص سريع بعد التثبيت — لا يثبت أدوات النظام تلقائياً من داخل Python.
-sudo python3 - <<'PY'
-from utils.preflight import check_requirements
-report = check_requirements({"gui"})
-if not report.ok:
-    print(report.text())
-    raise SystemExit("متطلبات Python الأساسية ناقصة")
-print("فحص Python: OK")
-PY
+info "تثبيت مكتبات Python في البيئة المعزولة — سيظهر تقدم التنزيل والتثبيت..."
+PIP_LOG="$HOME/.cache/ayfam/setup-pip.log"
+mkdir -p "$(dirname "$PIP_LOG")"
+if ! "$APP_PYTHON" -m pip install --progress-bar on --disable-pip-version-check \
+    --timeout 30 --retries 2 -r requirements.txt 2>&1 | tee "$PIP_LOG"; then
+    error "فشل تثبيت مكتبات Python. راجع السجل: $PIP_LOG"
+fi
+success "مكتبات Python المعزولة جاهزة (بما فيها PyQt6 ومحركات التحليل)"
 
 # ── System tools ──────────────────────────────────────────────────────────────
 info "التحقق من أدوات الأمن..."
@@ -83,14 +83,14 @@ for bin in "${!TOOLS[@]}"; do
 done
 if [ -n "$INSTALL_PKGS" ]; then
     info "تثبيت:$INSTALL_PKGS"
-    sudo apt-get update -q
-    sudo apt-get install -y $INSTALL_PKGS 2>/dev/null || warn "بعض الأدوات لم تُثبَّت"
+    sudo apt-get update
+    sudo apt-get install -y $INSTALL_PKGS || warn "بعض الأدوات لم تُثبَّت"
 fi
 success "أدوات النظام جاهزة"
 
 # ── Qt/X11 runtime للواجهة ────────────────────────────────────────────────────
 info "التحقق من مكتبات Qt/X11 اللازمة للواجهة..."
-QT_PACKAGES=(libxcb-cursor0 libxkbcommon-x11-0 libxcb-xinerama0)
+QT_PACKAGES=(libgl1 libxcb-cursor0 libxkbcommon-x11-0 libxcb-xinerama0)
 QT_MISSING=0
 for pkg in "${QT_PACKAGES[@]}"; do
     dpkg-query -W -f='${Status}' "$pkg" 2>/dev/null | grep -q "install ok installed" || QT_MISSING=1
@@ -101,6 +101,16 @@ if [ "$QT_MISSING" -eq 1 ]; then
 fi
 success "مكتبات Qt/X11 جاهزة"
 
+# افحص بعد تثبيت مكتبات النظام التي تعتمد عليها PyQt عند بدء QApplication.
+"$APP_PYTHON" - <<'PY'
+from utils.preflight import check_requirements
+report = check_requirements({"gui"})
+if not report.ok:
+    print(report.text())
+    raise SystemExit("متطلبات GUI الأساسية ناقصة")
+print("فحص متطلبات GUI: OK")
+PY
+
 # ── fail2ban (اختياري) ───────────────────────────────────────────────────────
 if ! command -v fail2ban-server &>/dev/null; then
     read -rp "  تثبيت fail2ban (موصى به للحماية)؟ [y/N]: " ans
@@ -109,8 +119,9 @@ fi
 
 # ── إعداد قاعدة المعرفة ───────────────────────────────────────────────────────
 info "تهيئة قاعدة المعرفة SQLite..."
-mkdir -p ~/.ayfam ~/ayfam-reports
-python3 -c "
+mkdir -p ~/ayfam-reports
+sudo mkdir -p /root/ayfam-reports
+sudo -H "$APP_PYTHON" -c "
 from brain.knowledge_base import KnowledgeBase
 kb = KnowledgeBase()
 stats = kb.get_stats()
@@ -122,7 +133,7 @@ info "إنشاء أمر 'ayfam' عالمي..."
 LAUNCHER="/usr/local/bin/ayfam"
 sudo tee "$LAUNCHER" > /dev/null <<EOF
 #!/bin/bash
-exec /usr/bin/python3 "$SCRIPT_DIR/main.py" "\$@"
+exec "$APP_PYTHON" "$SCRIPT_DIR/main.py" "\$@"
 EOF
 sudo chmod +x "$LAUNCHER"
 success "الأمر 'ayfam' جاهز"
@@ -134,6 +145,10 @@ sudo tee "$GUI_LAUNCHER" > /dev/null <<EOF
 #!/usr/bin/env bash
 set -e
 APP_DIR="$SCRIPT_DIR"
+umask 077
+LOG_DIR="\${XDG_STATE_HOME:-\$HOME/.local/state}/ayfam"
+mkdir -p "\$LOG_DIR"
+LOG_FILE="\$LOG_DIR/gui.log"
 QT_PLATFORM="\${QT_QPA_PLATFORM:-}"
 if [ -n "\${DISPLAY:-}" ]; then
     # Root لا يستطيع عادةً الانضمام إلى جلسة Wayland للمستخدم؛ X11/XWayland
@@ -145,10 +160,10 @@ if [ "\$(id -u)" -ne 0 ]; then
         echo "❌ pkexec غير مثبت؛ شغّل: sudo apt install policykit-1" >&2
         exit 1
     fi
-    exec pkexec env DISPLAY="\${DISPLAY:-}" WAYLAND_DISPLAY="\${WAYLAND_DISPLAY:-}" XAUTHORITY="\${XAUTHORITY:-}" XDG_RUNTIME_DIR="\${XDG_RUNTIME_DIR:-}" QT_QPA_PLATFORM="\$QT_PLATFORM" /usr/bin/python3 "\$APP_DIR/main.py" --gui "\$@"
+    exec pkexec env DISPLAY="\${DISPLAY:-}" WAYLAND_DISPLAY="\${WAYLAND_DISPLAY:-}" XAUTHORITY="\${XAUTHORITY:-}" XDG_RUNTIME_DIR="\${XDG_RUNTIME_DIR:-}" QT_QPA_PLATFORM="\$QT_PLATFORM" "\$APP_DIR/.venv/bin/python" "\$APP_DIR/main.py" --gui "\$@" >>"\$LOG_FILE" 2>&1
 fi
 export QT_QPA_PLATFORM="\$QT_PLATFORM"
-exec /usr/bin/python3 "\$APP_DIR/main.py" --gui "\$@"
+exec "\$APP_DIR/.venv/bin/python" "\$APP_DIR/main.py" --gui "\$@" >>"\$LOG_FILE" 2>&1
 EOF
 sudo chmod +x "$GUI_LAUNCHER"
 
@@ -174,7 +189,7 @@ if [[ -d "$HOME/Desktop" ]]; then
     chmod +x "$HOME/Desktop/AI-AYFAM.desktop"
     command -v gio >/dev/null 2>&1 && gio set "$HOME/Desktop/AI-AYFAM.desktop" metadata::trusted true 2>/dev/null || true
 fi
-success "أيقونة AI AYFAM أُضيفت إلى قائمة التطبيقات"
+success "أيقونة AI AYFAM أُضيفت إلى قائمة التطبيقات (سجل التشغيل: ~/.local/state/ayfam/gui.log)"
 
 # ── تفعيل UFW ─────────────────────────────────────────────────────────────────
 if command -v ufw &>/dev/null; then

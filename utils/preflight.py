@@ -44,6 +44,7 @@ FEATURE_REQUIREMENTS = {
 # Qt can import PyQt6 successfully while still aborting at QApplication startup
 # if these X11 runtime libraries are absent.
 FEATURE_REQUIREMENTS["gui"] += (
+    Requirement("libgl1", "package", "sudo apt install libgl1", "gui"),
     Requirement("libxcb-cursor0", "package", "sudo apt install libxcb-cursor0", "gui"),
     Requirement("libxkbcommon-x11-0", "package", "sudo apt install libxkbcommon-x11-0", "gui"),
     Requirement("libxcb-xinerama0", "package", "sudo apt install libxcb-xinerama0", "gui"),

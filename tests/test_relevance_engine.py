@@ -146,6 +146,13 @@ candidates = [
 order = re_engine.rank_texts("nmap port scan tutorial", candidates)
 check("nmap-related candidate ranked first", order[0] == 1)
 
+print("\n[8] Stale index detection after adding a book chunk")
+kb.add_library_chunk(doc_nmap, 99, "New library material about endpoint detection and response.")
+kb.commit()
+stale_results = re_engine.search("endpoint detection", kb)
+check("stale index is rejected instead of omitting the new chunk",
+    bool(stale_results and "error" in stale_results[0]))
+
 print(f"\n{'='*50}\nTOTAL: {passed} passed, {failed} failed\n{'='*50}")
 
 os.remove(TMPDB)

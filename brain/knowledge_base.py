@@ -793,8 +793,12 @@ class KnowledgeBase:
 
     def get_all_library_chunks(self) -> list:
         """كل مقاطع كل الكتب — تُستخدَم مرة واحدة عند بناء فهرس TF-IDF."""
-        rows = self._connect().execute("SELECT id, content FROM library_chunks").fetchall()
+        rows = self._connect().execute("SELECT id, content FROM library_chunks ORDER BY id").fetchall()
         return [{"id": r["id"], "content": r["content"]} for r in rows]
+
+    def get_library_chunk_ids(self) -> list[int]:
+        rows = self._connect().execute("SELECT id FROM library_chunks ORDER BY id").fetchall()
+        return [int(row[0]) for row in rows]
 
     def get_library_chunk_by_id(self, chunk_id: int) -> dict:
         row = self._connect().execute(
