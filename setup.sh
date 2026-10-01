@@ -88,6 +88,19 @@ if [ -n "$INSTALL_PKGS" ]; then
 fi
 success "أدوات النظام جاهزة"
 
+# ── Qt/X11 runtime للواجهة ────────────────────────────────────────────────────
+info "التحقق من مكتبات Qt/X11 اللازمة للواجهة..."
+QT_PACKAGES=(libxcb-cursor0 libxkbcommon-x11-0 libxcb-xinerama0)
+QT_MISSING=0
+for pkg in "${QT_PACKAGES[@]}"; do
+    dpkg-query -W -f='${Status}' "$pkg" 2>/dev/null | grep -q "install ok installed" || QT_MISSING=1
+done
+if [ "$QT_MISSING" -eq 1 ]; then
+    sudo apt-get update -q
+    sudo apt-get install -y "${QT_PACKAGES[@]}" || error "تعذر تثبيت مكتبات Qt/X11 المطلوبة للواجهة"
+fi
+success "مكتبات Qt/X11 جاهزة"
+
 # ── fail2ban (اختياري) ───────────────────────────────────────────────────────
 if ! command -v fail2ban-server &>/dev/null; then
     read -rp "  تثبيت fail2ban (موصى به للحماية)؟ [y/N]: " ans
@@ -121,13 +134,20 @@ sudo tee "$GUI_LAUNCHER" > /dev/null <<EOF
 #!/usr/bin/env bash
 set -e
 APP_DIR="$SCRIPT_DIR"
+QT_PLATFORM="\${QT_QPA_PLATFORM:-}"
+if [ -n "\${DISPLAY:-}" ]; then
+    # Root لا يستطيع عادةً الانضمام إلى جلسة Wayland للمستخدم؛ X11/XWayland
+    # هو المسار المتوافق مع pkexec في أجهزة Linux Mint الحالية.
+    QT_PLATFORM="xcb"
+fi
 if [ "\$(id -u)" -ne 0 ]; then
     if ! command -v pkexec >/dev/null 2>&1; then
         echo "❌ pkexec غير مثبت؛ شغّل: sudo apt install policykit-1" >&2
         exit 1
     fi
-    exec pkexec env DISPLAY="\${DISPLAY:-}" WAYLAND_DISPLAY="\${WAYLAND_DISPLAY:-}" XAUTHORITY="\${XAUTHORITY:-}" XDG_RUNTIME_DIR="\${XDG_RUNTIME_DIR:-}" /usr/bin/python3 "\$APP_DIR/main.py" --gui "\$@"
+    exec pkexec env DISPLAY="\${DISPLAY:-}" WAYLAND_DISPLAY="\${WAYLAND_DISPLAY:-}" XAUTHORITY="\${XAUTHORITY:-}" XDG_RUNTIME_DIR="\${XDG_RUNTIME_DIR:-}" QT_QPA_PLATFORM="\$QT_PLATFORM" /usr/bin/python3 "\$APP_DIR/main.py" --gui "\$@"
 fi
+export QT_QPA_PLATFORM="\$QT_PLATFORM"
 exec /usr/bin/python3 "\$APP_DIR/main.py" --gui "\$@"
 EOF
 sudo chmod +x "$GUI_LAUNCHER"

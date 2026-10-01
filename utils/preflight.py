@@ -9,6 +9,7 @@ from __future__ import annotations
 import importlib.util
 import os
 import shutil
+import subprocess
 import sys
 from dataclasses import dataclass
 from typing import Iterable
@@ -39,6 +40,14 @@ FEATURE_REQUIREMENTS = {
     "lynis": (Requirement("lynis", "system", "sudo apt install lynis", "lynis"),),
     "rootkits": (Requirement("chkrootkit", "system", "sudo apt install chkrootkit", "rootkits"),),
 }
+
+# Qt can import PyQt6 successfully while still aborting at QApplication startup
+# if these X11 runtime libraries are absent.
+FEATURE_REQUIREMENTS["gui"] += (
+    Requirement("libxcb-cursor0", "package", "sudo apt install libxcb-cursor0", "gui"),
+    Requirement("libxkbcommon-x11-0", "package", "sudo apt install libxkbcommon-x11-0", "gui"),
+    Requirement("libxcb-xinerama0", "package", "sudo apt install libxcb-xinerama0", "gui"),
+)
 
 
 @dataclass
@@ -75,6 +84,15 @@ def root_error() -> str:
 def _available(requirement: Requirement) -> bool:
     if requirement.kind == "Python":
         return importlib.util.find_spec(requirement.name) is not None
+    if requirement.kind == "package":
+        try:
+            result = subprocess.run(
+                ["dpkg-query", "-W", "-f=${Status}", requirement.name],
+                capture_output=True, text=True, timeout=3,
+            )
+            return result.returncode == 0 and "install ok installed" in result.stdout
+        except (OSError, subprocess.SubprocessError):
+            return False
     return shutil.which(requirement.name) is not None
 
 
