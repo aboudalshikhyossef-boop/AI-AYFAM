@@ -71,6 +71,16 @@ sudo ayfam --set-github-token ghp_XXXXXXXXXXXXXXXX
 sudo ayfam --scan full
 ```
 
+بعد تشغيل `setup.sh` تظهر أيقونة **AI AYFAM Security Center** في قائمة
+التطبيقات. يمكن تشغيل الواجهة من الطرفية أيضًا:
+
+```bash
+ayfam-gui
+```
+
+سيطلب النظام صلاحيات root عبر نافذة المصادقة الرسومية `pkexec`، ثم يفتح
+الواجهة داخل جلسة سطح المكتب الحالية.
+
 ## المتطلبات / Requirements
 
 | المطلوب | الإصدار |

@@ -53,7 +53,7 @@ success "مكتبات Python النظام جاهزة (بما فيها PyQt6 وم
 # فحص سريع بعد التثبيت — لا يثبت أدوات النظام تلقائياً من داخل Python.
 sudo python3 - <<'PY'
 from utils.preflight import check_requirements
-report = check_requirements()
+report = check_requirements({"gui"})
 if not report.ok:
     print(report.text())
     raise SystemExit("متطلبات Python الأساسية ناقصة")
@@ -72,6 +72,7 @@ declare -A TOOLS=(
     ["hciconfig"]="bluez-tools"
     ["curl"]="curl"
     ["ufw"]="ufw"
+    ["pkexec"]="policykit-1"
 )
 INSTALL_PKGS=""
 for bin in "${!TOOLS[@]}"; do
@@ -113,6 +114,43 @@ EOF
 sudo chmod +x "$LAUNCHER"
 success "الأمر 'ayfam' جاهز"
 
+# ── مشغّل الواجهة وأيقونة قائمة التطبيقات ────────────────────────────────────
+info "إنشاء مشغّل الواجهة الرسومية وأيقونة قائمة التطبيقات..."
+GUI_LAUNCHER="/usr/local/bin/ayfam-gui"
+sudo tee "$GUI_LAUNCHER" > /dev/null <<EOF
+#!/usr/bin/env bash
+set -e
+APP_DIR="$SCRIPT_DIR"
+if [ "\$(id -u)" -ne 0 ]; then
+    if ! command -v pkexec >/dev/null 2>&1; then
+        echo "❌ pkexec غير مثبت؛ شغّل: sudo apt install policykit-1" >&2
+        exit 1
+    fi
+    exec pkexec env DISPLAY="\${DISPLAY:-}" WAYLAND_DISPLAY="\${WAYLAND_DISPLAY:-}" XAUTHORITY="\${XAUTHORITY:-}" XDG_RUNTIME_DIR="\${XDG_RUNTIME_DIR:-}" /usr/bin/python3 "\$APP_DIR/main.py" --gui "\$@"
+fi
+exec /usr/bin/python3 "\$APP_DIR/main.py" --gui "\$@"
+EOF
+sudo chmod +x "$GUI_LAUNCHER"
+
+DESKTOP_FILE="/usr/share/applications/ayfam.desktop"
+sudo tee "$DESKTOP_FILE" > /dev/null <<EOF
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=AI AYFAM Security Center
+Name[ar]=مركز AI AYFAM الأمني
+Comment=AI AYFAM cybersecurity control center
+Comment[ar]=مركز التحكم الأمني AI AYFAM
+Exec=$GUI_LAUNCHER
+Icon=$SCRIPT_DIR/resources/icon.svg
+Terminal=false
+Categories=System;Security;
+StartupNotify=true
+EOF
+sudo chmod 644 "$DESKTOP_FILE"
+command -v update-desktop-database >/dev/null 2>&1 && sudo update-desktop-database /usr/share/applications >/dev/null 2>&1 || true
+success "أيقونة AI AYFAM أُضيفت إلى قائمة التطبيقات"
+
 # ── تفعيل UFW ─────────────────────────────────────────────────────────────────
 if command -v ufw &>/dev/null; then
     UFW_STATUS=$(sudo ufw status 2>/dev/null | head -1)
@@ -139,6 +177,7 @@ echo "    sudo ayfam --scan usb    → مركز تحكم USB"
 echo "    sudo ayfam --scan full   → فحص شامل"
 echo "    sudo ayfam --status      → حالة الوكيل وإحصائيات قاعدة المعرفة"
 echo "    sudo ayfam --update      → تحديث معلومات التهديدات من الإنترنت"
+echo "    ayfam-gui                → فتح الواجهة الرسومية / أيقونة قائمة التطبيقات"
 echo ""
 echo -e "  ${YELLOW}إعداد GitHub (اختياري — لرفع التقارير):${NC}"
 echo "    1. https://github.com/settings/tokens"
