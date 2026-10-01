@@ -42,14 +42,17 @@ git push -u origin main
 ## بعد التثبيت / After Installation
 
 ```bash
-# تشغيل الوكيل / Run the agent
-ayfam
+# فحص المتطلبات / Check dependencies
+sudo ayfam --check-deps
+
+# تشغيل الوكيل بصلاحيات root / Run the agent as root
+sudo ayfam
 
 # إضافة GitHub token (اختياري) / Add GitHub token (optional)
-ayfam --set-github-token ghp_XXXXXXXXXXXXXXXX
+sudo ayfam --set-github-token ghp_XXXXXXXXXXXXXXXX
 
 # أول فحص / First scan
-ayfam scan full
+sudo ayfam --scan full
 ```
 
 ## المتطلبات / Requirements
@@ -59,11 +62,18 @@ ayfam scan full
 | Linux Mint / Ubuntu / Debian | 20+ |
 | Python | 3.8+ |
 | pip | أي إصدار |
-| nmap (اختياري) | أي |
+| PyQt6 (للواجهة) | 6.5+ |
+| nmap (لفحص المنافذ) | أي |
 | adb (اختياري، للهواتف) | أي |
 
 ## الأدوات الموصى بها / Recommended Tools
 
 ```bash
-sudo apt install nmap usbutils adb net-tools iproute2 fail2ban
+sudo apt install nmap usbutils adb net-tools iproute2 lynis chkrootkit fail2ban
 ```
+
+## الصلاحيات / Privileges
+
+تعمل الأداة عمدًا **بمستخدم root فقط** لأن بعض فحوصات النظام والشبكة وعمليات
+التحصين تحتاج قراءة ملفات محمية وتنفيذ أوامر إدارية. إذا كان المستخدم الحالي
+غير root فسيتم إيقاف التشغيل برسالة واضحة بدل تنفيذ جزء ناقص من الفحص.

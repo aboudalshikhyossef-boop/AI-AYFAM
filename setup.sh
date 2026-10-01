@@ -43,9 +43,19 @@ fi
 info "إنشاء بيئة Python افتراضية..."
 python3 -m venv .venv 2>/dev/null || true
 source .venv/bin/activate
-pip install --quiet --upgrade pip
-pip install --quiet -r requirements.txt
-success "مكتبات Python جاهزة (rich, requests)"
+python -m pip install --quiet --upgrade pip
+python -m pip install --quiet -r requirements.txt
+success "مكتبات Python جاهزة (بما فيها PyQt6 ومحركات التحليل)"
+
+# فحص سريع بعد التثبيت — لا يثبت أدوات النظام تلقائياً من داخل Python.
+python3 - <<'PY'
+from utils.preflight import check_requirements
+report = check_requirements()
+if not report.ok:
+    print(report.text())
+    raise SystemExit("متطلبات Python الأساسية ناقصة")
+print("فحص Python: OK")
+PY
 
 # ── System tools ──────────────────────────────────────────────────────────────
 info "التحقق من أدوات الأمن..."
@@ -120,12 +130,13 @@ echo -e "║  ✅  AI AYFAM v3 جاهز! / Ready to launch!                   �
 echo -e "╚══════════════════════════════════════════════════════════════╝${NC}"
 echo ""
 echo -e "  ${CYAN}كيفية الاستخدام:${NC}"
-echo "    ayfam                    → وضع محادثة ذكي (اكتب بالعربي أو الإنجليزي)"
-echo "    ayfam --scan network     → فحص الشبكة"
-echo "    ayfam --scan usb         → مركز تحكم USB"
-echo "    ayfam --scan full        → فحص شامل"
-echo "    ayfam --status           → حالة الوكيل وإحصائيات قاعدة المعرفة"
-echo "    ayfam --update           → تحديث معلومات التهديدات من الإنترنت"
+echo "    sudo ayfam               → وضع محادثة ذكي (اكتب بالعربي أو الإنجليزي)"
+echo "    sudo ayfam --check-deps  → فحص المتطلبات والأدوات الناقصة"
+echo "    sudo ayfam --scan network → فحص الشبكة"
+echo "    sudo ayfam --scan usb    → مركز تحكم USB"
+echo "    sudo ayfam --scan full   → فحص شامل"
+echo "    sudo ayfam --status      → حالة الوكيل وإحصائيات قاعدة المعرفة"
+echo "    sudo ayfam --update      → تحديث معلومات التهديدات من الإنترنت"
 echo ""
 echo -e "  ${YELLOW}إعداد GitHub (اختياري — لرفع التقارير):${NC}"
 echo "    1. https://github.com/settings/tokens"

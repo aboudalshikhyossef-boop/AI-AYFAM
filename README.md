@@ -50,37 +50,40 @@ ayfam
 
 ## 🚀 الاستخدام / Usage
 
+> **مهم / Important:** تعمل الأداة بصلاحيات root فقط. استخدم `sudo ayfam ...`.
+> لفحص مكتبات Python وأدوات النظام قبل البدء استخدم `sudo ayfam --check-deps`.
+
 ```bash
 # وضع تفاعلي / Interactive mode
-ayfam
+sudo ayfam
 
 # فحص الشبكة / Network scan
-ayfam scan network
+sudo ayfam --scan network
 
 # فحص المنافذ / Port scan
-ayfam scan ports 192.168.1.1
-ayfam scan ports 127.0.0.1
+sudo ayfam --scan ports --target 192.168.1.1
+sudo ayfam --scan ports --target 127.0.0.1
 
 # فحص USB والأجهزة / USB & devices
-ayfam scan usb
+sudo ayfam --scan usb
 
 # فحص النظام الكامل / Full system scan
-ayfam scan system
+sudo ayfam --scan system
 
 # تحليل السجلات / Log analysis
-ayfam scan logs
+sudo ayfam --scan logs
 
 # فحص شامل لكل شيء / Full comprehensive scan
-ayfam scan full
+sudo ayfam --scan full
 
 # إنشاء تقرير / Generate report
-ayfam report
+sudo ayfam --report
 
 # تحديث قاعدة بيانات CVE / Update CVE database
-ayfam update
+sudo ayfam --update
 
 # إصلاح تلقائي / Auto-fix
-ayfam fix
+sudo ayfam --fix
 
 # إعداد GitHub (اختياري) / GitHub setup (optional)
 ayfam --set-github-token YOUR_GITHUB_TOKEN

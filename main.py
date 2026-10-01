@@ -9,8 +9,7 @@ import argparse
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from config.settings import Settings
-from ui.terminal import TerminalUI
+from utils.preflight import check_requirements, feature_flags, is_root, root_error
 
 
 def main():
@@ -60,8 +59,27 @@ def main():
     parser.add_argument("--learned", action="store_true", help="اعرض كل ما تعلمته الأداة حتى الآن")
     parser.add_argument("--no-color", action="store_true", help="بدون ألوان")
     parser.add_argument("--verbose",  action="store_true", help="وضع التصحيح المفصّل")
+    parser.add_argument("--check-deps", action="store_true", help="فحص مكتبات Python وأدوات النظام المطلوبة")
     args = parser.parse_args()
 
+    if not is_root():
+        print(f"❌ {root_error()}")
+        return 1
+
+    preflight = check_requirements(feature_flags(args))
+    if args.check_deps:
+        print(preflight.text())
+        return 0 if preflight.ok else 2
+    if not preflight.ok:
+        print("❌ متطلبات أساسية ناقصة، لا يمكن تشغيل هذا الخيار بأمان.")
+        print(preflight.text())
+        return 2
+    if preflight.missing_optional:
+        print("⚠️ بعض الأدوات الاختيارية غير مثبتة؛ ستبقى الوظائف الأخرى متاحة:")
+        print(preflight.text())
+
+    from config.settings import Settings
+    from ui.terminal import TerminalUI
     settings = Settings()
     ui = TerminalUI(no_color=args.no_color)
 
@@ -69,21 +87,21 @@ def main():
     if args.gui:
         from ui.gui_app import launch_gui
         launch_gui()
-        return
+        return 0
 
     if args.set_github_token:
         token = args.set_github_token.strip()
         if not token or any(ord(c) < 0x21 for c in token) or len(token) < 20:
             print("❌ الرمز المُدخَل لا يبدو رمز GitHub صالحاً (تحقق من عدم وجود مسافات أو قصّه بالخطأ).")
-            return
+            return 1
         settings.set("github_token", token)
         print(f"✅ تم حفظ رمز GitHub ({token[:8]}...)")
-        return
+        return 0
 
     if args.language:
         settings.set("language", args.language)
         print(f"✅ تم تغيير اللغة إلى: {args.language}")
-        return
+        return 0
 
     # ── Load full agent ───────────────────────────────────────────────────────
     from core.agent import AYFAMAgent
@@ -106,6 +124,32 @@ def main():
             agent._teach(args.teach)
         elif args.learned:
             agent._show_learned()
+        elif args.audit:
+            agent._run_deep_audit()
+        elif args.baseline_learn:
+            agent._run_baseline_learn_cli()
+        elif args.baseline_check:
+            agent._run_baseline_check_cli()
+        elif args.synthesize_rules:
+            agent._run_synthesize_rules_cli()
+        elif args.playbook:
+            agent._show_playbook_cli(args.playbook)
+        elif args.lynis:
+            agent._run_lynis_cli()
+        elif args.yara is not None:
+            agent._run_yara_cli(args.yara)
+        elif args.rootkits:
+            agent._run_rootkit_cli()
+        elif args.sentinel:
+            agent._run_sentinel_cli()
+        elif args.hunt:
+            agent._run_deep_audit()
+        elif args.secrets is not None:
+            agent._scan_secrets_cli(args.secrets)
+        elif args.plan:
+            agent._generate_remediation_plan()
+        elif args.html_report:
+            agent._export_html_report()
         else:
             # Default: interactive NLP chat mode
             agent.interactive_mode()
@@ -122,8 +166,10 @@ def main():
         if args.verbose:
             import traceback
             traceback.print_exc()
-        sys.exit(1)
+        return 1
+
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

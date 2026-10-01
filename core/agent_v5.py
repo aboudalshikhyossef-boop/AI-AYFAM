@@ -50,6 +50,7 @@ class AgentV5Mixin:
                 self.ui.print_finding(f["severity"], f["title"], f.get("detail", ""), f.get("fix", ""))
         else:
             self.ui.success(self._t("🟢 النظام متطابق تماماً مع خط الأساس ولا توجد أي انحرافات مريبة.", "System is compliant with baseline."))
+        self._last_findings = findings
         return findings
 
     def _run_synthesize_rules_cli(self):
@@ -148,6 +149,8 @@ class AgentV5Mixin:
 
         for f in res.get("findings", []):
             self.ui.print_finding(f["severity"], f["title"], f.get("detail", ""), f.get("fix", ""))
+        self._last_findings = res.get("findings", [])
+        return self._last_findings
 
     def _run_yara_cli(self, target_path: str = "."):
         self.ui.section(self._t(f"🦠 فحص البرمجيات الخبيثة بـ YARA: {target_path}", f"🦠 YARA Malware Scan: {target_path}"))
@@ -160,6 +163,8 @@ class AgentV5Mixin:
                 self.ui.print_finding(f["severity"], f["title"], f.get("detail", ""), f.get("fix", ""))
         else:
             self.ui.success(self._t("✅ تم الفحص: لا توجد برمجيات خبيثة مطابقة لتوقيعات YARA.", "Clean: No YARA threats detected."))
+        self._last_findings = findings
+        return findings
 
     def _run_rootkit_cli(self):
         self.ui.section(self._t("🕵️ فحص الجذور الخفية (Rootkit Hunter)", "🕵️ Rootkit Detection Scan"))
@@ -169,6 +174,8 @@ class AgentV5Mixin:
 
         for f in findings:
             self.ui.print_finding(f["severity"], f["title"], f.get("detail", ""), f.get("fix", ""))
+        self._last_findings = findings
+        return findings
 
     def _run_sentinel_cli(self):
         self.ui.section(self._t("🛡️ الحارس النشط (Active Sentinel)", "🛡️ Active Sentinel Daemon"))
@@ -195,6 +202,7 @@ class AgentV5Mixin:
                 self.ui.print_finding(s["severity"], s["title"], s.get("detail", ""), s.get("fix", ""))
         else:
             self.ui.success(self._t("لم يتم العثور على أسرار مكشوفة في المسار.", "No exposed secrets found."))
+        self._last_findings = secrets
         return secrets
 
     def _generate_remediation_plan(self):

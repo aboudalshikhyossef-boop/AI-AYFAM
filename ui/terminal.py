@@ -48,8 +48,8 @@ SUCCESS = "bold green"
 DANGER  = "bold red"
 WARN    = "bold yellow"
 
-PANEL_BOX = box.ROUNDED
-TABLE_BOX = box.SIMPLE_HEAVY
+PANEL_BOX = box.ROUNDED if RICH else None
+TABLE_BOX = box.SIMPLE_HEAVY if RICH else None
 PANEL_PAD = (1, 2)
 
 # خطورة → (لون، أيقونة). الألوان هنا مقصودة لتكون متمايزة بصرياً بوضوح
