@@ -911,6 +911,7 @@ You can type any of these or anything similar in plain language:
         if all_findings:
             report = generate_markdown_report({"risk": risk, "findings": all_findings, "sections": {}}, self._hostname, self.lang)
             self._ask_save_report(report)
+        return all_findings
 
     def _check_firewall(self):
         self.ui.section(self._t("🔥 جدار الحماية","🔥 Firewall"))
@@ -937,11 +938,12 @@ You can type any of these or anything similar in plain language:
     #  PORT SCAN
     # ─────────────────────────────────────────────────────────────────────────
 
-    def _scan_ports(self, target: str):
+    def _scan_ports(self, target: str, port_range: str = None):
         if not target or target == "127.0.0.1":
             target = self.ui.ask(self._t("IP أو hostname","IP or hostname"), default="127.0.0.1")
         self.ui.section(self._t(f"🔍 فحص المنافذ: {target}", f"🔍 Port Scan: {target}"))
-        port_range = self.ui.ask(self._t("نطاق المنافذ","Port range"), default="1-1024")
+        if port_range is None:
+            port_range = self.ui.ask(self._t("نطاق المنافذ","Port range"), default="1-1024")
         with self.ui.spinner(self._t(f"فحص {port_range}...", f"Scanning {port_range}...")):
             pass
         result = network.scan_ports(target, port_range)
@@ -959,13 +961,16 @@ You can type any of these or anything similar in plain language:
                     kb_info = self.kb.lookup("port", str(p["port"]))
                     if kb_info:
                         self.ui.info(f"  📖 منفذ {p['port']}: {kb_info}")
-        for f in result.get("findings",[]):
+        findings = result.get("findings", [])
+        self._last_findings = findings
+        for f in findings:
             self.ui.print_finding(f["severity"], f["title"], f.get("detail",""), f.get("fix",""))
 
         from brain.narrator import narrate_findings
-        narration = narrate_findings(result.get("findings", []),
+        narration = narrate_findings(findings,
                                       self._t(f"فحص المنافذ لـ {target}", f"port scan of {target}"), self.lang)
         self.ui.info(f"💬 {narration}")
+        return findings
 
     # ─────────────────────────────────────────────────────────────────────────
     #  USB CONTROL CENTER
@@ -1191,6 +1196,7 @@ You can type any of these or anything similar in plain language:
         if all_findings:
             report = generate_markdown_report({"risk": risk, "findings": all_findings, "sections":{"sysinfo":sysinfo}}, self._hostname, self.lang)
             self._ask_save_report(report)
+        return all_findings
 
     # ─────────────────────────────────────────────────────────────────────────
     #  LOG ANALYSIS
@@ -1220,7 +1226,9 @@ You can type any of these or anything similar in plain language:
 
         risk = self.intel.compute_risk_score(all_findings)
         self.ui.raw(self.intel.generate_summary(risk, all_findings, self._t("تحليل السجلات","Log Analysis")), style=_risk_border_style(risk["level"]))
+        self._last_findings = all_findings
         self._save_and_show_trend("logs", risk, all_findings)
+        return all_findings
 
     # ─────────────────────────────────────────────────────────────────────────
     #  WEBSITE SECURITY TEST
@@ -1237,7 +1245,8 @@ You can type any of these or anything similar in plain language:
         result = web.test_website_security(url)
         if not result.get("reachable"):
             self.ui.error(self._t("الموقع غير متاح","Website not reachable"))
-            return
+            self._last_findings = []
+            return []
         self.ui.print_tree({
             "URL": result.get("final_url",url), "Status": result.get("status_code",""),
             "Server": result.get("server","?"), "Response": f"{result.get('response_time_ms','?')}ms",
@@ -1254,10 +1263,13 @@ You can type any of these or anything similar in plain language:
                 f"⚠️  رؤوس مفقودة: {', '.join(result['missing_headers'])}",
                 f"⚠️  Missing headers: {', '.join(result['missing_headers'])}"
             ))
-        for f in result.get("findings",[]):
+        findings = result.get("findings", [])
+        self._last_findings = findings
+        for f in findings:
             self.ui.print_finding(f["severity"], f["title"], f.get("detail",""), f.get("fix",""))
         if self.ui.confirm(self._t("فتح في المتصفح؟","Open in browser?"), False):
             web.open_browser(url)
+        return findings
 
     # ─────────────────────────────────────────────────────────────────────────
     #  CVE SEARCH
@@ -1451,8 +1463,11 @@ You can type any of these or anything similar in plain language:
         sources = result.get("sources_checked", [])
         if sources:
             self.ui.info(f"  {self._t('المصادر المفحوصة','Sources checked')}: {', '.join(sources)}")
-        for f in result.get("findings",[]):
+        findings = result.get("findings", [])
+        self._last_findings = findings
+        for f in findings:
             self.ui.print_finding(f["severity"], f["title"], f.get("detail",""), f.get("fix",""))
+        return findings
 
     # ─────────────────────────────────────────────────────────────────────────
     #  PACKAGE VULNERABILITY SEARCH (OSV.dev)
@@ -1602,6 +1617,7 @@ You can type any of these or anything similar in plain language:
 
         report = generate_markdown_report({"risk": risk, "findings": all_findings, "sections":{}}, self._hostname, self.lang)
         self._ask_save_report(report)
+        return all_findings
 
     # ─────────────────────────────────────────────────────────────────────────
     #  UPDATE INTEL

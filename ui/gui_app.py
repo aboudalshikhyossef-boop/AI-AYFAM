@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import sys
+import ipaddress
 from pathlib import Path
 from typing import Callable, Any
 
@@ -20,32 +21,63 @@ from config.settings import Settings
 from core.agent import AYFAMAgent
 from engine.live_recon import LiveReconEngine
 from engine.risk import RiskEngine
+from ui.terminal import TerminalUI
 from utils.preflight import check_requirements, root_error, is_root
 
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 
 THEME = """
-QMainWindow, QWidget { background: #080c14; color: #e5e7eb; font-family: Segoe UI, sans-serif; font-size: 13px; }
-QFrame#header, QGroupBox, QFrame.card { background: #0e1522; border: 1px solid #26364d; border-radius: 10px; }
-QGroupBox { margin-top: 12px; padding: 14px 10px 10px; font-weight: 700; color: #8dd7ff; }
+QMainWindow, QWidget { background: #f2f6f3; color: #1c302b; font-family: "Noto Sans Arabic", "DejaVu Sans", sans-serif; font-size: 13px; }
+QFrame#header { background: #164a43; border: none; border-radius: 8px; }
+QGroupBox, QFrame.card { background: #ffffff; border: 1px solid #d5e1dc; border-radius: 7px; }
+QGroupBox { margin-top: 12px; padding: 14px 10px 10px; font-weight: 700; color: #17695b; }
 QGroupBox::title { subcontrol-origin: margin; left: 12px; padding: 0 6px; }
-QTabWidget::pane { border: 1px solid #26364d; border-radius: 8px; background: #0b111d; }
-QTabBar::tab { background: #0b111d; color: #93a4b8; padding: 11px 18px; border: 1px solid #1f2d40; margin-right: 2px; }
-QTabBar::tab:selected { background: #13263a; color: #67d7ff; border-bottom: 2px solid #38bdf8; }
-QPushButton { background: #12304a; color: #e6f7ff; border: 1px solid #2675a5; border-radius: 6px; padding: 8px 12px; font-weight: 600; }
-QPushButton:hover { background: #1b557b; }
-QPushButton:disabled { color: #627386; background: #101923; border-color: #26364d; }
-QLineEdit, QComboBox, QPlainTextEdit, QTextEdit { background: #070b12; color: #f3f4f6; border: 1px solid #2d435c; border-radius: 6px; padding: 7px; }
-QTableWidget { background: #080d16; alternate-background-color: #0c1420; gridline-color: #1b2b3d; border: 1px solid #26364d; border-radius: 7px; }
-QHeaderView::section { background: #132033; color: #9bdcff; padding: 8px; border: none; font-weight: 700; }
-QProgressBar { background: #080d16; border: 1px solid #26364d; border-radius: 6px; text-align: center; }
-QProgressBar::chunk { background: #22c55e; border-radius: 5px; }
+QTabWidget::pane { border: 1px solid #d5e1dc; border-radius: 7px; background: #ffffff; }
+QTabBar::tab { background: #e6eeea; color: #536a62; padding: 11px 18px; border: none; border-bottom: 2px solid transparent; margin-right: 2px; }
+QTabBar::tab:selected { background: #ffffff; color: #145c50; border-bottom: 2px solid #16836f; font-weight: 700; }
+QPushButton { background: #167a68; color: #ffffff; border: 1px solid #126858; border-radius: 5px; padding: 8px 12px; font-weight: 600; }
+QPushButton:hover { background: #105f52; }
+QPushButton:disabled { color: #84958f; background: #e7eeeb; border-color: #d5e1dc; }
+QLineEdit, QComboBox, QPlainTextEdit, QTextEdit { background: #ffffff; color: #1c302b; border: 1px solid #c8d7d1; border-radius: 5px; padding: 7px; selection-background-color: #b6dfd3; }
+QLineEdit:focus, QComboBox:focus, QPlainTextEdit:focus, QTextEdit:focus { border: 1px solid #16836f; }
+QTableWidget { background: #ffffff; alternate-background-color: #f1f6f3; gridline-color: #e2ebe7; border: 1px solid #d5e1dc; border-radius: 5px; }
+QHeaderView::section { background: #e7f0ec; color: #20594e; padding: 8px; border: none; font-weight: 700; }
+QProgressBar { background: #e4ece8; border: none; border-radius: 3px; text-align: center; min-height: 5px; max-height: 5px; }
+QProgressBar::chunk { background: #e39b3b; border-radius: 3px; }
+QScrollBar:vertical { background: #edf2ef; width: 10px; margin: 0; }
+QScrollBar::handle:vertical { background: #b8cbc3; min-height: 24px; border-radius: 4px; }
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
 """
 
 
+class GuiTerminalUI(TerminalUI):
+    """Provide safe defaults for CLI prompts when agent methods run in the GUI."""
+
+    def ask(self, prompt: str, default: str = None) -> str:
+        return default or ""
+
+    def confirm(self, prompt: str, default: bool = False) -> bool:
+        return default
+
+    def print_table(self, headers: list, rows: list, title: str = None) -> None:
+        super().print_table(headers, rows, title)
+        if title:
+            self._log_event("INFO", title)
+        for row in rows:
+            self._log_event("INFO", " | ".join(str(value) for value in row))
+
+    def print_tree(self, data: dict, title: str = "") -> None:
+        super().print_tree(data, title)
+        self._log_event("INFO", f"{title}: {data}" if title else str(data))
+
+    def raw(self, text: str, style: str = "") -> None:
+        super().raw(text, style)
+        self._log_event("INFO", str(text))
+
+
 class WorkerThread(QThread):
-    finished = pyqtSignal(object)
+    task_result = pyqtSignal(object)
 
     def __init__(self, task_fn: Callable[..., Any], *args: Any):
         super().__init__()
@@ -53,31 +85,35 @@ class WorkerThread(QThread):
 
     def run(self) -> None:
         try:
-            self.finished.emit(self.task_fn(*self.args))
+            self.task_result.emit(self.task_fn(*self.args))
         except Exception as exc:  # propagate to the GUI thread for a useful message
-            self.finished.emit(exc)
+            self.task_result.emit(exc)
 
 
 class UnifiedCockpitWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("AI AYFAM — Security Control Center")
-        self.resize(1400, 900)
-        self.setMinimumSize(1100, 700)
+        self.resize(1320, 840)
+        self.setMinimumSize(980, 660)
         self.setStyleSheet(THEME)
         icon_path = ROOT_DIR / "resources" / "icon.svg"
         if icon_path.exists():
             self.setWindowIcon(QIcon(str(icon_path)))
 
         self.settings = Settings()
-        # TerminalUI remains the compatibility adapter used by the agent engines.
-        from ui.terminal import TerminalUI
-        self.agent = AYFAMAgent(settings=self.settings, ui=TerminalUI(no_color=True))
+        self.agent = AYFAMAgent(settings=self.settings, ui=GuiTerminalUI(no_color=True))
         self.worker: WorkerThread | None = None
+        self.active_task_title = ""
+        self.visible_events: list[tuple[str, str, str]] = []
+        self.task_buttons: list[QPushButton] = []
         self.init_ui()
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update_live_telemetry)
         self.timer.start(3000)
+        self.event_timer = QTimer(self)
+        self.event_timer.timeout.connect(self.update_agent_events)
+        self.event_timer.start(300)
         self.update_live_telemetry()
 
     def init_ui(self) -> None:
@@ -90,11 +126,11 @@ class UnifiedCockpitWindow(QMainWindow):
         header_layout = QHBoxLayout(header)
         title_box = QVBoxLayout()
         title = QLabel("AI AYFAM  |  مركز التحكم الأمني")
-        title.setFont(QFont("Segoe UI", 18, QFont.Weight.Bold))
-        title.setStyleSheet("color: #67d7ff;")
+        title.setFont(QFont("Noto Sans Arabic", 18, QFont.Weight.Bold))
+        title.setStyleSheet("color: #ffffff;")
         title_box.addWidget(title)
         subtitle = QLabel("فحوصات النظام والشبكة، التحليل المتقدم، التقارير، وخطط المعالجة في مكان واحد")
-        subtitle.setStyleSheet("color: #93a4b8;")
+        subtitle.setStyleSheet("color: #c7ddd6;")
         title_box.addWidget(subtitle)
         header_layout.addLayout(title_box)
         header_layout.addStretch()
@@ -171,32 +207,46 @@ class UnifiedCockpitWindow(QMainWindow):
         grid = QGridLayout(form)
         self.scan_target = QLineEdit("127.0.0.1")
         self.scan_target.setPlaceholderText("IP أو اسم المضيف لفحص المنافذ")
+        self.port_range = QLineEdit("1-1024")
+        self.port_range.setPlaceholderText("مثال: 22,80,443 أو 1-1024")
+        self.ip_target = QLineEdit()
+        self.ip_target.setPlaceholderText("عنوان IP عام")
         self.website_input = QLineEdit()
         self.website_input.setPlaceholderText("https://example.com")
         self.path_input = QLineEdit(".")
         grid.addWidget(QLabel("هدف المنافذ:"), 0, 0)
         grid.addWidget(self.scan_target, 0, 1)
-        grid.addWidget(QLabel("الموقع:"), 1, 0)
-        grid.addWidget(self.website_input, 1, 1)
-        grid.addWidget(QLabel("مسار YARA / الأسرار:"), 2, 0)
-        grid.addWidget(self.path_input, 2, 1)
+        grid.addWidget(QLabel("نطاق المنافذ:"), 0, 2)
+        grid.addWidget(self.port_range, 0, 3)
+        grid.addWidget(QLabel("عنوان IP للسمعة:"), 1, 0)
+        grid.addWidget(self.ip_target, 1, 1, 1, 3)
+        grid.addWidget(QLabel("الموقع:"), 2, 0)
+        grid.addWidget(self.website_input, 2, 1, 1, 3)
+        grid.addWidget(QLabel("مسار YARA / الأسرار:"), 3, 0)
+        grid.addWidget(self.path_input, 3, 1, 1, 3)
         buttons = [
             ("فحص الشبكة", lambda: self.run_background_task(lambda: self.agent._scan_network(), "فحص الشبكة")),
-            ("فحص المنافذ", lambda: self.run_background_task(lambda: self.agent._scan_ports(self.scan_target.text().strip() or "127.0.0.1"), "فحص المنافذ")),
+            ("فحص المنافذ", self.start_port_scan),
             ("فحص النظام", lambda: self.run_background_task(self.agent._scan_system, "فحص النظام")),
             ("تحليل السجلات", lambda: self.run_background_task(self.agent._scan_logs, "تحليل السجلات")),
             ("الفحص الشامل", lambda: self.run_background_task(self.agent._full_scan, "الفحص الشامل")),
             ("USB والأجهزة", lambda: self.run_background_task(self.agent._usb_control_center, "USB والأجهزة")),
-            ("فحص الموقع", lambda: self.run_background_task(lambda: self.agent._test_website(self.website_input.text().strip()), "فحص الموقع")),
-            ("سمعة IP", lambda: self.run_background_task(lambda: self.agent._check_ip(self.scan_target.text().strip()), "سمعة IP")),
+            ("فحص الموقع", self.start_website_scan),
+            ("سمعة IP", self.start_ip_reputation),
         ]
         for i, (text, callback) in enumerate(buttons):
             btn = QPushButton(text)
             btn.clicked.connect(callback)
-            grid.addWidget(btn, 3 + i // 4, i % 4)
+            self.task_buttons.append(btn)
+            grid.addWidget(btn, 4 + i // 4, i % 4)
         layout.addWidget(form)
+        self.scan_progress = QProgressBar()
+        self.scan_progress.setTextVisible(False)
+        self.scan_progress.setRange(0, 0)
+        self.scan_progress.hide()
+        layout.addWidget(self.scan_progress)
         self.scan_hint = QLabel("الفحوصات تعمل في الخلفية حتى تبقى الواجهة مستجيبة. النتائج التفصيلية تظهر في جدول النتائج.")
-        self.scan_hint.setStyleSheet("color: #93a4b8;")
+        self.scan_hint.setStyleSheet("color: #61766e;")
         layout.addWidget(self.scan_hint)
         self.setup_findings_table(layout)
 
@@ -219,20 +269,24 @@ class UnifiedCockpitWindow(QMainWindow):
         grid.addWidget(QLabel("المسار:"), 0, 0)
         grid.addWidget(self.tool_path, 0, 1, 1, 3)
         actions = [
-            ("CIS / Hardening", self.agent._run_deep_audit), ("Lynis", self.agent._run_lynis_cli),
-            ("YARA", lambda: self.agent._run_yara_cli(self.tool_path.text().strip() or ".")),
-            ("Rootkit", self.agent._run_rootkit_cli), ("كشف الأسرار", lambda: self.agent._scan_secrets_cli(self.tool_path.text().strip() or ".")),
-            ("تعلّم خط الأساس", self.agent._run_baseline_learn_cli), ("فحص خط الأساس", self.agent._run_baseline_check_cli),
-            ("توليد قواعد دفاعية", self.agent._run_synthesize_rules_cli), ("خطة المعالجة", self.agent._generate_remediation_plan),
-            ("تقرير HTML", self.agent._export_html_report), ("تحديث معلومات التهديدات", self.agent._update_intel),
+            ("CIS / Hardening", self.agent._run_deep_audit, False, False), ("Lynis", self.agent._run_lynis_cli, False, False),
+            ("YARA", self.start_yara_scan, False, True),
+            ("Rootkit", self.agent._run_rootkit_cli, False, False), ("كشف الأسرار", self.start_secret_scan, False, True),
+            ("تعلّم خط الأساس", self.agent._run_baseline_learn_cli, False, False), ("فحص خط الأساس", self.agent._run_baseline_check_cli, False, False),
+            ("توليد قواعد دفاعية", self.agent._run_synthesize_rules_cli, True, False), ("خطة المعالجة", self.agent._generate_remediation_plan, True, False),
+            ("تقرير HTML", self.agent._export_html_report, True, False), ("تحديث معلومات التهديدات", self.agent._update_intel, False, False),
         ]
-        for i, (text, fn) in enumerate(actions):
+        for i, (text, fn, preserve_findings, direct) in enumerate(actions):
             btn = QPushButton(text)
-            btn.clicked.connect(lambda _checked=False, f=fn, t=text: self.run_background_task(f, t))
+            if direct:
+                btn.clicked.connect(fn)
+            else:
+                btn.clicked.connect(lambda _checked=False, f=fn, t=text, p=preserve_findings: self.run_background_task(f, t, p))
+            self.task_buttons.append(btn)
             grid.addWidget(btn, 1 + i // 3, i % 3)
         layout.addWidget(group)
         note = QLabel("تنبيه: أدوات الإصلاح التلقائي قد تغيّر إعدادات النظام. استخدمها من المحادثة أو الطرفية بعد مراجعة النتائج.")
-        note.setStyleSheet("color: #fbbf24;")
+        note.setStyleSheet("color: #9a641b;")
         layout.addWidget(note)
         layout.addStretch()
 
@@ -310,6 +364,15 @@ class UnifiedCockpitWindow(QMainWindow):
         except Exception as exc:
             self.chat_display.append(f"[تحذير الرادار] {exc}")
 
+    def update_agent_events(self) -> None:
+        events = self.agent.ui.get_events(200)
+        overlap = min(len(self.visible_events), len(events))
+        while overlap and self.visible_events[-overlap:] != events[:overlap]:
+            overlap -= 1
+        for timestamp, level, message in events[overlap:]:
+            self.chat_display.append(f"[{timestamp}] [{level}] {message}")
+        self.visible_events = events
+
     def send_chat_message(self) -> None:
         text = self.chat_input.text().strip()
         if not text:
@@ -323,30 +386,78 @@ class UnifiedCockpitWindow(QMainWindow):
             return
         self.chat_display.append("[الوكيل] لتنفيذ الفحص استخدم زر الوظيفة المقابل في مركز الفحوصات أو الترسانة.")
 
-    def run_background_task(self, fn: Callable[..., Any], title: str) -> None:
+    def run_background_task(self, fn: Callable[..., Any], title: str, preserve_findings: bool = False) -> None:
         if self.worker and self.worker.isRunning():
             QMessageBox.information(self, "مهمة قيد التنفيذ", "انتظر انتهاء المهمة الحالية قبل تشغيل مهمة أخرى.")
             return
         self.status_badge.setText(f"الحالة: يعمل — {title}")
         self.status_badge.setStyleSheet("color: #fde68a; font-weight: 700; padding: 8px 12px; border: 1px solid #d97706; border-radius: 6px;")
         self.chat_display.append(f"\n[بدء] {title}")
-        self.worker = WorkerThread(fn)
-        self.worker.finished.connect(lambda result, task=title: self.task_done(result, task))
+        self.scan_progress.show()
+        self.scan_hint.setText(f"جارٍ التنفيذ: {title}")
+        self.active_task_title = title
+        for button in self.task_buttons:
+            button.setEnabled(False)
+        self.worker = WorkerThread(self._execute_gui_task, fn, preserve_findings)
+        self.worker.task_result.connect(self.on_worker_result)
         self.worker.start()
 
+    def on_worker_result(self, result: Any) -> None:
+        self.task_done(result, self.active_task_title)
+
+    def _execute_gui_task(self, fn: Callable[..., Any], preserve_findings: bool = False) -> list:
+        if not preserve_findings:
+            self.agent._last_findings = []
+        result = fn()
+        findings = result if isinstance(result, list) else self.agent._last_findings
+        self.agent._last_findings = findings or []
+        return self.agent._last_findings
+
+    def start_website_scan(self) -> None:
+        url = self.website_input.text().strip()
+        if not url:
+            QMessageBox.warning(self, "رابط الموقع مطلوب", "أدخل رابط الموقع قبل بدء الفحص.")
+            return
+        self.run_background_task(lambda: self.agent._test_website(url), "فحص الموقع")
+
+    def start_port_scan(self) -> None:
+        target = self.scan_target.text().strip() or "127.0.0.1"
+        port_range = self.port_range.text().strip() or "1-1024"
+        self.run_background_task(lambda: self.agent._scan_ports(target, port_range), "فحص المنافذ")
+
+    def start_ip_reputation(self) -> None:
+        target = self.ip_target.text().strip()
+        try:
+            ipaddress.ip_address(target)
+        except ValueError:
+            QMessageBox.warning(self, "عنوان IP غير صالح", "أدخل عنوان IPv4 أو IPv6 صالحًا لفحص السمعة.")
+            return
+        self.run_background_task(lambda: self.agent._check_ip(target), "سمعة IP")
+
+    def start_yara_scan(self) -> None:
+        path = self.tool_path.text().strip() or "."
+        self.run_background_task(lambda: self.agent._run_yara_cli(path), "YARA")
+
+    def start_secret_scan(self) -> None:
+        path = self.tool_path.text().strip() or "."
+        self.run_background_task(lambda: self.agent._scan_secrets_cli(path), "كشف الأسرار")
+
     def task_done(self, result: Any, title: str) -> None:
+        self.scan_progress.hide()
+        for button in self.task_buttons:
+            button.setEnabled(True)
         if isinstance(result, Exception):
             self.status_badge.setText("الحالة: فشل")
             self.status_badge.setStyleSheet("color: #fca5a5; font-weight: 700; padding: 8px 12px; border: 1px solid #ef4444; border-radius: 6px;")
             self.chat_display.append(f"[خطأ] {title}: {result}")
+            self.scan_hint.setText(f"تعذر إكمال المهمة: {title}")
             return
-        if isinstance(result, list) and result and isinstance(result[0], dict):
-            self.agent._last_findings = result
-        self.render_findings(getattr(self.agent, "_last_findings", []) or [])
+        findings = result if isinstance(result, list) else []
+        self.render_findings(findings)
         self.status_badge.setText("الحالة: جاهز")
         self.status_badge.setStyleSheet("color: #86efac; font-weight: 700; padding: 8px 12px; border: 1px solid #22c55e; border-radius: 6px;")
-        self.chat_display.append(f"[اكتمل] {title}")
-        self.tabs.setCurrentWidget(self.tab_scans)
+        self.scan_hint.setText(f"اكتملت المهمة: {title} | النتائج: {len(findings)}")
+        self.chat_display.append(f"[اكتمل] {title} | النتائج: {len(findings)}")
 
     def render_findings(self, findings: list) -> None:
         self.table_findings.setRowCount(0)
