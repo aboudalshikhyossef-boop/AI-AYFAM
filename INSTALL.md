@@ -10,9 +10,21 @@ chmod +x setup.sh
 ./setup.sh
 ```
 
-يستخدم `setup.sh` **Python النظام مباشرة** ولا ينشئ `venv` أو أي بيئة افتراضية.
+يَستخدم `setup.sh` **Python النظام مباشرة** ولا ينشئ `venv` أو أي بيئة افتراضية.
 تُثبت المكتبات على مستوى النظام عبر `sudo`، ويعمل الأمر `ayfam` على Python النظام
 مع فحص root الحقيقي من النواة.
+
+إذا ظهر خطأ من نوع `Cannot uninstall pip ... RECORD file not found`، فهذا يعني
+أن سكربتًا قديمًا توقف قبل تحديث المشغّل. اسحب آخر نسخة ثم أعد التثبيت؛ النسخة
+الحالية لا تحدّث pip نفسه ولا تحاول إزالة حزم apt:
+
+```bash
+cd ~/AI-AYFAM
+git pull --ff-only origin main
+chmod +x setup.sh
+./setup.sh
+sudo ayfam --check-deps
+```
 
 ## الطريقة 2: رفع المشروع على GitHub / Method 2: Push to GitHub
 

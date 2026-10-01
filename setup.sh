@@ -45,8 +45,9 @@ PIP_SYSTEM_FLAG=""
 if python3 -m pip help install 2>/dev/null | grep -q -- '--break-system-packages'; then
     PIP_SYSTEM_FLAG="--break-system-packages"
 fi
-sudo python3 -m pip install --quiet --upgrade pip $PIP_SYSTEM_FLAG
-sudo python3 -m pip install --quiet -r requirements.txt $PIP_SYSTEM_FLAG
+# لا نحدّث pip نفسه: توزيعات Ubuntu/Mint تدير pip عبر apt وقد ترفض إزالته.
+# --ignore-installed يمنع pip من محاولة إزالة ملفات Python التي يملكها apt.
+sudo python3 -m pip install --quiet --ignore-installed -r requirements.txt $PIP_SYSTEM_FLAG
 success "مكتبات Python النظام جاهزة (بما فيها PyQt6 ومحركات التحليل)"
 
 # فحص سريع بعد التثبيت — لا يثبت أدوات النظام تلقائياً من داخل Python.
