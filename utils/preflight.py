@@ -48,6 +48,18 @@ FEATURE_REQUIREMENTS["gui"] += (
     Requirement("libxcb-cursor0", "package", "sudo apt install libxcb-cursor0", "gui"),
     Requirement("libxkbcommon-x11-0", "package", "sudo apt install libxkbcommon-x11-0", "gui"),
     Requirement("libxcb-xinerama0", "package", "sudo apt install libxcb-xinerama0", "gui"),
+    Requirement("libxcb-icccm4", "package", "sudo apt install libxcb-icccm4", "gui"),
+    Requirement("libxcb-image0", "package", "sudo apt install libxcb-image0", "gui"),
+    Requirement("libxcb-keysyms1", "package", "sudo apt install libxcb-keysyms1", "gui"),
+    Requirement("libxcb-render-util0", "package", "sudo apt install libxcb-render-util0", "gui"),
+    Requirement("libxcb-xkb1", "package", "sudo apt install libxcb-xkb1", "gui"),
+    Requirement("libxcb-randr0", "package", "sudo apt install libxcb-randr0", "gui"),
+    Requirement("libxcb-shape0", "package", "sudo apt install libxcb-shape0", "gui"),
+    Requirement("libxcb-xfixes0", "package", "sudo apt install libxcb-xfixes0", "gui"),
+    Requirement("libxcb-sync1", "package", "sudo apt install libxcb-sync1", "gui"),
+    Requirement("libxcb-shm0", "package", "sudo apt install libxcb-shm0", "gui"),
+    Requirement("libxcb-util1", "package", "sudo apt install libxcb-util1", "gui"),
+    Requirement("libx11-xcb1", "package", "sudo apt install libx11-xcb1", "gui"),
 )
 
 

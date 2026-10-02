@@ -90,7 +90,12 @@ success "أدوات النظام جاهزة"
 
 # ── Qt/X11 runtime للواجهة ────────────────────────────────────────────────────
 info "التحقق من مكتبات Qt/X11 اللازمة للواجهة..."
-QT_PACKAGES=(libgl1 libxcb-cursor0 libxkbcommon-x11-0 libxcb-xinerama0)
+QT_PACKAGES=(
+    libgl1 libxcb-cursor0 libxkbcommon-x11-0 libxcb-xinerama0
+    libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0
+    libxcb-xkb1 libxcb-randr0 libxcb-shape0 libxcb-xfixes0 libxcb-sync1
+    libxcb-shm0 libxcb-util1 libx11-xcb1
+)
 QT_MISSING=0
 for pkg in "${QT_PACKAGES[@]}"; do
     dpkg-query -W -f='${Status}' "$pkg" 2>/dev/null | grep -q "install ok installed" || QT_MISSING=1
@@ -100,6 +105,14 @@ if [ "$QT_MISSING" -eq 1 ]; then
     sudo apt-get install -y "${QT_PACKAGES[@]}" || error "تعذر تثبيت مكتبات Qt/X11 المطلوبة للواجهة"
 fi
 success "مكتبات Qt/X11 جاهزة"
+
+QT_XCB_PLUGIN="$($APP_PYTHON -c 'from pathlib import Path; from PyQt6.QtCore import QLibraryInfo; print(Path(QLibraryInfo.path(QLibraryInfo.LibraryPath.PluginsPath)) / "platforms/libqxcb.so")')"
+[[ -f "$QT_XCB_PLUGIN" ]] || error "لم يتم العثور على إضافة Qt X11: $QT_XCB_PLUGIN"
+QT_MISSING_LIBS="$(ldd "$QT_XCB_PLUGIN" 2>/dev/null | awk '/not found/{print $1}')"
+if [[ -n "$QT_MISSING_LIBS" ]]; then
+    error "إضافة Qt X11 موجودة لكن ينقصها ربط المكتبات التالية: $QT_MISSING_LIBS"
+fi
+success "اعتماديات إضافة Qt X11 (xcb) مكتملة"
 
 # افحص اتساق الحزم ثم اختبر استيراد المكتبات وبدء Qt دون الحاجة لشاشة فعلية.
 "$APP_PYTHON" -m pip check || error "تعارض في إصدارات مكتبات Python؛ راجع متطلبات pip أعلاه"
@@ -162,6 +175,7 @@ umask 077
 LOG_DIR="\${XDG_STATE_HOME:-\$HOME/.local/state}/ayfam"
 mkdir -p "\$LOG_DIR"
 LOG_FILE="\$LOG_DIR/gui.log"
+XAUTHORITY_FILE="\${XAUTHORITY:-\$HOME/.Xauthority}"
 QT_PLATFORM="\${QT_QPA_PLATFORM:-}"
 if [ -n "\${DISPLAY:-}" ]; then
     # Root لا يستطيع عادةً الانضمام إلى جلسة Wayland للمستخدم؛ X11/XWayland
@@ -173,7 +187,19 @@ if [ "\$(id -u)" -ne 0 ]; then
         echo "❌ pkexec غير مثبت؛ شغّل: sudo apt install policykit-1" >&2
         exit 1
     fi
-    exec pkexec env DISPLAY="\${DISPLAY:-}" WAYLAND_DISPLAY="\${WAYLAND_DISPLAY:-}" XAUTHORITY="\${XAUTHORITY:-}" XDG_RUNTIME_DIR="\${XDG_RUNTIME_DIR:-}" QT_QPA_PLATFORM="\$QT_PLATFORM" "\$APP_DIR/.venv/bin/python" "\$APP_DIR/main.py" --gui "\$@" >>"\$LOG_FILE" 2>&1
+    printf '[%s] Starting GUI (DISPLAY=%s, XAUTHORITY=%s, QT_QPA_PLATFORM=%s)\\n' "\$(date '+%F %T')" "\${DISPLAY:-unset}" "\$XAUTHORITY_FILE" "\${QT_PLATFORM:-auto}" >>"\$LOG_FILE"
+    if pkexec env DISPLAY="\${DISPLAY:-}" WAYLAND_DISPLAY="\${WAYLAND_DISPLAY:-}" XAUTHORITY="\$XAUTHORITY_FILE" XDG_RUNTIME_DIR="\${XDG_RUNTIME_DIR:-}" QT_QPA_PLATFORM="\$QT_PLATFORM" "\$APP_DIR/.venv/bin/python" "\$APP_DIR/main.py" --gui "\$@" >>"\$LOG_FILE" 2>&1; then
+        exit 0
+    else
+        EXIT_CODE=\$?
+        printf '[%s] GUI exited with status %s. See %s\\n' "\$(date '+%F %T')" "\$EXIT_CODE" "\$LOG_FILE" >>"\$LOG_FILE"
+        if command -v zenity >/dev/null 2>&1; then
+            zenity --error --title="AI AYFAM لم يبدأ" --text="تعذر تشغيل الواجهة الرسومية بعد المصادقة. راجع السجل:\\n\$LOG_FILE" 2>/dev/null || true
+        elif command -v notify-send >/dev/null 2>&1; then
+            notify-send "AI AYFAM لم يبدأ" "تعذر تشغيل الواجهة. راجع: \$LOG_FILE" 2>/dev/null || true
+        fi
+        exit "\$EXIT_CODE"
+    fi
 fi
 export QT_QPA_PLATFORM="\$QT_PLATFORM"
 exec "\$APP_DIR/.venv/bin/python" "\$APP_DIR/main.py" --gui "\$@" >>"\$LOG_FILE" 2>&1
