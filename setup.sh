@@ -176,19 +176,25 @@ LOG_DIR="\${XDG_STATE_HOME:-\$HOME/.local/state}/ayfam"
 mkdir -p "\$LOG_DIR"
 LOG_FILE="\$LOG_DIR/gui.log"
 XAUTHORITY_FILE="\${XAUTHORITY:-\$HOME/.Xauthority}"
+GUI_DISPLAY="\${DISPLAY:-}"
+GUI_WAYLAND_DISPLAY="\${WAYLAND_DISPLAY:-}"
 QT_PLATFORM="\${QT_QPA_PLATFORM:-}"
-if [ -n "\${DISPLAY:-}" ]; then
-    # Root لا يستطيع عادةً الانضمام إلى جلسة Wayland للمستخدم؛ X11/XWayland
-    # هو المسار المتوافق مع pkexec في أجهزة Linux Mint الحالية.
+if [[ "\$GUI_DISPLAY" == wayland-* ]]; then
+    GUI_WAYLAND_DISPLAY="\${GUI_WAYLAND_DISPLAY:-\$GUI_DISPLAY}"
+    GUI_DISPLAY=""
+fi
+if [[ "\$GUI_DISPLAY" =~ ^(:[0-9]+(\\.[0-9]+)?|[^:]+:[0-9]+(\\.[0-9]+)?)$ ]]; then
     QT_PLATFORM="xcb"
+elif [[ -n "\$GUI_WAYLAND_DISPLAY" ]]; then
+    QT_PLATFORM="wayland"
 fi
 if [ "\$(id -u)" -ne 0 ]; then
     if ! command -v pkexec >/dev/null 2>&1; then
         echo "❌ pkexec غير مثبت؛ شغّل: sudo apt install policykit-1" >&2
         exit 1
     fi
-    printf '[%s] Starting GUI (DISPLAY=%s, XAUTHORITY=%s, QT_QPA_PLATFORM=%s)\\n' "\$(date '+%F %T')" "\${DISPLAY:-unset}" "\$XAUTHORITY_FILE" "\${QT_PLATFORM:-auto}" >>"\$LOG_FILE"
-    if pkexec env DISPLAY="\${DISPLAY:-}" WAYLAND_DISPLAY="\${WAYLAND_DISPLAY:-}" XAUTHORITY="\$XAUTHORITY_FILE" XDG_RUNTIME_DIR="\${XDG_RUNTIME_DIR:-}" QT_QPA_PLATFORM="\$QT_PLATFORM" "\$APP_DIR/.venv/bin/python" "\$APP_DIR/main.py" --gui "\$@" >>"\$LOG_FILE" 2>&1; then
+    printf '[%s] Starting GUI (DISPLAY=%s, WAYLAND_DISPLAY=%s, XAUTHORITY=%s, QT_QPA_PLATFORM=%s)\\n' "\$(date '+%F %T')" "\${GUI_DISPLAY:-unset}" "\${GUI_WAYLAND_DISPLAY:-unset}" "\$XAUTHORITY_FILE" "\${QT_PLATFORM:-auto}" >>"\$LOG_FILE"
+    if pkexec env DISPLAY="\$GUI_DISPLAY" WAYLAND_DISPLAY="\$GUI_WAYLAND_DISPLAY" XAUTHORITY="\$XAUTHORITY_FILE" XDG_RUNTIME_DIR="\${XDG_RUNTIME_DIR:-}" QT_QPA_PLATFORM="\$QT_PLATFORM" "\$APP_DIR/.venv/bin/python" "\$APP_DIR/main.py" --gui "\$@" >>"\$LOG_FILE" 2>&1; then
         exit 0
     else
         EXIT_CODE=\$?
