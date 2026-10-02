@@ -9,10 +9,10 @@ import json
 from pathlib import Path
 from typing import Callable, Any
 
-from PyQt6.QtCore import Qt, QTimer, QThread, pyqtSignal, QUrl
+from PyQt6.QtCore import Qt, QTimer, QThread, QPropertyAnimation, pyqtSignal, QUrl
 from PyQt6.QtGui import QColor, QDesktopServices, QFont, QIcon
 from PyQt6.QtWidgets import (
-    QApplication, QComboBox, QFileDialog, QFrame, QGridLayout, QGroupBox,
+    QApplication, QComboBox, QFileDialog, QFrame, QGraphicsOpacityEffect, QGridLayout, QGroupBox,
     QHBoxLayout, QHeaderView, QLabel, QLineEdit, QMainWindow, QMessageBox,
     QPlainTextEdit, QProgressBar, QPushButton, QSplitter, QTabWidget,
     QTableWidget, QTableWidgetItem, QTextEdit, QVBoxLayout, QWidget,
@@ -32,27 +32,45 @@ from utils.preflight import check_requirements, root_error, is_root
 ROOT_DIR = Path(__file__).resolve().parents[1]
 
 THEME = """
-QMainWindow, QWidget { background: #11191f; color: #e7eef0; font-family: "Noto Sans Arabic", "DejaVu Sans", sans-serif; font-size: 13px; }
-QFrame#header { background: #182832; border: 1px solid #31505a; border-radius: 5px; }
-QGroupBox, QFrame#card { background: #19252d; border: 1px solid #2c3d46; border-radius: 4px; }
-QGroupBox { margin-top: 12px; padding: 14px 10px 10px; font-weight: 700; color: #62d7cf; }
-QGroupBox::title { subcontrol-origin: margin; left: 12px; padding: 0 6px; }
-QTabWidget::pane { border: 1px solid #2c3d46; border-radius: 4px; background: #131e25; }
-QTabBar::tab { background: #17232a; color: #a9bac0; padding: 10px 15px; border: none; border-bottom: 2px solid transparent; margin-right: 2px; }
-QTabBar::tab:selected { background: #20343d; color: #72e2d8; border-bottom: 2px solid #39c7bd; font-weight: 700; }
-QPushButton { background: #176e70; color: #f1fbfa; border: 1px solid #268a88; border-radius: 3px; padding: 8px 12px; font-weight: 600; }
-QPushButton:hover { background: #218487; }
+QMainWindow, QWidget { background: #0e171d; color: #e5eff1; font-family: "Noto Sans Arabic", "DejaVu Sans", sans-serif; font-size: 13px; }
+QFrame#header { background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #1b3039, stop:0.55 #17262e, stop:1 #142129); border: 1px solid #31515a; border-radius: 5px; }
+QFrame#statusPanel { background: #101e24; border: 1px solid #31515a; border-radius: 4px; }
+QFrame#activityLamp { background: #51e0bd; border: 1px solid #9ff5df; border-radius: 5px; min-width: 10px; max-width: 10px; min-height: 10px; max-height: 10px; }
+QFrame#activityLamp[state="running"] { background: #f3b654; border-color: #ffe0a1; }
+QFrame#activityLamp[state="error"] { background: #ff6874; border-color: #ffc0c5; }
+QLabel#eyebrow { color: #63c9c6; font-size: 10px; font-weight: 700; }
+QLabel#statusBadge { color: #8be4c8; font-weight: 700; padding: 6px 9px; }
+QLabel#statusBadge[state="running"] { color: #ffd17d; }
+QLabel#statusBadge[state="error"] { color: #ff9ba2; }
+QLabel#scoreBadge { color: #f2c16a; font-weight: 700; padding: 7px 11px; background: #2b271d; border: 1px solid #655334; border-radius: 4px; }
+QGroupBox, QFrame#card { background: #17242b; border: 1px solid #2b4149; border-radius: 4px; }
+QGroupBox { margin-top: 13px; padding: 15px 11px 10px; font-weight: 700; color: #83d8d2; }
+QGroupBox::title { subcontrol-origin: margin; left: 13px; padding: 0 7px; }
+QFrame#card[tone="connections"] { border-top: 2px solid #4ad7c4; }
+QFrame#card[tone="processes"] { border-top: 2px solid #70b6e8; }
+QFrame#card[tone="findings"] { border-top: 2px solid #e5ae58; }
+QFrame#card[tone="score"] { border-top: 2px solid #9bcf78; }
+QFrame#card:hover { background: #1b2c34; border-color: #42616a; }
+QTabWidget::pane { border: 1px solid #2b4149; border-radius: 4px; background: #111d23; top: -1px; }
+QTabBar::tab { background: #152229; color: #a9bec2; padding: 10px 16px; border: none; border-bottom: 2px solid transparent; margin-right: 2px; min-height: 22px; }
+QTabBar::tab:hover { color: #e4f5f3; background: #1b2e36; }
+QTabBar::tab:selected { background: #203841; color: #88e6dc; border-bottom: 2px solid #49d8c7; font-weight: 700; }
+QPushButton { background: #176e70; color: #f1fbfa; border: 1px solid #268a88; border-radius: 3px; padding: 8px 12px; font-weight: 600; min-height: 18px; }
+QPushButton:hover { background: #218487; border-color: #4bc5bc; }
+QPushButton:pressed { background: #10595b; }
 QPushButton#danger { background: #6d343c; border-color: #9b4b52; }
 QPushButton#danger:hover { background: #88404a; }
 QPushButton:disabled { color: #718188; background: #202c32; border-color: #314149; }
 QLineEdit, QComboBox, QPlainTextEdit, QTextEdit { background: #10191f; color: #e7eef0; border: 1px solid #354953; border-radius: 3px; padding: 7px; selection-background-color: #176e70; }
-QLineEdit:focus, QComboBox:focus, QPlainTextEdit:focus, QTextEdit:focus { border: 1px solid #39c7bd; }
-QTableWidget { background: #131e24; color: #e3ecee; alternate-background-color: #19262e; gridline-color: #263941; border: 1px solid #2c3d46; border-radius: 3px; }
-QHeaderView::section { background: #20343d; color: #b9d9dc; padding: 8px; border: none; font-weight: 700; }
-QProgressBar { background: #2a3940; border: none; border-radius: 2px; text-align: center; min-height: 5px; max-height: 5px; }
-QProgressBar::chunk { background: #e4ac56; border-radius: 2px; }
-QScrollBar:vertical { background: #17232a; width: 10px; margin: 0; }
-QScrollBar::handle:vertical { background: #46616a; min-height: 24px; border-radius: 3px; }
+QLineEdit:focus, QComboBox:focus, QPlainTextEdit:focus, QTextEdit:focus { border: 1px solid #4bc5bc; }
+QTableWidget { background: #111c22; color: #e3ecee; alternate-background-color: #17252c; gridline-color: #263941; border: 1px solid #2b4149; border-radius: 3px; selection-background-color: #24565a; selection-color: #f4ffff; }
+QTableWidget::item { padding: 5px 7px; border-bottom: 1px solid #1f3037; }
+QHeaderView::section { background: #1c3038; color: #b9d9dc; padding: 9px 8px; border: none; border-bottom: 1px solid #38535b; font-weight: 700; }
+QProgressBar { background: #24353c; border: none; border-radius: 2px; text-align: center; min-height: 5px; max-height: 5px; }
+QProgressBar::chunk { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #38bcb6, stop:1 #8ce5cf); border-radius: 2px; }
+QScrollBar:vertical { background: #142128; width: 10px; margin: 0; }
+QScrollBar::handle:vertical { background: #3d5b64; min-height: 24px; border-radius: 3px; }
+QScrollBar::handle:vertical:hover { background: #5d8490; }
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
 """
 
@@ -133,21 +151,44 @@ class UnifiedCockpitWindow(QMainWindow):
 
         header = QFrame(objectName="header")
         header_layout = QHBoxLayout(header)
+        header_layout.setContentsMargins(20, 14, 20, 14)
+        header_layout.setSpacing(16)
         title_box = QVBoxLayout()
+        title_box.setSpacing(3)
+        eyebrow = QLabel("AI AYFAM   /   SECURITY OPERATIONS")
+        eyebrow.setObjectName("eyebrow")
+        title_box.addWidget(eyebrow)
         title = QLabel("AI AYFAM  |  مركز التحكم الأمني")
         title.setFont(QFont("Noto Sans Arabic", 18, QFont.Weight.Bold))
-        title.setStyleSheet("color: #ffffff;")
+        title.setStyleSheet("color: #f3fbfb;")
         title_box.addWidget(title)
         subtitle = QLabel("فحوصات النظام والشبكة، التحليل المتقدم، التقارير، وخطط المعالجة في مكان واحد")
-        subtitle.setStyleSheet("color: #c7ddd6;")
+        subtitle.setStyleSheet("color: #a9c0c5;")
         title_box.addWidget(subtitle)
         header_layout.addLayout(title_box)
         header_layout.addStretch()
+        self.status_panel = QFrame(objectName="statusPanel")
+        status_layout = QHBoxLayout(self.status_panel)
+        status_layout.setContentsMargins(11, 5, 12, 5)
+        status_layout.setSpacing(9)
+        self.activity_lamp = QFrame(objectName="activityLamp")
+        opacity = QGraphicsOpacityEffect(self.activity_lamp)
+        self.activity_lamp.setGraphicsEffect(opacity)
+        self.activity_animation = QPropertyAnimation(opacity, b"opacity", self)
+        self.activity_animation.setStartValue(0.48)
+        self.activity_animation.setKeyValueAt(0.5, 1.0)
+        self.activity_animation.setEndValue(0.48)
+        self.activity_animation.setDuration(1800)
+        self.activity_animation.setLoopCount(-1)
+        self.activity_animation.start()
+        status_layout.addWidget(self.activity_lamp)
         self.status_badge = QLabel("الحالة: جاهز")
-        self.status_badge.setStyleSheet("color: #86efac; font-weight: 700; padding: 8px 12px; border: 1px solid #22c55e; border-radius: 6px;")
-        header_layout.addWidget(self.status_badge)
-        self.score_badge = QLabel("الدرجة: —")
-        self.score_badge.setStyleSheet("color: #fbbf24; font-weight: 700; padding: 8px 12px; border: 1px solid #a16207; border-radius: 6px;")
+        self.status_badge.setObjectName("statusBadge")
+        self.status_badge.setProperty("state", "idle")
+        status_layout.addWidget(self.status_badge)
+        header_layout.addWidget(self.status_panel)
+        self.score_badge = QLabel("الدرجة الأمنية  —")
+        self.score_badge.setObjectName("scoreBadge")
         header_layout.addWidget(self.score_badge)
         root.addWidget(header)
 
@@ -181,41 +222,74 @@ class UnifiedCockpitWindow(QMainWindow):
 
     def setup_dashboard_tab(self) -> None:
         layout = QVBoxLayout(self.tab_dashboard)
+        layout.setContentsMargins(12, 12, 12, 10)
+        layout.setSpacing(11)
         metrics = QGridLayout()
+        metrics.setHorizontalSpacing(10)
+        metrics.setVerticalSpacing(10)
         self.metric_labels: dict[str, QLabel] = {}
+        metric_notes = {
+            "connections": "مقابس النظام النشطة",
+            "processes": "أعلى العمليات استهلاكًا",
+            "findings": "في آخر فحص مكتمل",
+            "score": "مؤشر المخاطر العام",
+        }
         for col, (key, label) in enumerate((("connections", "اتصالات نشطة"), ("processes", "عمليات مراقبة"), ("findings", "نتائج الفحص"), ("score", "الدرجة الأمنية"))):
             card = QFrame(objectName="card")
+            card.setProperty("tone", key)
+            card.setMinimumHeight(108)
             box = QVBoxLayout(card)
-            box.addWidget(QLabel(label))
+            box.setContentsMargins(14, 11, 14, 11)
+            box.setSpacing(3)
+            name = QLabel(label)
+            name.setStyleSheet("color: #a9bec2; font-size: 12px; font-weight: 600;")
+            box.addWidget(name)
             value = QLabel("—")
-            value.setFont(QFont("Noto Sans Arabic", 20, QFont.Weight.Bold))
-            value.setStyleSheet("color: #a3dfcd;")
+            value.setFont(QFont("Noto Sans Arabic", 25, QFont.Weight.Bold))
+            value.setStyleSheet("color: #f0f8f8;")
             box.addWidget(value)
+            note = QLabel(metric_notes[key])
+            note.setStyleSheet("color: #789198; font-size: 10px;")
+            box.addWidget(note)
             self.metric_labels[key] = value
             metrics.addWidget(card, 0, col)
+            metrics.setColumnStretch(col, 1)
         layout.addLayout(metrics)
 
-        group = QGroupBox("الاتصالات الحية")
+        self.dashboard_splitter = QSplitter(Qt.Orientation.Vertical)
+        self.dashboard_splitter.setChildrenCollapsible(False)
+        group = QGroupBox("رادار الاتصالات الحية")
         group_layout = QVBoxLayout(group)
+        group_layout.setSpacing(8)
         self.connection_summary = QLabel("جارٍ قراءة حالة الشبكة...")
-        self.connection_summary.setStyleSheet("color: #91a8ae; padding: 2px 4px;")
+        self.connection_summary.setStyleSheet("color: #8fb0b5; padding: 3px 4px; font-size: 11px;")
         group_layout.addWidget(self.connection_summary)
         self.table_conns = QTableWidget(0, 7)
         self.table_conns.setHorizontalHeaderLabels(["البروتوكول", "الحالة", "النطاق", "العنوان المحلي", "العنوان البعيد", "العملية", "PID"])
         self.table_conns.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
         self.table_conns.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
         self.table_conns.setAlternatingRowColors(True)
+        self.table_conns.setShowGrid(False)
+        self.table_conns.verticalHeader().setVisible(False)
+        self.table_conns.verticalHeader().setDefaultSectionSize(30)
         group_layout.addWidget(self.table_conns)
-        layout.addWidget(group)
+        self.dashboard_splitter.addWidget(group)
 
-        group2 = QGroupBox("أكثر العمليات استهلاكًا")
+        group2 = QGroupBox("أعلى العمليات استهلاكًا")
         group2_layout = QVBoxLayout(group2)
         self.table_procs = QTableWidget(0, 5)
         self.table_procs.setHorizontalHeaderLabels(["المستخدم", "PID", "CPU", "RAM", "الأمر"])
         self.table_procs.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
         self.table_procs.setAlternatingRowColors(True)
+        self.table_procs.setShowGrid(False)
+        self.table_procs.verticalHeader().setVisible(False)
+        self.table_procs.verticalHeader().setDefaultSectionSize(30)
         group2_layout.addWidget(self.table_procs)
-        layout.addWidget(group2)
+        self.dashboard_splitter.addWidget(group2)
+        self.dashboard_splitter.setStretchFactor(0, 3)
+        self.dashboard_splitter.setStretchFactor(1, 2)
+        self.dashboard_splitter.setSizes([390, 230])
+        layout.addWidget(self.dashboard_splitter, 1)
 
     def setup_scans_tab(self) -> None:
         layout = QVBoxLayout(self.tab_scans)
@@ -753,8 +827,7 @@ class UnifiedCockpitWindow(QMainWindow):
         if self.worker and self.worker.isRunning():
             QMessageBox.information(self, "مهمة قيد التنفيذ", "انتظر انتهاء المهمة الحالية قبل تشغيل مهمة أخرى.")
             return
-        self.status_badge.setText(f"الحالة: يعمل — {title}")
-        self.status_badge.setStyleSheet("color: #fde68a; font-weight: 700; padding: 8px 12px; border: 1px solid #d97706; border-radius: 6px;")
+        self.set_activity_state("running", f"الحالة: يعمل — {title}")
         self.chat_display.append(f"\n[بدء] {title}")
         self.scan_progress.show()
         self.scan_hint.setText(f"جارٍ التنفيذ: {title}")
@@ -765,6 +838,14 @@ class UnifiedCockpitWindow(QMainWindow):
         self.worker = WorkerThread(self._execute_gui_task, fn, preserve_findings, result_handler is None)
         self.worker.task_result.connect(self.on_worker_result)
         self.worker.start()
+
+    def set_activity_state(self, state: str, text: str) -> None:
+        self.status_badge.setText(text)
+        for widget in (self.status_badge, self.activity_lamp):
+            widget.setProperty("state", state)
+            widget.style().unpolish(widget)
+            widget.style().polish(widget)
+        self.activity_animation.setDuration({"idle": 1800, "running": 620, "error": 900}.get(state, 1800))
 
     def on_worker_result(self, result: Any) -> None:
         self.task_done(result, self.active_task_title)
@@ -959,8 +1040,7 @@ class UnifiedCockpitWindow(QMainWindow):
             button.setEnabled(True)
         if isinstance(result, Exception):
             self.active_result_handler = None
-            self.status_badge.setText("الحالة: فشل")
-            self.status_badge.setStyleSheet("color: #fca5a5; font-weight: 700; padding: 8px 12px; border: 1px solid #ef4444; border-radius: 6px;")
+            self.set_activity_state("error", "الحالة: فشل")
             self.chat_display.append(f"[خطأ] {title}: {result}")
             self.scan_hint.setText(f"تعذر إكمال المهمة: {title}")
             return
@@ -969,17 +1049,16 @@ class UnifiedCockpitWindow(QMainWindow):
             try:
                 handler(result)
             except Exception as exc:
-                self.status_badge.setText("الحالة: فشل")
+                self.set_activity_state("error", "الحالة: فشل")
                 self.chat_display.append(f"[خطأ في عرض نتيجة {title}] {exc}")
                 return
-            self.status_badge.setText("الحالة: جاهز")
+            self.set_activity_state("idle", "الحالة: جاهز")
             self.scan_hint.setText(f"اكتملت المهمة: {title}")
             self.chat_display.append(f"[اكتمل] {title}")
             return
         findings = result if isinstance(result, list) else []
         self.render_findings(findings)
-        self.status_badge.setText("الحالة: جاهز")
-        self.status_badge.setStyleSheet("color: #86efac; font-weight: 700; padding: 8px 12px; border: 1px solid #22c55e; border-radius: 6px;")
+        self.set_activity_state("idle", "الحالة: جاهز")
         self.scan_hint.setText(f"اكتملت المهمة: {title} | النتائج: {len(findings)}")
         self.chat_display.append(f"[اكتمل] {title} | النتائج: {len(findings)}")
 
