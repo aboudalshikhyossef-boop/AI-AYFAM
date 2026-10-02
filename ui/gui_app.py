@@ -262,7 +262,7 @@ class UnifiedCockpitWindow(QMainWindow):
         }
         for i, (text, callback) in enumerate(buttons):
             btn = QPushButton(text)
-            btn.setToolTip(scan_help[text])
+            btn.setToolTip(scan_help.get(text, "تشغيل الإجراء المحدد."))
             btn.clicked.connect(callback)
             self.task_buttons.append(btn)
             grid.addWidget(btn, 4 + i // 4, i % 4)
