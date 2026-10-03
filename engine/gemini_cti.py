@@ -94,6 +94,19 @@ def _supports_generate(model: Any) -> bool:
     return any("generate" in _text(item).lower() for item in methods)
 
 
+def _is_text_research_model(short_name: str) -> bool:
+    """Return whether a model name is suitable for text + Search grounding."""
+    name = short_name.lower()
+    # These families may support generation but are not interchangeable with
+    # ordinary text models in the Gemini API (and often require another API).
+    excluded = (
+        "embedding", "image", "tts", "text-to-speech", "native-audio", "audio",
+        "live", "realtime", "real-time", "speech", "transcribe", "music",
+        "robotics", "aqa", "computer-use",
+    )
+    return not any(token in name for token in excluded)
+
+
 def _score_model(model: ModelInfo) -> tuple[int, int, int, int, str]:
     name = model.short_name.lower()
     # Prefer stable flash models for speed/cost, then stable pro models.
@@ -149,7 +162,7 @@ class GeminiThreatClient:
             if not name or not _supports_generate(raw):
                 continue
             short = name.rsplit("/", 1)[-1].lower()
-            if any(token in short for token in ("embedding", "image", "tts", "aqa", "robotics")):
+            if not _is_text_research_model(short):
                 continue
             models.append(ModelInfo(
                 name=name,
@@ -173,6 +186,14 @@ class GeminiThreatClient:
     def _is_quota_error(exc: Exception) -> bool:
         text = str(exc).upper()
         return "429" in text or "RESOURCE_EXHAUSTED" in text or "QUOTA" in text
+
+    @staticmethod
+    def _is_invalid_model_error(exc: Exception) -> bool:
+        text = str(exc).lower()
+        return (
+            "model" in text
+            and any(token in text for token in ("not found", "not supported", "invalid_argument", "invalid model"))
+        )
 
     @staticmethod
     def _retry_hint(exc: Exception) -> str:
@@ -205,6 +226,7 @@ Return this exact JSON shape:
 """
         models = self.discover_models()
         quota_failures: list[tuple[ModelInfo, Exception]] = []
+        invalid_models: list[tuple[ModelInfo, Exception]] = []
         for model in models:
             try:
                 raw = self._request_with_interactions(model, query)
@@ -219,6 +241,11 @@ Return this exact JSON shape:
                 if self._is_quota_error(exc):
                     quota_failures.append((model, exc))
                     continue
+                if self._is_invalid_model_error(exc):
+                    # Google can list stale/preview aliases; skip them and try
+                    # the next live model instead of aborting the whole scan.
+                    invalid_models.append((model, exc))
+                    continue
                 if isinstance(exc, GeminiCTIError):
                     raise
                 raise GeminiCTIError(f"Gemini threat research failed using {model.short_name}: {exc}") from exc
@@ -230,6 +257,13 @@ Return this exact JSON shape:
                 f"RESOURCE_EXHAUSTED (free-tier quota is 0 for: {names}). "
                 "Enable billing/use a project with available quota, or retry later."
                 + hint
+            )
+        if invalid_models:
+            names = ", ".join(model.short_name for model, _ in invalid_models[:5])
+            raise GeminiCTIError(
+                "Google listed model aliases that are not valid for this API request "
+                f"({names}), and no remaining text research model completed the request. "
+                "Refresh the SDK/model list or use a current Gemini text model."
             )
         raise GeminiCTIError("No usable Gemini model completed the threat research request")
 

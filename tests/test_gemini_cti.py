@@ -6,7 +6,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from engine.gemini_cti import LocalSnapshot, ThreatHistory, GeminiCTIError, GeminiThreatClient, ModelInfo, markdown_report, validate_threat_feed
+from engine.gemini_cti import LocalSnapshot, ThreatHistory, GeminiCTIError, GeminiThreatClient, ModelInfo, _is_text_research_model, markdown_report, validate_threat_feed
 
 
 class GeminiCTITests(unittest.TestCase):
@@ -92,6 +92,32 @@ class GeminiCTITests(unittest.TestCase):
         result = client.fetch_threats()
         self.assertEqual(result["threats"], [])
         self.assertEqual(client._client.interactions.calls, ["models/first", "models/second"])
+
+    def test_specialized_audio_models_are_not_text_research_models(self):
+        self.assertFalse(_is_text_research_model("gemini-2.5-flash-native-audio-latest"))
+        self.assertFalse(_is_text_research_model("gemini-2.5-flash-preview-tts"))
+        self.assertTrue(_is_text_research_model("gemini-2.5-flash"))
+
+    def test_invalid_listed_model_falls_back_to_next_model(self):
+        class Interactions:
+            def __init__(self):
+                self.calls = []
+            def create(self, **kwargs):
+                self.calls.append(kwargs["model"])
+                if len(self.calls) == 1:
+                    raise RuntimeError("400 INVALID_ARGUMENT: Model 'stale' not found")
+                class Interaction:
+                    output_text = json.dumps({"generated_at": "now", "threats": []})
+                return Interaction()
+        class FakeClient:
+            def __init__(self):
+                self.interactions = Interactions()
+        client = GeminiThreatClient("test-key")
+        client._client = FakeClient()
+        client.discover_models = lambda force=False: [ModelInfo("models/stale"), ModelInfo("models/gemini-2.5-flash")]
+        result = client.fetch_threats()
+        self.assertEqual(result["threats"], [])
+        self.assertEqual(client._client.interactions.calls, ["models/stale", "models/gemini-2.5-flash"])
 
 
 if __name__ == "__main__":
