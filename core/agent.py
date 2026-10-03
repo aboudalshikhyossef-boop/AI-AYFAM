@@ -1,8 +1,9 @@
-from core.agent_v5 import AgentV5Mixin
 """
 AI AYFAM v3 — Smart Agent Brain
 وكيل أمني ذكي حقيقي — يفهم لغتك، يعرف بيئته، يتطور
 """
+
+from core.agent_v5 import AgentV5Mixin
 
 import os
 import socket
@@ -157,7 +158,7 @@ class AYFAMAgent(AgentV5Mixin):
 
         # Greet
         greeting = self._t(
-            f"مرحباً {self.ctx.user.get('username','')}'! "
+            f"مرحباً {self.ctx.user.get('username','')}! "
             f"أنا AI AYFAM — وكيلك الأمني الذكي. "
             f"اكتب أي شيء بالعربي أو الإنجليزي وسأفهمك.\n"
             f"  مثال: 'افحص الشبكة'  |  'ما هو CVE-2024-1234'  |  'تحليل USB'  |  'اشرح Brute Force'",

@@ -4,6 +4,8 @@ AI AYFAM v6 — Auto-Reactor & Rule Synthesizer
 فورية لـ UFW و iptables و auditd لتصليب النظام ديناميكياً.
 """
 
+import os
+import re
 from typing import List, Dict, Any
 from engine.finding import Finding
 
@@ -20,7 +22,6 @@ class AutoReactor:
 
             # 1. هجمات القوة الغاشمة والتخمين -> قواعد حظر فورية
             if "brute_force" in tags or "brute_force_success" in tags or "password_spraying" in tags:
-                import re
                 ips = re.findall(r"\b(?:\d{1,3}\.){3}\d{1,3}\b", title + " " + detail)
                 for ip in set(ips):
                     if not ip.startswith(("127.", "0.0")):
@@ -32,7 +33,6 @@ class AutoReactor:
 
             # 2. خدمات غير محمية مكشوفة -> قواعد تقييد
             if "exposed_port" in tags or "exposed_service" in tags:
-                import re
                 ports = re.findall(r"منفذ\s+(\d+)", title)
                 for port in ports:
                     rules.append({
@@ -43,7 +43,6 @@ class AutoReactor:
 
             # 3. ملفات امتيازات خطيرة -> إزالة SUID
             if "suid" in tags or "suid_anomaly" in tags:
-                import re
                 paths = re.findall(r"(/[\w\.-]+(?:/[\w\.-]+)+)", title + " " + detail)
                 for p in paths:
                     if os.path.exists(p):

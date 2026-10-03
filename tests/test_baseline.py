@@ -40,6 +40,24 @@ rules = AutoReactor.synthesize_rules([test_finding])
 check("synthesizes firewall rule", len(rules) > 0)
 check("rule targets attacker IP", "198.51.100.22" in rules[0]["cmd"])
 
+print("\n[3] Auto-Reactor SUID Privilege Strip Path (regression: missing import os)")
+# إنشاء ملف SUID وهمي على القرص لاختبار مسار os.path.exists()
+suid_test_file = "/tmp/test_suid_regression"
+with open(suid_test_file, "w") as f:
+    f.write("dummy")
+suid_finding = Finding(
+    severity="critical",
+    title=f"ملف SUID خطير: {suid_test_file}",
+    detail=f"الملف {suid_test_file} يحمل صلاحية SUID غير المصرح بها.",
+    tags=["suid"],
+)
+suid_rules = AutoReactor.synthesize_rules([suid_finding])
+check("suid path does not raise NameError (import os fixed)", True)
+check("suid rule generated for existing file", len(suid_rules) > 0)
+check("suid rule contains chmod u-s", any("chmod u-s" in r["cmd"] for r in suid_rules))
+if os.path.exists(suid_test_file):
+    os.remove(suid_test_file)
+
 print(f"\n{'='*50}\nTOTAL PHASE 3 TESTS: {passed} passed, {failed} failed\n{'='*50}")
 if os.path.exists(tmp_db):
     os.remove(tmp_db)
