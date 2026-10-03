@@ -50,6 +50,11 @@ THREAT_SCHEMA: dict[str, Any] = {
     "required": ["generated_at", "window_hours", "threats"],
 }
 
+# Google Search grounding is available on the Gemini 2.5 Flash family in the
+# Gemini API Free tier. Gemini 3.x model inference can be free, but its Search
+# grounding requires the Paid tier.
+FREE_TIER_SEARCH_MODELS = ("gemini-2.5-flash", "gemini-2.5-flash-lite")
+
 SYSTEM_PROMPT = """You are a cyber threat-intelligence research assistant.
 Search authoritative public sources only: CISA, MITRE, NVD, CERT advisories,
 CrowdStrike, Cisco Talos, Microsoft Security, Google Cloud security, and vendor
@@ -208,6 +213,14 @@ def _is_text_research_model(short_name: str) -> bool:
     return not any(token in name for token in excluded)
 
 
+def _google_search_tool_type(model: ModelInfo) -> str:
+    """Use the legacy grounding tool for Gemini 2.x; current Gemini 3.x uses google_search."""
+    name = model.short_name.lower()
+    if name.startswith(("gemini-2.5-", "gemini-2.0-")):
+        return "google_search_retrieval"
+    return "google_search"
+
+
 def _score_model(model: ModelInfo) -> tuple[int, int, int, int, str]:
     name = model.short_name.lower()
     # Prefer stable flash models for speed/cost, then stable pro models.
@@ -284,9 +297,17 @@ class GeminiThreatClient:
         if not models:
             raise GeminiCTIError("The Gemini key has no usable generate-content model")
         models.sort(key=_score_model, reverse=True)
-        self._models = models
-        self._model = models[0]
-        return models
+        by_name = {model.short_name.lower(): model for model in models}
+        free_search_models = [by_name[name] for name in FREE_TIER_SEARCH_MODELS if name in by_name]
+        if not free_search_models:
+            raise GeminiCTIError(
+                "No Free-tier Google Search model is available for this API key. "
+                "This setup requires Gemini 2.5 Flash or Gemini 2.5 Flash-Lite; "
+                "Gemini 3.x Search grounding requires the Paid tier."
+            )
+        self._models = free_search_models
+        self._model = free_search_models[0]
+        return list(self._models)
 
     @property
     def selected_model(self) -> ModelInfo:
@@ -319,7 +340,7 @@ class GeminiThreatClient:
         payload = {
             "model": model.short_name,
             "input": query,
-            "tools": [{"type": "google_search"}],
+            "tools": [{"type": _google_search_tool_type(model)}],
             "response_format": {"type": "text", "mime_type": "application/json", "schema": THREAT_SCHEMA},
         }
         try:
