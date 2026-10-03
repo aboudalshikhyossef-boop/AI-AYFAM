@@ -83,6 +83,95 @@ def _text(value: Any) -> str:
     return str(value or "").strip()
 
 
+def resolve_api_key(configured: str = "", environ: Mapping[str, str] | None = None) -> str:
+    """Resolve the effective key; explicit environment values override saved config."""
+    env = os.environ if environ is None else environ
+    return _text(env.get("GOOGLE_API_KEY") or env.get("GEMINI_API_KEY") or configured)
+
+
+def _is_model_scoped_quota(details: Any) -> bool:
+    """Only permit fallback when Google identifies the 429 as model-scoped."""
+    violations: list[Mapping[str, Any]] = []
+    if not isinstance(details, list):
+        return False
+    for detail in details:
+        if not isinstance(detail, Mapping):
+            continue
+        kind = _text(detail.get("@type")).lower()
+        if "quotafailure" not in kind and not isinstance(detail.get("violations"), list):
+            continue
+        violations.extend(item for item in detail.get("violations", []) if isinstance(item, Mapping))
+    if not violations:
+        return False
+    for violation in violations:
+        dimensions = violation.get("quotaDimensions")
+        quota_id = _text(violation.get("quotaId")).lower().replace("_", "").replace("-", "")
+        if not (isinstance(dimensions, Mapping) and dimensions.get("model")) and "permodel" not in quota_id:
+            return False
+    return True
+
+
+class GeminiHTTPError(GeminiCTIError):
+    """HTTP error that preserves Google's machine-readable error and quota details."""
+
+    def __init__(self, response: Any):
+        self.status_code = int(response.status_code)
+        try:
+            payload = response.json()
+        except (ValueError, TypeError, AttributeError):
+            payload = {}
+        error = payload.get("error", {}) if isinstance(payload, Mapping) else {}
+        if not isinstance(error, Mapping):
+            error = {}
+        self.error_code = _text(error.get("status") or error.get("code"))
+        self.message = _text(error.get("message")) or _text(getattr(response, "text", ""))
+        self.details = error.get("details", [])
+        self.model_scoped_quota = self.status_code == 429 and _is_model_scoped_quota(self.details)
+        parts = [f"HTTP {self.status_code}"]
+        if self.error_code:
+            parts.append(self.error_code)
+        if self.message:
+            parts.append(self.message)
+        if self.details:
+            rendered = json.dumps(self.details, ensure_ascii=False, separators=(",", ":"))
+            parts.append("details=" + rendered[:1400])
+        super().__init__("; ".join(parts))
+
+
+def _interaction_output_text(body: Any) -> str:
+    """Extract text from current REST steps, with compatibility for older responses."""
+    if not isinstance(body, Mapping):
+        return ""
+    direct = _text(body.get("output_text"))
+    if direct:
+        return direct
+    texts: list[str] = []
+    steps = body.get("steps", [])
+    if isinstance(steps, list):
+        for step in steps:
+            if not isinstance(step, Mapping) or step.get("type") != "model_output":
+                continue
+            content = step.get("content", [])
+            if not isinstance(content, list):
+                continue
+            for part in content:
+                if isinstance(part, Mapping) and part.get("type") in (None, "text"):
+                    text = _text(part.get("text"))
+                    if text:
+                        texts.append(text)
+    if texts:
+        return "\n".join(texts)
+    outputs = body.get("outputs", [])
+    if isinstance(outputs, list):
+        for output in outputs:
+            if not isinstance(output, Mapping) or output.get("type") not in (None, "text"):
+                continue
+            text = _text(output.get("text"))
+            if text:
+                texts.append(text)
+    return "\n".join(texts)
+
+
 def _model_name(model: Any) -> str:
     return _text(getattr(model, "name", None) or (model.get("name") if isinstance(model, Mapping) else ""))
 
@@ -135,7 +224,7 @@ class GeminiThreatClient:
     def __init__(self, api_key: str, timeout: float = 45.0):
         self.api_key = api_key.strip()
         self.timeout = timeout
-        self.base_url = "https://generativelanguage.googleapis.com/v1beta"
+        self.base_url = "https://generativelanguage.googleapis.com/v1"
         self._client = None
         self._model: ModelInfo | None = None
         self._models: list[ModelInfo] = []
@@ -144,8 +233,7 @@ class GeminiThreatClient:
 
     @classmethod
     def from_environment(cls) -> "GeminiThreatClient":
-        key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY") or ""
-        return cls(key)
+        return cls(resolve_api_key())
 
     def _sdk(self):
         try:
@@ -172,7 +260,7 @@ class GeminiThreatClient:
                 timeout=(10, self.timeout),
             )
             if response.status_code >= 400:
-                raise GeminiCTIError(f"Google model discovery failed ({response.status_code}): {response.text[:500]}")
+                raise GeminiHTTPError(response)
             raw_models = response.json().get("models", [])
         except Exception as exc:
             if isinstance(exc, GeminiCTIError):
@@ -246,12 +334,15 @@ class GeminiThreatClient:
         except requests.RequestException as exc:
             raise GeminiCTIError(f"Gemini network request failed: {exc}") from exc
         if response.status_code >= 400:
-            raise RuntimeError(f"HTTP {response.status_code}: {response.text[:1500]}")
+            raise GeminiHTTPError(response)
         try:
             body = response.json()
         except ValueError as exc:
             raise GeminiCTIError("Gemini returned a non-JSON HTTP response") from exc
-        return _text(body.get("output_text"))
+        if body.get("status") == "failed":
+            errors = body.get("errors") or body.get("error") or "Gemini marked the interaction as failed"
+            raise GeminiCTIError(f"Gemini interaction failed: {_text(errors)}")
+        return _interaction_output_text(body)
 
     def fetch_threats(self, window_hours: int = 48) -> dict[str, Any]:
         query = f"""{SYSTEM_PROMPT}
@@ -262,7 +353,8 @@ Return only a JSON object matching the response schema. Keep the list concise
         models = self.discover_models()
         quota_failures: list[tuple[ModelInfo, Exception]] = []
         invalid_models: list[tuple[ModelInfo, Exception]] = []
-        for model in models:
+        # Try a small number of candidates to avoid turning one failure into a burst.
+        for model in models[:3]:
             try:
                 raw = self._request_with_interactions(model, query)
                 if not raw:
@@ -272,35 +364,42 @@ Return only a JSON object matching the response schema. Keep the list concise
                 except json.JSONDecodeError as exc:
                     raise GeminiCTIError(f"Gemini returned invalid JSON: {exc}") from exc
                 return validate_threat_feed(data, window_hours=window_hours)
+            except GeminiHTTPError as exc:
+                if exc.status_code == 429:
+                    if exc.model_scoped_quota:
+                        quota_failures.append((model, exc))
+                        continue
+                    hint = self._retry_hint(exc)
+                    raise GeminiCTIError(
+                        f"Gemini returned a project-wide or unclassified HTTP 429 for {model.short_name}: {exc}{hint}"
+                    ) from exc
+                if self._is_invalid_model_error(exc):
+                    invalid_models.append((model, exc))
+                    continue
+                raise GeminiCTIError(f"Gemini threat research failed using {model.short_name}: {exc}") from exc
             except Exception as exc:
                 if self._is_quota_error(exc):
-                    quota_failures.append((model, exc))
-                    # Retrying another model spends more quota and usually cannot
-                    # help because the limit belongs to the same project/key.
-                    break
+                    raise GeminiCTIError(f"Gemini returned a rate/quota error for {model.short_name}: {exc}") from exc
                 if self._is_invalid_model_error(exc):
-                    # Google can list stale/preview aliases; skip them and try
-                    # the next live model instead of aborting the whole scan.
                     invalid_models.append((model, exc))
                     continue
                 if isinstance(exc, GeminiCTIError):
                     raise
                 raise GeminiCTIError(f"Gemini threat research failed using {model.short_name}: {exc}") from exc
         if quota_failures:
-            names = ", ".join(model.short_name for model, _ in quota_failures[:5])
+            names = ", ".join(model.short_name for model, _ in quota_failures)
+            details = str(quota_failures[0][1])
             hint = self._retry_hint(quota_failures[0][1])
             raise GeminiCTIError(
-                "Gemini API key was accepted, but all attempted models returned "
-                f"RESOURCE_EXHAUSTED (free-tier quota is 0 for: {names}). "
-                "Enable billing/use a project with available quota, or retry later."
-                + hint
+                f"Google reported model-specific 429 quota limits for the tested candidates ({names}). "
+                f"Original Google error: {details}{hint} Check AI Studio's per-model limits or choose another available model."
             )
         if invalid_models:
-            names = ", ".join(model.short_name for model, _ in invalid_models[:5])
+            names = ", ".join(model.short_name for model, _ in invalid_models)
+            details = str(invalid_models[0][1])
             raise GeminiCTIError(
-                "Google listed model aliases that are not valid for this API request "
-                f"({names}), and no remaining text research model completed the request. "
-                "Refresh the SDK/model list or use a current Gemini text model."
+                f"Google listed model candidates that are not valid for this request ({names}). "
+                f"Original Google error: {details}"
             )
         raise GeminiCTIError("No usable Gemini model completed the threat research request")
 

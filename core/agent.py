@@ -35,7 +35,7 @@ from brain import library
 from brain import relevance_engine
 from engine.correlation import CorrelationEngine, SmartRemediationAdvisor
 from utils import safe_exec
-from engine.gemini_cti import GeminiCTIError, GeminiThreatClient, LocalThreatMatcher, ThreatHistory, markdown_report
+from engine.gemini_cti import GeminiCTIError, GeminiThreatClient, LocalThreatMatcher, ThreatHistory, markdown_report, resolve_api_key
 
 
 def _run(cmd, timeout=30, sudo=False):
@@ -94,7 +94,7 @@ class AYFAMAgent(AgentV5Mixin):
     # ─────────────────────────────────────────────────────────────────────────
     def gemini_model_status(self):
         """Discover models for the configured key without sending host data."""
-        key = self.settings.get("gemini_api_key", "") or os.environ.get("GEMINI_API_KEY", "")
+        key = resolve_api_key(self.settings.get("gemini_api_key", ""))
         if not key:
             self.ui.warning(self._t("لم يتم إعداد مفتاح Gemini.", "Gemini API key is not configured."))
             return []
@@ -117,7 +117,7 @@ class AYFAMAgent(AgentV5Mixin):
 
     def run_gemini_threat_scan(self, window_hours: int = 48):
         """Fetch general CTI, then perform all host matching strictly offline."""
-        key = self.settings.get("gemini_api_key", "") or os.environ.get("GEMINI_API_KEY", "")
+        key = resolve_api_key(self.settings.get("gemini_api_key", ""))
         if not key:
             self.ui.error(self._t("أضف مفتاح Gemini أولاً عبر --configure-gemini أو GEMINI_API_KEY.", "Configure Gemini first with --configure-gemini or GEMINI_API_KEY."))
             return None

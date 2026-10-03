@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from engine.gemini_cti import LocalSnapshot, ThreatHistory, GeminiCTIError, GeminiThreatClient, ModelInfo, _is_text_research_model, markdown_report, validate_threat_feed
+from engine.gemini_cti import LocalSnapshot, ThreatHistory, GeminiCTIError, GeminiThreatClient, ModelInfo, _is_text_research_model, markdown_report, resolve_api_key, validate_threat_feed
 
 
 class GeminiCTITests(unittest.TestCase):
@@ -57,30 +57,68 @@ class GeminiCTITests(unittest.TestCase):
         with self.assertRaises(GeminiCTIError):
             validate_threat_feed({"threats": "not-an-array"})
 
-    def test_interactions_request_returns_structured_json(self):
+    def test_interactions_request_parses_current_rest_steps_schema(self):
+        payload_text = json.dumps({"generated_at": "now", "threats": []})
         class Response:
             status_code = 200
             def json(self):
-                return {"output_text": json.dumps({"generated_at": "now", "threats": []})}
+                return {"status": "completed", "steps": [{"type": "model_output", "content": [{"type": "text", "text": payload_text}]}]}
         client = GeminiThreatClient("test-key")
         client.discover_models = lambda force=False: [ModelInfo("models/gemini-test-flash")]
         with patch("engine.gemini_cti.requests.post", return_value=Response()) as post:
             result = client.fetch_threats()
         self.assertEqual(result["threats"], [])
+        self.assertEqual(post.call_args.args[0], "https://generativelanguage.googleapis.com/v1/interactions")
+        self.assertEqual(post.call_args.kwargs["headers"]["x-goog-api-key"], "test-key")
         self.assertEqual(post.call_args.kwargs["json"]["tools"], [{"type": "google_search"}])
         self.assertEqual(post.call_args.kwargs["timeout"], (10, 45.0))
 
-    def test_quota_failure_falls_back_to_next_dynamic_model(self):
+    def test_legacy_rest_text_is_still_accepted(self):
+        class Response:
+            status_code = 200
+            def json(self):
+                return {"outputs": [{"type": "text", "text": json.dumps({"generated_at": "now", "threats": []})}]}
+        client = GeminiThreatClient("test-key")
+        client.discover_models = lambda force=False: [ModelInfo("models/gemini-test-flash")]
+        with patch("engine.gemini_cti.requests.post", return_value=Response()):
+            self.assertEqual(client.fetch_threats()["threats"], [])
+
+    def test_model_scoped_quota_tries_one_alternate_and_keeps_details(self):
+        class Response:
+            def __init__(self, status_code, payload):
+                self.status_code = status_code
+                self._payload = payload
+                self.text = json.dumps(payload)
+            def json(self):
+                return self._payload
+        quota = Response(429, {"error": {"code": 429, "status": "RESOURCE_EXHAUSTED", "message": "model request limit exceeded", "details": [{"@type": "type.googleapis.com/google.rpc.QuotaFailure", "violations": [{"quotaId": "GenerateRequestsPerMinutePerProjectPerModel-FreeTier", "quotaDimensions": {"model": "gemini-test-flash"}}]}]}})
+        success = Response(200, {"steps": [{"type": "model_output", "content": [{"type": "text", "text": json.dumps({"generated_at": "now", "threats": []})}]}]})
+        client = GeminiThreatClient("test-key")
+        client.discover_models = lambda force=False: [ModelInfo("models/first-flash"), ModelInfo("models/second-flash")]
+        with patch("engine.gemini_cti.requests.post", side_effect=[quota, success]) as post:
+            result = client.fetch_threats()
+        self.assertEqual(result["threats"], [])
+        self.assertEqual(post.call_count, 2)
+
+    def test_project_wide_429_preserves_google_diagnostic_and_stops(self):
         class Response:
             status_code = 429
-            text = "RESOURCE_EXHAUSTED quota limit: 0"
+            text = "project-wide request limit"
+            def json(self):
+                return {"error": {"code": 429, "status": "RESOURCE_EXHAUSTED", "message": "project-wide request limit", "details": [{"@type": "type.googleapis.com/google.rpc.QuotaFailure", "violations": [{"quotaId": "ProjectSpendPerTenMinutes", "quotaDimensions": {"location": "global"}}]}]}}
         client = GeminiThreatClient("test-key")
         client.discover_models = lambda force=False: [ModelInfo("models/first"), ModelInfo("models/second")]
         with patch("engine.gemini_cti.requests.post", return_value=Response()) as post:
-            with self.assertRaises(GeminiCTIError):
+            with self.assertRaises(GeminiCTIError) as caught:
                 client.fetch_threats()
-        # A quota error must stop after one request, not burn quota on fallbacks.
         self.assertEqual(post.call_count, 1)
+        self.assertIn("project-wide request limit", str(caught.exception))
+        self.assertNotIn("free-tier quota is 0", str(caught.exception))
+
+    def test_environment_key_precedence_matches_google_docs(self):
+        self.assertEqual(resolve_api_key("saved", {"GEMINI_API_KEY": "gemini-env"}), "gemini-env")
+        self.assertEqual(resolve_api_key("saved", {"GEMINI_API_KEY": "gemini-env", "GOOGLE_API_KEY": "google-env"}), "google-env")
+        self.assertEqual(resolve_api_key("saved", {}), "saved")
 
     def test_specialized_audio_models_are_not_text_research_models(self):
         self.assertFalse(_is_text_research_model("gemini-2.5-flash-native-audio-latest"))
