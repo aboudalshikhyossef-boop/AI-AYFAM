@@ -20,6 +20,8 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
+import requests
+
 THREAT_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
@@ -85,6 +87,16 @@ def _model_name(model: Any) -> str:
     return _text(getattr(model, "name", None) or (model.get("name") if isinstance(model, Mapping) else ""))
 
 
+def _model_field(model: Any, *names: str, default: Any = None) -> Any:
+    for name in names:
+        if isinstance(model, Mapping) and name in model:
+            return model[name]
+        value = getattr(model, name, None)
+        if value is not None:
+            return value
+    return default
+
+
 def _supports_generate(model: Any) -> bool:
     methods = getattr(model, "supported_actions", None) or getattr(model, "supported_generation_methods", None)
     if methods is None and isinstance(model, Mapping):
@@ -123,6 +135,7 @@ class GeminiThreatClient:
     def __init__(self, api_key: str, timeout: float = 45.0):
         self.api_key = api_key.strip()
         self.timeout = timeout
+        self.base_url = "https://generativelanguage.googleapis.com/v1beta"
         self._client = None
         self._model: ModelInfo | None = None
         self._models: list[ModelInfo] = []
@@ -151,10 +164,19 @@ class GeminiThreatClient:
     def discover_models(self, force: bool = False) -> list[ModelInfo]:
         if self._models and not force:
             return list(self._models)
-        self._sdk()
         try:
-            raw_models = list(self._client.models.list())
+            response = requests.get(
+                f"{self.base_url}/models",
+                headers={"x-goog-api-key": self.api_key},
+                params={"pageSize": 1000},
+                timeout=(10, self.timeout),
+            )
+            if response.status_code >= 400:
+                raise GeminiCTIError(f"Google model discovery failed ({response.status_code}): {response.text[:500]}")
+            raw_models = response.json().get("models", [])
         except Exception as exc:
+            if isinstance(exc, GeminiCTIError):
+                raise
             raise GeminiCTIError(f"Could not list models for this API key: {exc}") from exc
         models: list[ModelInfo] = []
         for raw in raw_models:
@@ -166,10 +188,10 @@ class GeminiThreatClient:
                 continue
             models.append(ModelInfo(
                 name=name,
-                display_name=_text(getattr(raw, "display_name", None)),
-                description=_text(getattr(raw, "description", None)),
-                input_token_limit=int(getattr(raw, "input_token_limit", 0) or 0),
-                output_token_limit=int(getattr(raw, "output_token_limit", 0) or 0),
+                display_name=_text(_model_field(raw, "display_name", "displayName", default="")),
+                description=_text(_model_field(raw, "description", default="")),
+                input_token_limit=int(_model_field(raw, "input_token_limit", "inputTokenLimit", default=0) or 0),
+                output_token_limit=int(_model_field(raw, "output_token_limit", "outputTokenLimit", default=0) or 0),
             ))
         if not models:
             raise GeminiCTIError("The Gemini key has no usable generate-content model")
@@ -201,29 +223,42 @@ class GeminiThreatClient:
         return f" Retry after approximately {match.group(1)} seconds." if match else ""
 
     def _request_with_interactions(self, model: ModelInfo, query: str) -> str:
-        """Use the current official API so Google Search does not trigger AFC warnings."""
-        interactions = getattr(self._client, "interactions", None)
-        if interactions is None or not hasattr(interactions, "create"):
-            raise GeminiCTIError("This google-genai SDK is too old for the Interactions API; upgrade google-genai")
-        interaction = interactions.create(
-            model=model.name,
-            input=query,
-            tools=[{"type": "google_search"}],
-            response_format={
-                "type": "text",
-                "mime_type": "application/json",
-                "schema": THREAT_SCHEMA,
-            },
-        )
-        return _text(getattr(interaction, "output_text", None))
+        """Call the official endpoint once with a visible connect/read timeout.
+
+        Direct HTTP avoids SDK retries and AFC behavior, both of which can make a
+        failed request look like an endless wait and consume quota unexpectedly.
+        """
+        payload = {
+            "model": model.short_name,
+            "input": query,
+            "tools": [{"type": "google_search"}],
+            "response_format": {"type": "text", "mime_type": "application/json", "schema": THREAT_SCHEMA},
+        }
+        try:
+            response = requests.post(
+                f"{self.base_url}/interactions",
+                headers={"x-goog-api-key": self.api_key, "Content-Type": "application/json"},
+                json=payload,
+                timeout=(10, self.timeout),
+            )
+        except requests.Timeout as exc:
+            raise GeminiCTIError(f"Gemini request timed out after {self.timeout:g} seconds") from exc
+        except requests.RequestException as exc:
+            raise GeminiCTIError(f"Gemini network request failed: {exc}") from exc
+        if response.status_code >= 400:
+            raise RuntimeError(f"HTTP {response.status_code}: {response.text[:1500]}")
+        try:
+            body = response.json()
+        except ValueError as exc:
+            raise GeminiCTIError("Gemini returned a non-JSON HTTP response") from exc
+        return _text(body.get("output_text"))
 
     def fetch_threats(self, window_hours: int = 48) -> dict[str, Any]:
         query = f"""{SYSTEM_PROMPT}
 
 Research window: the last {window_hours} hours from now (UTC).
-Return this exact JSON shape:
-{json.dumps(THREAT_SCHEMA, ensure_ascii=False)}
-"""
+Return only a JSON object matching the response schema. Keep the list concise
+(maximum 10 significant items) and cite authoritative source URLs."""
         models = self.discover_models()
         quota_failures: list[tuple[ModelInfo, Exception]] = []
         invalid_models: list[tuple[ModelInfo, Exception]] = []
@@ -240,7 +275,9 @@ Return this exact JSON shape:
             except Exception as exc:
                 if self._is_quota_error(exc):
                     quota_failures.append((model, exc))
-                    continue
+                    # Retrying another model spends more quota and usually cannot
+                    # help because the limit belongs to the same project/key.
+                    break
                 if self._is_invalid_model_error(exc):
                     # Google can list stale/preview aliases; skip them and try
                     # the next live model instead of aborting the whole scan.

@@ -3,6 +3,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -57,41 +58,29 @@ class GeminiCTITests(unittest.TestCase):
             validate_threat_feed({"threats": "not-an-array"})
 
     def test_interactions_request_returns_structured_json(self):
-        class Interaction:
-            output_text = json.dumps({"generated_at": "now", "threats": []})
-        class Interactions:
-            def create(self, **kwargs):
-                self.kwargs = kwargs
-                return Interaction()
-        class FakeClient:
-            interactions = Interactions()
+        class Response:
+            status_code = 200
+            def json(self):
+                return {"output_text": json.dumps({"generated_at": "now", "threats": []})}
         client = GeminiThreatClient("test-key")
-        client._client = FakeClient()
         client.discover_models = lambda force=False: [ModelInfo("models/gemini-test-flash")]
-        result = client.fetch_threats()
+        with patch("engine.gemini_cti.requests.post", return_value=Response()) as post:
+            result = client.fetch_threats()
         self.assertEqual(result["threats"], [])
-        self.assertEqual(client._client.interactions.kwargs["tools"], [{"type": "google_search"}])
+        self.assertEqual(post.call_args.kwargs["json"]["tools"], [{"type": "google_search"}])
+        self.assertEqual(post.call_args.kwargs["timeout"], (10, 45.0))
 
     def test_quota_failure_falls_back_to_next_dynamic_model(self):
-        class Interactions:
-            def __init__(self):
-                self.calls = []
-            def create(self, **kwargs):
-                self.calls.append(kwargs["model"])
-                if len(self.calls) == 1:
-                    raise RuntimeError("429 RESOURCE_EXHAUSTED quota limit: 0")
-                class Interaction:
-                    output_text = json.dumps({"generated_at": "now", "threats": []})
-                return Interaction()
-        class FakeClient:
-            def __init__(self):
-                self.interactions = Interactions()
+        class Response:
+            status_code = 429
+            text = "RESOURCE_EXHAUSTED quota limit: 0"
         client = GeminiThreatClient("test-key")
-        client._client = FakeClient()
         client.discover_models = lambda force=False: [ModelInfo("models/first"), ModelInfo("models/second")]
-        result = client.fetch_threats()
-        self.assertEqual(result["threats"], [])
-        self.assertEqual(client._client.interactions.calls, ["models/first", "models/second"])
+        with patch("engine.gemini_cti.requests.post", return_value=Response()) as post:
+            with self.assertRaises(GeminiCTIError):
+                client.fetch_threats()
+        # A quota error must stop after one request, not burn quota on fallbacks.
+        self.assertEqual(post.call_count, 1)
 
     def test_specialized_audio_models_are_not_text_research_models(self):
         self.assertFalse(_is_text_research_model("gemini-2.5-flash-native-audio-latest"))
@@ -99,25 +88,18 @@ class GeminiCTITests(unittest.TestCase):
         self.assertTrue(_is_text_research_model("gemini-2.5-flash"))
 
     def test_invalid_listed_model_falls_back_to_next_model(self):
-        class Interactions:
-            def __init__(self):
-                self.calls = []
-            def create(self, **kwargs):
-                self.calls.append(kwargs["model"])
-                if len(self.calls) == 1:
-                    raise RuntimeError("400 INVALID_ARGUMENT: Model 'stale' not found")
-                class Interaction:
-                    output_text = json.dumps({"generated_at": "now", "threats": []})
-                return Interaction()
-        class FakeClient:
-            def __init__(self):
-                self.interactions = Interactions()
+        class Response:
+            def __init__(self, status_code, text, output=None):
+                self.status_code, self.text, self._output = status_code, text, output
+            def json(self):
+                return {"output_text": self._output}
         client = GeminiThreatClient("test-key")
-        client._client = FakeClient()
         client.discover_models = lambda force=False: [ModelInfo("models/stale"), ModelInfo("models/gemini-2.5-flash")]
-        result = client.fetch_threats()
+        responses = [Response(400, "Model stale not found"), Response(200, "", json.dumps({"generated_at": "now", "threats": []}))]
+        with patch("engine.gemini_cti.requests.post", side_effect=responses) as post:
+            result = client.fetch_threats()
         self.assertEqual(result["threats"], [])
-        self.assertEqual(client._client.interactions.calls, ["models/stale", "models/gemini-2.5-flash"])
+        self.assertEqual(post.call_count, 2)
 
 
 if __name__ == "__main__":
