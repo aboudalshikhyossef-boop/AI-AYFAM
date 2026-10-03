@@ -32,6 +32,7 @@ from tools import web
 from reports.generator import generate_markdown_report, save_report
 from brain import library
 from brain import relevance_engine
+from engine.correlation import CorrelationEngine, SmartRemediationAdvisor
 from utils import safe_exec
 
 
@@ -70,6 +71,9 @@ class AYFAMAgent(AgentV5Mixin):
         self._chat_history = []   # [(role, msg)]
         self._last_intent  = None
         self._last_entities = {}
+
+        # ── Attack Chain Correlation Engine ──
+        self.correlation = CorrelationEngine()
 
     def _t(self, ar: str, en: str) -> str:
         return ar if self.lang == "ar" else en
@@ -898,6 +902,9 @@ You can type any of these or anything similar in plain language:
         all_findings = self.intel.aggregate_findings(leak, fw)
         all_findings = self.intel.correlate_findings(all_findings)
         all_findings += self.intel.detect_compound_risks(all_findings)
+        # ── Attack Chain Analysis: cross-domain correlation ──
+        attack_chains = self.correlation.analyze(all_findings)
+        all_findings.extend(attack_chains)
         self.ui.section(self._t("النتائج","Findings"))
         for f in all_findings:
             self.ui.print_finding(f["severity"], f["title"], f.get("detail",""), f.get("fix",""))
@@ -1182,6 +1189,9 @@ You can type any of these or anything similar in plain language:
 
         all_findings = self.intel.correlate_findings(all_findings)
         all_findings += self.intel.detect_compound_risks(all_findings)
+        # ── Attack Chain Analysis: cross-domain correlation ──
+        attack_chains = self.correlation.analyze(all_findings)
+        all_findings.extend(attack_chains)
         risk = self.intel.compute_risk_score(all_findings)
         self.ui.section(self._t("النتائج","Findings"))
         for f in all_findings:
@@ -1190,6 +1200,8 @@ You can type any of these or anything similar in plain language:
             self.ui.success(self._t("🟢 النظام يبدو آمناً","🟢 System looks secure"))
 
         self.ui.raw(self.intel.get_remediation_plan(all_findings))
+        # ── Smart Remediation Prioritization ──
+        self.ui.raw(SmartRemediationAdvisor.format_recommendations(all_findings, top_n=5))
         self.ui.raw(self.intel.generate_summary(risk, all_findings, self._t("فحص النظام","System Scan")), style=_risk_border_style(risk["level"]))
         self._last_findings = all_findings
         self._save_and_show_trend("system", risk, all_findings)
@@ -1606,6 +1618,9 @@ You can type any of these or anything similar in plain language:
 
         all_findings = self.intel.correlate_findings(all_findings)
         all_findings += self.intel.detect_compound_risks(all_findings)
+        # ── Attack Chain Analysis: cross-domain correlation ──
+        attack_chains = self.correlation.analyze(all_findings)
+        all_findings.extend(attack_chains)
         risk = self.intel.compute_risk_score(all_findings)
         self._last_findings = all_findings
         self._save_and_show_trend("full", risk, all_findings)
@@ -1614,6 +1629,8 @@ You can type any of these or anything similar in plain language:
         for f in all_findings:
             self.ui.print_finding(f["severity"], f["title"], f.get("detail",""), f.get("fix",""))
         self.ui.raw(self.intel.get_remediation_plan(all_findings))
+        # ── Smart Remediation Prioritization ──
+        self.ui.raw(SmartRemediationAdvisor.format_recommendations(all_findings, top_n=5))
         self.ui.raw(self.intel.generate_summary(risk, all_findings, self._t("الفحص الشامل","Full Scan")), style=_risk_border_style(risk["level"]))
 
         report = generate_markdown_report({"risk": risk, "findings": all_findings, "sections":{}}, self._hostname, self.lang)
