@@ -94,14 +94,16 @@ def _supports_generate(model: Any) -> bool:
     return any("generate" in _text(item).lower() for item in methods)
 
 
-def _score_model(model: ModelInfo) -> tuple[int, int, int, str]:
+def _score_model(model: ModelInfo) -> tuple[int, int, int, int, str]:
     name = model.short_name.lower()
     # Prefer stable flash models for speed/cost, then stable pro models.
     stable = int("preview" not in name and "experimental" not in name)
     flash = int("flash" in name)
     pro = int("pro" in name)
+    # General text models are safer defaults than multimodal/specialized families.
+    general_purpose = int("omni" not in name and "live" not in name)
     vision_only = int(any(x in name for x in ("embedding", "image", "tts", "robotics")))
-    return (stable, flash * 3 + pro, int(model.output_token_limit > 0), -vision_only, name)
+    return (stable, general_purpose, flash * 3 + pro, int(model.output_token_limit > 0) - vision_only, name)
 
 
 class GeminiThreatClient:
@@ -110,6 +112,7 @@ class GeminiThreatClient:
         self.timeout = timeout
         self._client = None
         self._model: ModelInfo | None = None
+        self._models: list[ModelInfo] = []
         if not self.api_key:
             raise GeminiCTIError("Gemini API key is missing")
 
@@ -133,8 +136,8 @@ class GeminiThreatClient:
         return genai
 
     def discover_models(self, force: bool = False) -> list[ModelInfo]:
-        if self._model and not force:
-            return [self._model]
+        if self._models and not force:
+            return list(self._models)
         self._sdk()
         try:
             raw_models = list(self._client.models.list())
@@ -158,6 +161,7 @@ class GeminiThreatClient:
         if not models:
             raise GeminiCTIError("The Gemini key has no usable generate-content model")
         models.sort(key=_score_model, reverse=True)
+        self._models = models
         self._model = models[0]
         return models
 
@@ -165,34 +169,69 @@ class GeminiThreatClient:
     def selected_model(self) -> ModelInfo:
         return self.discover_models()[0]
 
+    @staticmethod
+    def _is_quota_error(exc: Exception) -> bool:
+        text = str(exc).upper()
+        return "429" in text or "RESOURCE_EXHAUSTED" in text or "QUOTA" in text
+
+    @staticmethod
+    def _retry_hint(exc: Exception) -> str:
+        match = re.search(r"retry(?:Delay| in)\D+(\d+)(?:\.\d+)?s", str(exc), re.I)
+        return f" Retry after approximately {match.group(1)} seconds." if match else ""
+
+    def _request_with_interactions(self, model: ModelInfo, query: str) -> str:
+        """Use the current official API so Google Search does not trigger AFC warnings."""
+        interactions = getattr(self._client, "interactions", None)
+        if interactions is None or not hasattr(interactions, "create"):
+            raise GeminiCTIError("This google-genai SDK is too old for the Interactions API; upgrade google-genai")
+        interaction = interactions.create(
+            model=model.name,
+            input=query,
+            tools=[{"type": "google_search"}],
+            response_format={
+                "type": "text",
+                "mime_type": "application/json",
+                "schema": THREAT_SCHEMA,
+            },
+        )
+        return _text(getattr(interaction, "output_text", None))
+
     def fetch_threats(self, window_hours: int = 48) -> dict[str, Any]:
-        model = self.selected_model
         query = f"""{SYSTEM_PROMPT}
 
 Research window: the last {window_hours} hours from now (UTC).
 Return this exact JSON shape:
 {json.dumps(THREAT_SCHEMA, ensure_ascii=False)}
 """
-        try:
-            from google.genai import types
-            config = types.GenerateContentConfig(
-                system_instruction=SYSTEM_PROMPT,
-                temperature=0.1,
-                response_mime_type="application/json",
-                response_schema=THREAT_SCHEMA,
-                tools=[types.Tool(google_search=types.GoogleSearch())],
+        models = self.discover_models()
+        quota_failures: list[tuple[ModelInfo, Exception]] = []
+        for model in models:
+            try:
+                raw = self._request_with_interactions(model, query)
+                if not raw:
+                    raise GeminiCTIError(f"Gemini returned an empty response from {model.short_name}")
+                try:
+                    data = json.loads(raw)
+                except json.JSONDecodeError as exc:
+                    raise GeminiCTIError(f"Gemini returned invalid JSON: {exc}") from exc
+                return validate_threat_feed(data, window_hours=window_hours)
+            except Exception as exc:
+                if self._is_quota_error(exc):
+                    quota_failures.append((model, exc))
+                    continue
+                if isinstance(exc, GeminiCTIError):
+                    raise
+                raise GeminiCTIError(f"Gemini threat research failed using {model.short_name}: {exc}") from exc
+        if quota_failures:
+            names = ", ".join(model.short_name for model, _ in quota_failures[:5])
+            hint = self._retry_hint(quota_failures[0][1])
+            raise GeminiCTIError(
+                "Gemini API key was accepted, but all attempted models returned "
+                f"RESOURCE_EXHAUSTED (free-tier quota is 0 for: {names}). "
+                "Enable billing/use a project with available quota, or retry later."
+                + hint
             )
-            response = self._client.models.generate_content(model=model.name, contents=query, config=config)
-        except Exception as exc:
-            raise GeminiCTIError(f"Gemini threat research failed using {model.short_name}: {exc}") from exc
-        raw = _text(getattr(response, "text", None))
-        if not raw:
-            raise GeminiCTIError("Gemini returned an empty threat report")
-        try:
-            data = json.loads(raw)
-        except json.JSONDecodeError as exc:
-            raise GeminiCTIError(f"Gemini returned invalid JSON: {exc}") from exc
-        return validate_threat_feed(data, window_hours=window_hours)
+        raise GeminiCTIError("No usable Gemini model completed the threat research request")
 
     def close(self) -> None:
         if self._client is not None:

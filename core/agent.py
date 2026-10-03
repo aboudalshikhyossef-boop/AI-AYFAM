@@ -102,7 +102,11 @@ class AYFAMAgent(AgentV5Mixin):
         try:
             client = GeminiThreatClient(key)
             models = client.discover_models()
-            self.ui.success(self._t(f"النموذج المختار تلقائياً: {models[0].short_name}", f"Automatically selected model: {models[0].short_name}"))
+            names = ", ".join(model.short_name for model in models[:8])
+            self.ui.success(self._t(
+                f"المرشح التلقائي (بعد اكتشاف النماذج): {models[0].short_name}\nالنماذج القابلة للتوليد: {names}\nملاحظة: الحصة تُعرف فقط عند تنفيذ الطلب.",
+                f"Automatic candidate: {models[0].short_name}\nGenerate-capable models: {names}\nNote: quota is verified only when a request is executed.",
+            ))
             return models
         except GeminiCTIError as exc:
             self.ui.error(self._t(f"فشل اتصال Gemini: {exc}", f"Gemini connection failed: {exc}"))
