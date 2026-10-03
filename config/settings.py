@@ -14,7 +14,7 @@ from pathlib import Path
 
 CONFIG_DIR = Path.home() / ".ayfam"
 CONFIG_FILE = CONFIG_DIR / "config.json"
-_SECRET_KEYS = ("github_token", "shodan_key", "abuseipdb_key", "nvd_api_key", "vulners_key")
+_SECRET_KEYS = ("github_token", "shodan_key", "abuseipdb_key", "nvd_api_key", "vulners_key", "gemini_api_key")
 
 DEFAULT_SETTINGS = {
     "language": "ar",
@@ -26,6 +26,7 @@ DEFAULT_SETTINGS = {
     "abuseipdb_key": "",   # يرفع فحص سمعة IP من تخمين استضافة/VPN إلى بيانات إساءة فعلية
     "nvd_api_key": "",     # يرفع حد NVD من 5 طلبات/30ث إلى 50 طلب/30ث
     "vulners_key": "",     # غير مُستخدَم حالياً — محجوز لتوسعة مستقبلية
+    "gemini_api_key": "",  # Gemini Developer API — يُستخدم فقط لجلب CTI عام
     "auto_fix": False,
     "report_dir": str(Path.home() / "ayfam-reports"),
     "cve_cache_hours": 6,

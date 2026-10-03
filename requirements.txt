@@ -8,5 +8,7 @@ PyQt6>=6.5.0
 scikit-learn>=1.3.0
 numpy>=1.24.0
 scipy>=1.10.0
+# Gemini Developer API (lazy-loaded; the core tool remains usable offline)
+google-genai>=1.30.0
 # sqlite3 — مدمج مع Python (لا حاجة لتثبيته)
 # subprocess, socket, pathlib — مدمجة

@@ -10,6 +10,7 @@ import socket
 import time
 import traceback
 from datetime import datetime
+from pathlib import Path
 
 from config.settings import Settings
 from ui.terminal import TerminalUI
@@ -34,6 +35,7 @@ from brain import library
 from brain import relevance_engine
 from engine.correlation import CorrelationEngine, SmartRemediationAdvisor
 from utils import safe_exec
+from engine.gemini_cti import GeminiCTIError, GeminiThreatClient, LocalThreatMatcher, ThreatHistory, markdown_report
 
 
 def _run(cmd, timeout=30, sudo=False):
@@ -86,6 +88,58 @@ class AYFAMAgent(AgentV5Mixin):
             if self.settings.get("github_token"):
                 if self.ui.confirm(self._t("رفع على GitHub؟","Push to GitHub?"), False):
                     self._push_to_github(content)
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # GEMINI CTI — public threat research, private local matching
+    # ─────────────────────────────────────────────────────────────────────────
+    def gemini_model_status(self):
+        """Discover models for the configured key without sending host data."""
+        key = self.settings.get("gemini_api_key", "") or os.environ.get("GEMINI_API_KEY", "")
+        if not key:
+            self.ui.warning(self._t("لم يتم إعداد مفتاح Gemini.", "Gemini API key is not configured."))
+            return []
+        client = None
+        try:
+            client = GeminiThreatClient(key)
+            models = client.discover_models()
+            self.ui.success(self._t(f"النموذج المختار تلقائياً: {models[0].short_name}", f"Automatically selected model: {models[0].short_name}"))
+            return models
+        except GeminiCTIError as exc:
+            self.ui.error(self._t(f"فشل اتصال Gemini: {exc}", f"Gemini connection failed: {exc}"))
+            return []
+        finally:
+            if client:
+                client.close()
+
+    def run_gemini_threat_scan(self, window_hours: int = 48):
+        """Fetch general CTI, then perform all host matching strictly offline."""
+        key = self.settings.get("gemini_api_key", "") or os.environ.get("GEMINI_API_KEY", "")
+        if not key:
+            self.ui.error(self._t("أضف مفتاح Gemini أولاً عبر --configure-gemini أو GEMINI_API_KEY.", "Configure Gemini first with --configure-gemini or GEMINI_API_KEY."))
+            return None
+        client = None
+        try:
+            self.ui.info(self._t("جلب معلومات تهديدات عامة من المصادر الموثوقة...", "Fetching public threat intelligence from authoritative sources..."))
+            client = GeminiThreatClient(key)
+            feed = client.fetch_threats(window_hours=window_hours)
+            model = client.selected_model.short_name
+            self.ui.info(self._t("مطابقة النتائج مع الجهاز محلياً فقط...", "Matching results against this host locally only..."))
+            matched = LocalThreatMatcher().match(feed)
+            history = ThreatHistory()
+            history.save(feed, matched, model)
+            report = markdown_report(feed, matched, model)
+            report_dir = Path(self.settings.get("report_dir", os.path.expanduser("~/ayfam-reports")))
+            report_dir.mkdir(parents=True, exist_ok=True)
+            path = report_dir / f"gemini_cti_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
+            path.write_text(report, encoding="utf-8")
+            self.ui.success(self._t(f"اكتمل الفحص: {len(feed['threats'])} تهديد، {len(matched)} مطابق محلياً. التقرير: {path}", f"Scan complete: {len(feed['threats'])} threats, {len(matched)} local matches. Report: {path}"))
+            return {"feed": feed, "matched": matched, "report_path": str(path), "model": model}
+        except GeminiCTIError as exc:
+            self.ui.error(self._t(f"فشل فحص Gemini: {exc}", f"Gemini scan failed: {exc}"))
+            return None
+        finally:
+            if client:
+                client.close()
 
     # ─────────────────────────────────────────────────────────────────────────
     #  TREND TRACKING — يقارن كل فحص بآخر فحص من نفس النوع، ثم يحفظه

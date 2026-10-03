@@ -6,6 +6,7 @@ AI AYFAM v3 — وكيل الأمن السيبراني الذكي
 import sys
 import os
 import argparse
+import getpass
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -60,6 +61,9 @@ def main():
     parser.add_argument("--no-color", action="store_true", help="بدون ألوان")
     parser.add_argument("--verbose",  action="store_true", help="وضع التصحيح المفصّل")
     parser.add_argument("--check-deps", action="store_true", help="فحص مكتبات Python وأدوات النظام المطلوبة")
+    parser.add_argument("--configure-gemini", action="store_true", help="إدخال مفتاح Gemini محلياً بدون إظهاره على الشاشة")
+    parser.add_argument("--gemini-models", action="store_true", help="اكتشاف نماذج Gemini المتاحة للمفتاح تلقائياً")
+    parser.add_argument("--gemini-threats", action="store_true", help="جلب CTI عام من آخر 48 ساعة ومطابقته محلياً")
     args = parser.parse_args()
 
     if not is_root():
@@ -101,6 +105,15 @@ def main():
     if args.language:
         settings.set("language", args.language)
         print(f"✅ تم تغيير اللغة إلى: {args.language}")
+        return 0
+
+    if args.configure_gemini:
+        key = getpass.getpass("Gemini API key (input hidden): ").strip()
+        if not key:
+            print("❌ لم يتم إدخال مفتاح.")
+            return 1
+        settings.set("gemini_api_key", key)
+        print("✅ تم حفظ مفتاح Gemini محلياً في ~/.ayfam/config.json بصلاحيات 0600.")
         return 0
 
     # ── Load full agent ───────────────────────────────────────────────────────
@@ -150,6 +163,10 @@ def main():
             agent._generate_remediation_plan()
         elif args.html_report:
             agent._export_html_report()
+        elif args.gemini_models:
+            agent.gemini_model_status()
+        elif args.gemini_threats:
+            agent.run_gemini_threat_scan(window_hours=48)
         else:
             # Default: interactive NLP chat mode
             agent.interactive_mode()

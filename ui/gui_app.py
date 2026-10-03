@@ -574,6 +574,7 @@ class UnifiedCockpitWindow(QMainWindow):
             ("📝 خطة المعالجة", self.agent._generate_remediation_plan, True, False),
             ("🌐 تقرير HTML", self.agent._export_html_report, True, False),
             ("🔄 تحديث التهديدات", self.agent._update_intel, False, False),
+            ("🛰️ Gemini CTI (48h)", self.agent.run_gemini_threat_scan, False, False),
         ]
         for i, (text, fn, preserve_findings, direct) in enumerate(actions):
             btn = QPushButton(text)

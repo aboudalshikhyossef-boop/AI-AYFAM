@@ -34,6 +34,7 @@ PYTHON_REQUIREMENTS = (
 
 FEATURE_REQUIREMENTS = {
     "gui": (Requirement("PyQt6", "Python", "python3 -m pip install PyQt6", "gui"),),
+    "gemini": (Requirement("google.genai", "Python", "python3 -m pip install google-genai", "gemini"),),
     "network": (Requirement("ss", "system", "sudo apt install iproute2", "network"),),
     "ports": (Requirement("nmap", "system", "sudo apt install nmap", "ports"),),
     "usb": (Requirement("lsusb", "system", "sudo apt install usbutils", "usb"),),
@@ -143,6 +144,8 @@ def feature_flags(args) -> set[str]:
     features: set[str] = set()
     if getattr(args, "gui", False):
         features.add("gui")
+    if getattr(args, "gemini_threats", False) or getattr(args, "gemini_models", False):
+        features.add("gemini")
     scan = getattr(args, "scan", None)
     if scan:
         features.add(scan)

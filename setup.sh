@@ -39,26 +39,20 @@ else
     error "Python $PY_VER غير مدعوم — يلزم $REQUIRED+"
 fi
 
-# ── Python virtual environment ────────────────────────────────────────────────
-VENV_DIR="$SCRIPT_DIR/.venv"
-APP_PYTHON="$VENV_DIR/bin/python"
-info "إعداد بيئة Python معزولة للأداة..."
-if ! python3 -m venv "$VENV_DIR"; then
-    warn "حزمة venv غير متاحة؛ تثبيت python3-venv..."
-    sudo apt-get update
-    sudo apt-get install -y python3-venv || error "تعذر تثبيت python3-venv"
-    python3 -m venv --clear "$VENV_DIR" || error "تعذر إنشاء بيئة Python الافتراضية"
+# ── Python النظام — بدون venv أو بيئة افتراضية ───────────────────────────────
+APP_PYTHON="/usr/bin/python3"
+info "تثبيت مكتبات AI AYFAM في Python النظام مباشرة — بدون venv..."
+PIP_SYSTEM_FLAG=""
+if "$APP_PYTHON" -m pip help install 2>/dev/null | grep -q -- '--break-system-packages'; then
+    PIP_SYSTEM_FLAG="--break-system-packages"
 fi
-success "بيئة Python جاهزة: $VENV_DIR"
-
-info "تثبيت مكتبات Python في البيئة المعزولة — سيظهر تقدم التنزيل والتثبيت..."
 PIP_LOG="$HOME/.cache/ayfam/setup-pip.log"
 mkdir -p "$(dirname "$PIP_LOG")"
-if ! "$APP_PYTHON" -m pip install --progress-bar on --disable-pip-version-check \
+if ! sudo "$APP_PYTHON" -m pip install --ignore-installed $PIP_SYSTEM_FLAG --progress-bar on --disable-pip-version-check \
     --timeout 120 --retries 5 -r requirements.txt 2>&1 | tee "$PIP_LOG"; then
     error "فشل تثبيت مكتبات Python. راجع السجل: $PIP_LOG"
 fi
-success "مكتبات Python المعزولة جاهزة (بما فيها PyQt6 ومحركات التحليل)"
+success "مكتبات Python النظام جاهزة (بما فيها PyQt6 ومحركات التحليل)"
 
 # ── System tools ──────────────────────────────────────────────────────────────
 info "التحقق من أدوات الأمن..."
@@ -114,8 +108,9 @@ if [[ -n "$QT_MISSING_LIBS" ]]; then
 fi
 success "اعتماديات إضافة Qt X11 (xcb) مكتملة"
 
-# افحص اتساق الحزم ثم اختبر استيراد المكتبات وبدء Qt دون الحاجة لشاشة فعلية.
-"$APP_PYTHON" -m pip check || error "تعارض في إصدارات مكتبات Python؛ راجع متطلبات pip أعلاه"
+# اختبر الاستيراد وبدء Qt؛ قد تعرض pip تحذيرات عن حزم خارج AI AYFAM ولا نوقف
+# التثبيت بسببها، لأن هذه الحزم لا تدخل في تشغيل الأداة.
+"$APP_PYTHON" -m pip check || warn "توجد تعارضات في حزم Python خارج متطلبات AI AYFAM؛ راجع سجل pip عند الحاجة"
 if ! QT_QPA_PLATFORM=offscreen "$APP_PYTHON" - <<'PY'
 import rich, requests, pypdf, sklearn, numpy, scipy
 from PyQt6.QtWidgets import QApplication
@@ -194,7 +189,7 @@ if [ "\$(id -u)" -ne 0 ]; then
         exit 1
     fi
     printf '[%s] Starting GUI (DISPLAY=%s, WAYLAND_DISPLAY=%s, XAUTHORITY=%s, QT_QPA_PLATFORM=%s)\\n' "\$(date '+%F %T')" "\${GUI_DISPLAY:-unset}" "\${GUI_WAYLAND_DISPLAY:-unset}" "\$XAUTHORITY_FILE" "\${QT_PLATFORM:-auto}" >>"\$LOG_FILE"
-    if pkexec env DISPLAY="\$GUI_DISPLAY" WAYLAND_DISPLAY="\$GUI_WAYLAND_DISPLAY" XAUTHORITY="\$XAUTHORITY_FILE" XDG_RUNTIME_DIR="\${XDG_RUNTIME_DIR:-}" QT_QPA_PLATFORM="\$QT_PLATFORM" "\$APP_DIR/.venv/bin/python" "\$APP_DIR/main.py" --gui "\$@" >>"\$LOG_FILE" 2>&1; then
+    if pkexec env DISPLAY="\$GUI_DISPLAY" WAYLAND_DISPLAY="\$GUI_WAYLAND_DISPLAY" XAUTHORITY="\$XAUTHORITY_FILE" XDG_RUNTIME_DIR="\${XDG_RUNTIME_DIR:-}" QT_QPA_PLATFORM="\$QT_PLATFORM" /usr/bin/python3 "\$APP_DIR/main.py" --gui "\$@" >>"\$LOG_FILE" 2>&1; then
         exit 0
     else
         EXIT_CODE=\$?
@@ -208,7 +203,7 @@ if [ "\$(id -u)" -ne 0 ]; then
     fi
 fi
 export QT_QPA_PLATFORM="\$QT_PLATFORM"
-exec "\$APP_DIR/.venv/bin/python" "\$APP_DIR/main.py" --gui "\$@" >>"\$LOG_FILE" 2>&1
+exec /usr/bin/python3 "\$APP_DIR/main.py" --gui "\$@" >>"\$LOG_FILE" 2>&1
 EOF
 sudo chmod +x "$GUI_LAUNCHER"
 
@@ -275,6 +270,8 @@ echo "    sudo ayfam --scan full   → فحص شامل"
 echo "    sudo ayfam --status      → حالة الوكيل وإحصائيات قاعدة المعرفة"
 echo "    sudo ayfam --update      → تحديث معلومات التهديدات من الإنترنت"
 echo "    ayfam-gui                → فتح الواجهة الرسومية / أيقونة قائمة التطبيقات"
+echo "    sudo ayfam --configure-gemini → حفظ مفتاح Gemini بشكل مخفي"
+echo "    sudo ayfam --gemini-threats   → CTI آخر 48 ساعة + مطابقة محلية"
 echo ""
 echo -e "  ${YELLOW}إعداد GitHub (اختياري — لرفع التقارير):${NC}"
 echo "    1. https://github.com/settings/tokens"
