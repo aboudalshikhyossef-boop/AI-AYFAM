@@ -1,4 +1,4 @@
-"""واجهة AI AYFAM الرسومية: مركز تحكم موحّد للفحوصات والتقارير."""
+"""واجهة AI AYFAM الرسومية — مركز تحكم موحّد للفحوصات والتقارير (v2 — redesigned)."""
 
 from __future__ import annotations
 
@@ -10,12 +10,12 @@ from pathlib import Path
 from typing import Callable, Any
 
 from PyQt6.QtCore import Qt, QTimer, QThread, QPropertyAnimation, pyqtSignal, QUrl
-from PyQt6.QtGui import QColor, QDesktopServices, QFont, QIcon
+from PyQt6.QtGui import QColor, QDesktopServices, QFont, QIcon, QAction, QShortcut, QKeySequence
 from PyQt6.QtWidgets import (
     QApplication, QComboBox, QFileDialog, QFrame, QGraphicsOpacityEffect, QGridLayout, QGroupBox,
     QHBoxLayout, QHeaderView, QLabel, QLineEdit, QMainWindow, QMessageBox,
-    QPlainTextEdit, QProgressBar, QPushButton, QSplitter, QTabWidget,
-    QTableWidget, QTableWidgetItem, QTextEdit, QVBoxLayout, QWidget,
+    QPlainTextEdit, QProgressBar, QPushButton, QSplitter, QStackedWidget,
+    QTableWidget, QTableWidgetItem, QTextEdit, QVBoxLayout, QWidget, QScrollArea, QSizePolicy,
 )
 
 from config.settings import Settings
@@ -26,53 +26,31 @@ from engine.risk import RiskEngine
 from tools.usb import analyze_mounted_filesystem, list_usb_devices, scan_mounted_drives
 from tools.usb_control import authorize_device, deauthorize_device
 from ui.terminal import TerminalUI
+from ui.theme import (
+    QSS, ACCENT, ACCENT_SOFT, BG_BASE, BG_SURFACE, BG_ELEVATED, BG_HOVER,
+    BORDER, BORDER_FOCUS, TEXT_PRIMARY, TEXT_SECONDARY, TEXT_MUTED,
+    SEV_CRITICAL, SEV_HIGH, SEV_MEDIUM, SEV_LOW, SEV_INFO, SEV_SAFE,
+    STATUS_OK, STATUS_ERROR, STATUS_IDLE,
+    FONT_FAMILY, FONT_SIZE_BASE, FONT_SIZE_SMALL, FONT_SIZE_TITLE, FONT_SIZE_HERO, FONT_SIZE_METRIC,
+    SP_XS, SP_SM, SP_MD, SP_LG, SP_XL, SP_2XL,
+    severity_color, severity_bg,
+)
 from utils.preflight import check_requirements, root_error, is_root
 
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 
-THEME = """
-QMainWindow, QWidget { background: #0e171d; color: #e5eff1; font-family: "Noto Sans Arabic", "DejaVu Sans", sans-serif; font-size: 13px; }
-QFrame#header { background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #1b3039, stop:0.55 #17262e, stop:1 #142129); border: 1px solid #31515a; border-radius: 5px; }
-QFrame#statusPanel { background: #101e24; border: 1px solid #31515a; border-radius: 4px; }
-QFrame#activityLamp { background: #51e0bd; border: 1px solid #9ff5df; border-radius: 5px; min-width: 10px; max-width: 10px; min-height: 10px; max-height: 10px; }
-QFrame#activityLamp[state="running"] { background: #f3b654; border-color: #ffe0a1; }
-QFrame#activityLamp[state="error"] { background: #ff6874; border-color: #ffc0c5; }
-QLabel#eyebrow { color: #63c9c6; font-size: 10px; font-weight: 700; }
-QLabel#statusBadge { color: #8be4c8; font-weight: 700; padding: 6px 9px; }
-QLabel#statusBadge[state="running"] { color: #ffd17d; }
-QLabel#statusBadge[state="error"] { color: #ff9ba2; }
-QLabel#scoreBadge { color: #f2c16a; font-weight: 700; padding: 7px 11px; background: #2b271d; border: 1px solid #655334; border-radius: 4px; }
-QGroupBox, QFrame#card { background: #17242b; border: 1px solid #2b4149; border-radius: 4px; }
-QGroupBox { margin-top: 13px; padding: 15px 11px 10px; font-weight: 700; color: #83d8d2; }
-QGroupBox::title { subcontrol-origin: margin; left: 13px; padding: 0 7px; }
-QFrame#card[tone="connections"] { border-top: 2px solid #4ad7c4; }
-QFrame#card[tone="processes"] { border-top: 2px solid #70b6e8; }
-QFrame#card[tone="findings"] { border-top: 2px solid #e5ae58; }
-QFrame#card[tone="score"] { border-top: 2px solid #9bcf78; }
-QFrame#card:hover { background: #1b2c34; border-color: #42616a; }
-QTabWidget::pane { border: 1px solid #2b4149; border-radius: 4px; background: #111d23; top: -1px; }
-QTabBar::tab { background: #152229; color: #a9bec2; padding: 10px 16px; border: none; border-bottom: 2px solid transparent; margin-right: 2px; min-height: 22px; }
-QTabBar::tab:hover { color: #e4f5f3; background: #1b2e36; }
-QTabBar::tab:selected { background: #203841; color: #88e6dc; border-bottom: 2px solid #49d8c7; font-weight: 700; }
-QPushButton { background: #176e70; color: #f1fbfa; border: 1px solid #268a88; border-radius: 3px; padding: 8px 12px; font-weight: 600; min-height: 18px; }
-QPushButton:hover { background: #218487; border-color: #4bc5bc; }
-QPushButton:pressed { background: #10595b; }
-QPushButton#danger { background: #6d343c; border-color: #9b4b52; }
-QPushButton#danger:hover { background: #88404a; }
-QPushButton:disabled { color: #718188; background: #202c32; border-color: #314149; }
-QLineEdit, QComboBox, QPlainTextEdit, QTextEdit { background: #10191f; color: #e7eef0; border: 1px solid #354953; border-radius: 3px; padding: 7px; selection-background-color: #176e70; }
-QLineEdit:focus, QComboBox:focus, QPlainTextEdit:focus, QTextEdit:focus { border: 1px solid #4bc5bc; }
-QTableWidget { background: #111c22; color: #e3ecee; alternate-background-color: #17252c; gridline-color: #263941; border: 1px solid #2b4149; border-radius: 3px; selection-background-color: #24565a; selection-color: #f4ffff; }
-QTableWidget::item { padding: 5px 7px; border-bottom: 1px solid #1f3037; }
-QHeaderView::section { background: #1c3038; color: #b9d9dc; padding: 9px 8px; border: none; border-bottom: 1px solid #38535b; font-weight: 700; }
-QProgressBar { background: #24353c; border: none; border-radius: 2px; text-align: center; min-height: 5px; max-height: 5px; }
-QProgressBar::chunk { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #38bcb6, stop:1 #8ce5cf); border-radius: 2px; }
-QScrollBar:vertical { background: #142128; width: 10px; margin: 0; }
-QScrollBar::handle:vertical { background: #3d5b64; min-height: 24px; border-radius: 3px; }
-QScrollBar::handle:vertical:hover { background: #5d8490; }
-QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
-"""
+# Navigation items: (key, icon, label_ar)
+NAV_ITEMS = [
+    ("dashboard",  "🏠", "غرفة العمليات"),
+    ("scans",      "🔍", "الفحوصات"),
+    ("usb",        "🔌", "الأجهزة"),
+    ("tools",      "🛡️", "الترسانة"),
+    ("chat",       "💬", "المحادثة"),
+    ("library",    "📚", "المكتبة"),
+    ("playbooks",  "📋", "خطط العمل"),
+    ("reports",    "📄", "التقارير"),
+]
 
 
 class GuiTerminalUI(TerminalUI):
@@ -110,17 +88,21 @@ class WorkerThread(QThread):
     def run(self) -> None:
         try:
             self.task_result.emit(self.task_fn(*self.args))
-        except Exception as exc:  # propagate to the GUI thread for a useful message
+        except Exception as exc:
             self.task_result.emit(exc)
+
+
+def _sev_brush(severity: str) -> QColor:
+    return QColor(severity_color(severity))
 
 
 class UnifiedCockpitWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("AI AYFAM — Security Control Center")
-        self.resize(1320, 840)
-        self.setMinimumSize(980, 660)
-        self.setStyleSheet(THEME)
+        self.setWindowTitle("AI AYFAM — Security Operations Center")
+        self.resize(1400, 880)
+        self.setMinimumSize(1000, 680)
+        self.setStyleSheet(QSS)
         icon_path = ROOT_DIR / "resources" / "icon.svg"
         if icon_path.exists():
             self.setWindowIcon(QIcon(str(icon_path)))
@@ -134,6 +116,7 @@ class UnifiedCockpitWindow(QMainWindow):
         self.current_findings: list[dict] = []
         self.task_buttons: list[QPushButton] = []
         self.usb_inventory_loaded = False
+        self.nav_buttons: list[QPushButton] = []
         self.init_ui()
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update_live_telemetry)
@@ -143,160 +126,267 @@ class UnifiedCockpitWindow(QMainWindow):
         self.event_timer.start(300)
         self.update_live_telemetry()
 
+    # ═══════════════════════════════════════════════════════════════════════════
+    #  LAYOUT: Sidebar + Header + Stacked Content
+    # ═══════════════════════════════════════════════════════════════════════════
     def init_ui(self) -> None:
         central = QWidget()
-        root = QVBoxLayout(central)
-        root.setContentsMargins(16, 14, 16, 10)
-        root.setSpacing(10)
+        root = QHBoxLayout(central)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
 
-        header = QFrame(objectName="header")
+        # ── Sidebar ──
+        sidebar = QFrame(objectName="sidebar")
+        sidebar.setFixedWidth(200)
+        sidebar_layout = QVBoxLayout(sidebar)
+        sidebar_layout.setContentsMargins(SP_MD, SP_LG, SP_MD, SP_MD)
+        sidebar_layout.setSpacing(SP_XS)
+
+        # Logo / Brand
+        brand = QLabel("🛡️ AI AYFAM")
+        brand.setStyleSheet(f"color: {TEXT_PRIMARY}; font-size: {FONT_SIZE_TITLE}px; font-weight: 800; padding: 8px 6px 16px 6px;")
+        sidebar_layout.addWidget(brand)
+
+        sub = QLabel("Security Operations")
+        sub.setStyleSheet(f"color: {TEXT_MUTED}; font-size: {FONT_SIZE_SMALL}px; padding: 0 6px 20px 6px;")
+        sidebar_layout.addWidget(sub)
+
+        # Nav buttons
+        self.nav_button_map: dict[str, QPushButton] = {}
+        for key, icon, label in NAV_ITEMS:
+            btn = QPushButton(f"  {icon}   {label}")
+            btn.setObjectName("navButton")
+            btn.setCheckable(True)
+            btn.clicked.connect(lambda checked=False, k=key: self.switch_page(k))
+            sidebar_layout.addWidget(btn)
+            self.nav_button_map[key] = btn
+            self.nav_buttons.append(btn)
+
+        sidebar_layout.addStretch()
+
+        # Status indicator at bottom of sidebar
+        self.sidebar_status = QLabel("● جاهز")
+        self.sidebar_status.setStyleSheet(f"color: {STATUS_OK}; font-size: {FONT_SIZE_SMALL}px; padding: 8px 6px;")
+        sidebar_layout.addWidget(self.sidebar_status)
+
+        root.addWidget(sidebar)
+
+        # ── Main content area ──
+        main_area = QWidget()
+        main_layout = QVBoxLayout(main_area)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
+
+        # ── Header bar ──
+        header = QFrame(objectName="headerBar")
+        header.setFixedHeight(64)
         header_layout = QHBoxLayout(header)
-        header_layout.setContentsMargins(20, 14, 20, 14)
-        header_layout.setSpacing(16)
-        title_box = QVBoxLayout()
-        title_box.setSpacing(3)
-        eyebrow = QLabel("AI AYFAM   /   SECURITY OPERATIONS")
-        eyebrow.setObjectName("eyebrow")
-        title_box.addWidget(eyebrow)
-        title = QLabel("AI AYFAM  |  مركز التحكم الأمني")
-        title.setFont(QFont("Noto Sans Arabic", 18, QFont.Weight.Bold))
-        title.setStyleSheet("color: #f3fbfb;")
-        title_box.addWidget(title)
-        subtitle = QLabel("فحوصات النظام والشبكة، التحليل المتقدم، التقارير، وخطط المعالجة في مكان واحد")
-        subtitle.setStyleSheet("color: #a9c0c5;")
-        title_box.addWidget(subtitle)
-        header_layout.addLayout(title_box)
+        header_layout.setContentsMargins(SP_XL, SP_MD, SP_XL, SP_MD)
+        header_layout.setSpacing(SP_LG)
+
+        self.page_title = QLabel("غرفة العمليات")
+        self.page_title.setObjectName("sectionTitle")
+        header_layout.addWidget(self.page_title)
         header_layout.addStretch()
-        self.status_panel = QFrame(objectName="statusPanel")
-        status_layout = QHBoxLayout(self.status_panel)
-        status_layout.setContentsMargins(11, 5, 12, 5)
-        status_layout.setSpacing(9)
+
+        # Activity lamp
         self.activity_lamp = QFrame(objectName="activityLamp")
+        self.activity_lamp.setFixedSize(10, 10)
         opacity = QGraphicsOpacityEffect(self.activity_lamp)
         self.activity_lamp.setGraphicsEffect(opacity)
         self.activity_animation = QPropertyAnimation(opacity, b"opacity", self)
-        self.activity_animation.setStartValue(0.48)
+        self.activity_animation.setStartValue(0.4)
         self.activity_animation.setKeyValueAt(0.5, 1.0)
-        self.activity_animation.setEndValue(0.48)
+        self.activity_animation.setEndValue(0.4)
         self.activity_animation.setDuration(1800)
         self.activity_animation.setLoopCount(-1)
         self.activity_animation.start()
-        status_layout.addWidget(self.activity_lamp)
-        self.status_badge = QLabel("الحالة: جاهز")
+        header_layout.addWidget(self.activity_lamp)
+
+        self.status_badge = QLabel("جاهز")
         self.status_badge.setObjectName("statusBadge")
         self.status_badge.setProperty("state", "idle")
-        status_layout.addWidget(self.status_badge)
-        header_layout.addWidget(self.status_panel)
-        self.score_badge = QLabel("الدرجة الأمنية  —")
+        header_layout.addWidget(self.status_badge)
+
+        self.score_badge = QLabel("الدرجة —")
         self.score_badge.setObjectName("scoreBadge")
         header_layout.addWidget(self.score_badge)
-        root.addWidget(header)
 
-        self.tabs = QTabWidget()
-        self.tabs.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
-        self.tab_dashboard, self.tab_scans = QWidget(), QWidget()
-        self.tab_tools, self.tab_chat, self.tab_usb = QWidget(), QWidget(), QWidget()
-        self.tab_playbooks, self.tab_reports, self.tab_library = QWidget(), QWidget(), QWidget()
-        self.setup_dashboard_tab()
-        self.setup_scans_tab()
-        self.setup_usb_tab()
-        self.setup_tools_tab()
-        self.setup_chat_tab()
-        self.setup_playbooks_tab()
-        self.setup_reports_tab()
-        self.setup_library_tab()
-        for page, label in (
-            (self.tab_dashboard, "غرفة العمليات"), (self.tab_scans, "الفحوصات"),
-            (self.tab_usb, "USB والأجهزة"),
-            (self.tab_tools, "الترسانة المتقدمة"), (self.tab_chat, "المحادثة"),
-            (self.tab_library, "مكتبة المعرفة"), (self.tab_playbooks, "خطط العمل"), (self.tab_reports, "التقارير"),
-        ):
-            self.tabs.addTab(page, label)
-        root.addWidget(self.tabs)
-        self.tabs.currentChanged.connect(self.on_tab_changed)
+        main_layout.addWidget(header)
 
-        footer = QLabel(f"المضيف: {os.uname().nodename}  |  الإصدار: v7  |  التنفيذ محليًا")
-        footer.setStyleSheet("color: #9aa79f; font-size: 11px;")
-        root.addWidget(footer)
+        # ── Stacked content ──
+        self.stack = QStackedWidget()
+        self.stack.setContentsMargins(0, 0, 0, 0)
+
+        self.page_dashboard = QWidget()
+        self.page_scans = QWidget()
+        self.page_usb = QWidget()
+        self.page_tools = QWidget()
+        self.page_chat = QWidget()
+        self.page_library = QWidget()
+        self.page_playbooks = QWidget()
+        self.page_reports = QWidget()
+
+        self.setup_dashboard_page()
+        self.setup_scans_page()
+        self.setup_usb_page()
+        self.setup_tools_page()
+        self.setup_chat_page()
+        self.setup_playbooks_page()
+        self.setup_reports_page()
+        self.setup_library_page()
+
+        self.stack.addWidget(self.page_dashboard)
+        self.stack.addWidget(self.page_scans)
+        self.stack.addWidget(self.page_usb)
+        self.stack.addWidget(self.page_tools)
+        self.stack.addWidget(self.page_chat)
+        self.stack.addWidget(self.page_library)
+        self.stack.addWidget(self.page_playbooks)
+        self.stack.addWidget(self.page_reports)
+
+        # Wrap stack in scroll area for responsiveness
+        scroll = QScrollArea()
+        scroll.setWidget(self.stack)
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        main_layout.addWidget(scroll, 1)
+
+        # ── Footer ──
+        footer = QLabel(f"  {os.uname().nodename}  |  AI AYFAM v8  |  التنفيذ محلي")
+        footer.setObjectName("footer")
+        footer.setFixedHeight(24)
+        footer.setStyleSheet(f"background: {BG_ELEVATED}; border-top: 1px solid {BORDER}; padding: 2px 12px;")
+        main_layout.addWidget(footer)
+
+        root.addWidget(main_area)
         self.setCentralWidget(central)
 
-    def setup_dashboard_tab(self) -> None:
-        layout = QVBoxLayout(self.tab_dashboard)
-        layout.setContentsMargins(12, 12, 12, 10)
-        layout.setSpacing(11)
-        metrics = QGridLayout()
-        metrics.setHorizontalSpacing(10)
-        metrics.setVerticalSpacing(10)
-        self.metric_labels: dict[str, QLabel] = {}
-        metric_notes = {
-            "connections": "مقابس النظام النشطة",
-            "processes": "أعلى العمليات استهلاكًا",
-            "findings": "في آخر فحص مكتمل",
-            "score": "مؤشر المخاطر العام",
+        # Default page
+        self.switch_page("dashboard")
+
+    def switch_page(self, key: str) -> None:
+        page_map = {
+            "dashboard": self.page_dashboard, "scans": self.page_scans,
+            "usb": self.page_usb, "tools": self.page_tools,
+            "chat": self.page_chat, "library": self.page_library,
+            "playbooks": self.page_playbooks, "reports": self.page_reports,
         }
-        for col, (key, label) in enumerate((("connections", "اتصالات نشطة"), ("processes", "عمليات مراقبة"), ("findings", "نتائج الفحص"), ("score", "الدرجة الأمنية"))):
+        title_map = {
+            "dashboard": "غرفة العمليات", "scans": "الفحوصات الأمنية",
+            "usb": "الأجهزة المتصلة", "tools": "ترسانة الأدوات المتقدمة",
+            "chat": "المحادثة الذكية", "library": "مكتبة المعرفة",
+            "playbooks": "خطط العمل الأمنية", "reports": "التقارير",
+        }
+        widget = page_map.get(key)
+        if widget:
+            self.stack.setCurrentWidget(widget)
+            self.page_title.setText(title_map.get(key, ""))
+            for k, btn in self.nav_button_map.items():
+                btn.setChecked(k == key)
+            if key == "usb" and not self.usb_inventory_loaded:
+                self.refresh_usb_inventory()
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    #  DASHBOARD PAGE
+    # ═══════════════════════════════════════════════════════════════════════════
+    def setup_dashboard_page(self) -> None:
+        layout = QVBoxLayout(self.page_dashboard)
+        layout.setContentsMargins(SP_XL, SP_LG, SP_XL, SP_LG)
+        layout.setSpacing(SP_LG)
+
+        # ── Metric Cards Row ──
+        metrics = QGridLayout()
+        metrics.setHorizontalSpacing(SP_MD)
+        metrics.setVerticalSpacing(SP_MD)
+        self.metric_labels: dict[str, QLabel] = {}
+        metric_data = [
+            ("connections", "اتصالات نشطة", "مقابس الشبكة النشطة", SEV_LOW),
+            ("processes", "عمليات مراقبة", "أعلى العمليات استهلاكاً", "#a371f7"),
+            ("findings", "نتائج الفحص", "في آخر فحص مكتمل", SEV_MEDIUM),
+            ("score", "الدرجة الأمنية", "مؤشر المخاطر العام", SEV_SAFE),
+        ]
+        for col, (key, label, note, accent) in enumerate(metric_data):
             card = QFrame(objectName="card")
-            card.setProperty("tone", key)
-            card.setMinimumHeight(108)
+            card.setMinimumHeight(110)
+            card.setStyleSheet(f"QFrame#card {{ border-top: 3px solid {accent}; }}")
             box = QVBoxLayout(card)
-            box.setContentsMargins(14, 11, 14, 11)
-            box.setSpacing(3)
-            name = QLabel(label)
-            name.setStyleSheet("color: #a9bec2; font-size: 12px; font-weight: 600;")
-            box.addWidget(name)
-            value = QLabel("—")
-            value.setFont(QFont("Noto Sans Arabic", 25, QFont.Weight.Bold))
-            value.setStyleSheet("color: #f0f8f8;")
-            box.addWidget(value)
-            note = QLabel(metric_notes[key])
-            note.setStyleSheet("color: #789198; font-size: 10px;")
-            box.addWidget(note)
-            self.metric_labels[key] = value
+            box.setContentsMargins(SP_LG, SP_MD, SP_LG, SP_MD)
+            box.setSpacing(SP_XS)
+
+            lbl = QLabel(label)
+            lbl.setObjectName("metricLabel")
+            box.addWidget(lbl)
+
+            val = QLabel("—")
+            val.setObjectName("metricValue")
+            box.addWidget(val)
+
+            nt = QLabel(note)
+            nt.setObjectName("metricNote")
+            box.addWidget(nt)
+
+            self.metric_labels[key] = val
             metrics.addWidget(card, 0, col)
             metrics.setColumnStretch(col, 1)
         layout.addLayout(metrics)
 
+        # ── Live Data Splitter ──
         self.dashboard_splitter = QSplitter(Qt.Orientation.Vertical)
         self.dashboard_splitter.setChildrenCollapsible(False)
-        group = QGroupBox("رادار الاتصالات الحية")
-        group_layout = QVBoxLayout(group)
-        group_layout.setSpacing(8)
+        self.dashboard_splitter.setHandleWidth(2)
+
+        # Connections panel
+        conn_group = QGroupBox("📡 رادار الاتصالات الحية")
+        conn_layout = QVBoxLayout(conn_group)
+        conn_layout.setSpacing(SP_SM)
         self.connection_summary = QLabel("جارٍ قراءة حالة الشبكة...")
-        self.connection_summary.setStyleSheet("color: #8fb0b5; padding: 3px 4px; font-size: 11px;")
-        group_layout.addWidget(self.connection_summary)
+        self.connection_summary.setStyleSheet(f"color: {TEXT_SECONDARY}; font-size: {FONT_SIZE_SMALL}px;")
+        conn_layout.addWidget(self.connection_summary)
         self.table_conns = QTableWidget(0, 7)
-        self.table_conns.setHorizontalHeaderLabels(["البروتوكول", "الحالة", "النطاق", "العنوان المحلي", "العنوان البعيد", "العملية", "PID"])
+        self.table_conns.setHorizontalHeaderLabels(["البروتوكول", "الحالة", "النطاق", "المحلي", "البعيد", "العملية", "PID"])
         self.table_conns.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
         self.table_conns.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
         self.table_conns.setAlternatingRowColors(True)
         self.table_conns.setShowGrid(False)
         self.table_conns.verticalHeader().setVisible(False)
-        self.table_conns.verticalHeader().setDefaultSectionSize(30)
-        group_layout.addWidget(self.table_conns)
-        self.dashboard_splitter.addWidget(group)
+        self.table_conns.verticalHeader().setDefaultSectionSize(32)
+        conn_layout.addWidget(self.table_conns)
+        self.dashboard_splitter.addWidget(conn_group)
 
-        group2 = QGroupBox("أعلى العمليات استهلاكًا")
-        group2_layout = QVBoxLayout(group2)
+        # Processes panel
+        proc_group = QGroupBox("⚙️ أعلى العمليات استهلاكاً")
+        proc_layout = QVBoxLayout(proc_group)
         self.table_procs = QTableWidget(0, 5)
         self.table_procs.setHorizontalHeaderLabels(["المستخدم", "PID", "CPU", "RAM", "الأمر"])
         self.table_procs.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
         self.table_procs.setAlternatingRowColors(True)
         self.table_procs.setShowGrid(False)
         self.table_procs.verticalHeader().setVisible(False)
-        self.table_procs.verticalHeader().setDefaultSectionSize(30)
-        group2_layout.addWidget(self.table_procs)
-        self.dashboard_splitter.addWidget(group2)
+        self.table_procs.verticalHeader().setDefaultSectionSize(32)
+        proc_layout.addWidget(self.table_procs)
+        self.dashboard_splitter.addWidget(proc_group)
+
         self.dashboard_splitter.setStretchFactor(0, 3)
         self.dashboard_splitter.setStretchFactor(1, 2)
-        self.dashboard_splitter.setSizes([390, 230])
+        self.dashboard_splitter.setSizes([420, 260])
         layout.addWidget(self.dashboard_splitter, 1)
 
-    def setup_scans_tab(self) -> None:
-        layout = QVBoxLayout(self.tab_scans)
-        form = QGroupBox("الفحوصات الأساسية")
+    # ═══════════════════════════════════════════════════════════════════════════
+    #  SCANS PAGE
+    # ═══════════════════════════════════════════════════════════════════════════
+    def setup_scans_page(self) -> None:
+        layout = QVBoxLayout(self.page_scans)
+        layout.setContentsMargins(SP_XL, SP_LG, SP_XL, SP_LG)
+        layout.setSpacing(SP_LG)
+
+        # Form card
+        form = QGroupBox("تهيئة الفحص")
         grid = QGridLayout(form)
+        grid.setSpacing(SP_MD)
         self.scan_target = QLineEdit("127.0.0.1")
-        self.scan_target.setPlaceholderText("IP أو اسم المضيف لفحص المنافذ")
+        self.scan_target.setPlaceholderText("IP أو اسم المضيف")
         self.port_range = QLineEdit("1-1024")
         self.port_range.setPlaceholderText("مثال: 22,80,443 أو 1-1024")
         self.ip_target = QLineEdit()
@@ -304,56 +394,57 @@ class UnifiedCockpitWindow(QMainWindow):
         self.website_input = QLineEdit()
         self.website_input.setPlaceholderText("https://example.com")
         self.path_input = QLineEdit(".")
+        self.path_input.setPlaceholderText("مسار الفحص")
+
         grid.addWidget(QLabel("هدف المنافذ:"), 0, 0)
         grid.addWidget(self.scan_target, 0, 1)
         grid.addWidget(QLabel("نطاق المنافذ:"), 0, 2)
         grid.addWidget(self.port_range, 0, 3)
-        grid.addWidget(QLabel("عنوان IP للسمعة:"), 1, 0)
+        grid.addWidget(QLabel("سمعة IP:"), 1, 0)
         grid.addWidget(self.ip_target, 1, 1, 1, 3)
-        grid.addWidget(QLabel("الموقع:"), 2, 0)
+        grid.addWidget(QLabel("فحص موقع:"), 2, 0)
         grid.addWidget(self.website_input, 2, 1, 1, 3)
-        grid.addWidget(QLabel("مسار YARA / الأسرار:"), 3, 0)
+        grid.addWidget(QLabel("مسار YARA:"), 3, 0)
         grid.addWidget(self.path_input, 3, 1, 1, 3)
+
         buttons = [
-            ("فحص الشبكة", lambda: self.run_background_task(lambda: self.agent._scan_network(), "فحص الشبكة")),
-            ("فحص المنافذ", self.start_port_scan),
-            ("فحص النظام", lambda: self.run_background_task(self.agent._scan_system, "فحص النظام")),
-            ("تحليل السجلات", lambda: self.run_background_task(self.agent._scan_logs, "تحليل السجلات")),
-            ("الفحص الشامل", lambda: self.run_background_task(self.agent._full_scan, "الفحص الشامل")),
-            ("مركز USB والأجهزة", lambda: self.tabs.setCurrentWidget(self.tab_usb)),
-            ("فحص الموقع", self.start_website_scan),
-            ("سمعة IP", self.start_ip_reputation),
+            ("🔍 فحص الشبكة", "primary", lambda: self.run_background_task(lambda: self.agent._scan_network(), "فحص الشبكة")),
+            ("🔌 فحص المنافذ", "primary", self.start_port_scan),
+            ("🖥️ فحص النظام", "primary", lambda: self.run_background_task(self.agent._scan_system, "فحص النظام")),
+            ("📋 تحليل السجلات", "primary", lambda: self.run_background_task(self.agent._scan_logs, "تحليل السجلات")),
+            ("🔒 الفحص الشامل", "primary", lambda: self.run_background_task(self.agent._full_scan, "الفحص الشامل")),
+            ("🌐 فحص موقع", "", self.start_website_scan),
+            ("🛡️ سمعة IP", "", self.start_ip_reputation),
         ]
-        scan_help = {
-            "فحص الشبكة": "يفحص الواجهات والاتصالات النشطة والجدار الناري وإشارات تسريب البيانات.",
-            "فحص المنافذ": "يفحص الهدف والنطاق المحددين. استخدمه فقط على أنظمة لديك تصريح بفحصها.",
-            "فحص النظام": "يراجع SSH والمستخدمين والتحديثات والملفات ذات الصلاحيات الخطرة.",
-            "تحليل السجلات": "يبحث في السجلات المحلية عن محاولات دخول وأحداث تستحق المراجعة.",
-            "الفحص الشامل": "يجمع فحوصات النظام والشبكة والسجلات وقد يستغرق وقتًا أطول.",
-            "مركز USB والأجهزة": "يفتح لوحة الأجهزة المتصلة وخيارات USB الآمنة.",
-            "فحص الموقع": "يفحص أمان الاتصال والترويسات لموقع تملكه أو لديك تصريح بفحصه.",
-            "سمعة IP": "يستعلم من المصادر المتاحة؛ قد تكون البيانات محدودة دون مفتاح API.",
-        }
-        for i, (text, callback) in enumerate(buttons):
+        for i, (text, btn_style, callback) in enumerate(buttons):
             btn = QPushButton(text)
-            btn.setToolTip(scan_help.get(text, "تشغيل الإجراء المحدد."))
+            if btn_style:
+                btn.setObjectName(btn_style)
+            btn.setToolTip(f"تشغيل: {text}")
             btn.clicked.connect(callback)
             self.task_buttons.append(btn)
             grid.addWidget(btn, 4 + i // 4, i % 4)
         layout.addWidget(form)
+
+        # Progress
         self.scan_progress = QProgressBar()
         self.scan_progress.setTextVisible(False)
         self.scan_progress.setRange(0, 0)
         self.scan_progress.hide()
         layout.addWidget(self.scan_progress)
-        self.scan_hint = QLabel("مرّر المؤشر على الفحص لمعرفة نطاقه. اضغط على النتيجة لعرض تفاصيلها ودليلها.")
-        self.scan_hint.setStyleSheet("color: #aab8b0;")
+
+        self.scan_hint = QLabel("اختر نوع الفحص المناسب من الأزرار أعلاه.")
+        self.scan_hint.setStyleSheet(f"color: {TEXT_SECONDARY}; font-size: {FONT_SIZE_SMALL}px;")
         layout.addWidget(self.scan_hint)
+
+        # Findings table
         self.setup_findings_table(layout)
 
     def setup_findings_table(self, layout: QVBoxLayout) -> None:
         group = QGroupBox("نتائج الفحص الأخيرة")
         box = QVBoxLayout(group)
+        box.setSpacing(SP_SM)
+
         self.table_findings = QTableWidget(0, 4)
         self.table_findings.setHorizontalHeaderLabels(["الخطورة", "النتيجة", "الفئة", "الثقة"])
         self.table_findings.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
@@ -362,62 +453,81 @@ class UnifiedCockpitWindow(QMainWindow):
         self.table_findings.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
         self.table_findings.setAlternatingRowColors(True)
         self.table_findings.cellClicked.connect(self.show_finding_details)
-        self.table_findings.setMinimumHeight(150)
-        detail_panel = QWidget()
-        detail_layout = QVBoxLayout(detail_panel)
-        detail_layout.setContentsMargins(0, 4, 0, 0)
-        detail_layout.addWidget(QLabel("تحليل النتيجة المحددة"))
+        self.table_findings.setMinimumHeight(160)
+        self.table_findings.verticalHeader().setVisible(False)
+        self.table_findings.verticalHeader().setDefaultSectionSize(32)
+
+        detail_label = QLabel("تحليل النتيجة المحددة")
+        detail_label.setStyleSheet(f"color: {TEXT_SECONDARY}; font-weight: 600; font-size: {FONT_SIZE_SMALL}px;")
         self.finding_detail = QPlainTextEdit(readOnly=True)
         self.finding_detail.setPlaceholderText("حدد نتيجة لعرض التفاصيل والدليل والتوصية.")
-        self.finding_detail.setMinimumHeight(120)
-        detail_layout.addWidget(self.finding_detail)
+        self.finding_detail.setMinimumHeight(130)
+
         findings_splitter = QSplitter(Qt.Orientation.Vertical)
+        findings_splitter.setHandleWidth(2)
         findings_splitter.addWidget(self.table_findings)
+        detail_panel = QWidget()
+        dl = QVBoxLayout(detail_panel)
+        dl.setContentsMargins(0, 0, 0, 0)
+        dl.setSpacing(SP_XS)
+        dl.addWidget(detail_label)
+        dl.addWidget(self.finding_detail)
         findings_splitter.addWidget(detail_panel)
         findings_splitter.setStretchFactor(0, 3)
         findings_splitter.setStretchFactor(1, 2)
         box.addWidget(findings_splitter)
         layout.addWidget(group)
 
-    def setup_usb_tab(self) -> None:
-        layout = QVBoxLayout(self.tab_usb)
+    # ═══════════════════════════════════════════════════════════════════════════
+    #  USB PAGE
+    # ═══════════════════════════════════════════════════════════════════════════
+    def setup_usb_page(self) -> None:
+        layout = QVBoxLayout(self.page_usb)
+        layout.setContentsMargins(SP_XL, SP_LG, SP_XL, SP_LG)
+        layout.setSpacing(SP_LG)
+
         heading = QHBoxLayout()
         self.usb_status = QLabel("لم يتم تحديث قائمة الأجهزة بعد")
-        self.usb_status.setStyleSheet("color: #91a8ae; font-weight: 600;")
+        self.usb_status.setStyleSheet(f"color: {TEXT_SECONDARY}; font-weight: 600;")
         heading.addWidget(self.usb_status)
         heading.addStretch()
-        self.usb_refresh_button = QPushButton("تحديث الأجهزة")
+        self.usb_refresh_button = QPushButton("🔄 تحديث")
+        self.usb_refresh_button.setObjectName("primary")
         self.usb_refresh_button.clicked.connect(self.refresh_usb_inventory)
         self.task_buttons.append(self.usb_refresh_button)
         heading.addWidget(self.usb_refresh_button)
         layout.addLayout(heading)
 
-        devices_group = QGroupBox("الأجهزة المتصلة")
+        devices_group = QGroupBox("📱 الأجهزة المتصلة")
         devices_layout = QVBoxLayout(devices_group)
         self.usb_devices_table = QTableWidget(0, 5)
-        self.usb_devices_table.setHorizontalHeaderLabels(["Bus / Device", "الشركة والمنتج", "الفئة", "VID:PID", "مستوى المخاطر"])
+        self.usb_devices_table.setHorizontalHeaderLabels(["Bus/Device", "المنتج", "الفئة", "VID:PID", "المخاطر"])
         self.usb_devices_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self.usb_devices_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.usb_devices_table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         self.usb_devices_table.setAlternatingRowColors(True)
+        self.usb_devices_table.verticalHeader().setVisible(False)
+        self.usb_devices_table.verticalHeader().setDefaultSectionSize(32)
         self.usb_devices_table.cellClicked.connect(self.show_usb_device_details)
         devices_layout.addWidget(self.usb_devices_table)
         layout.addWidget(devices_group, 2)
 
         actions = QHBoxLayout()
-        self.usb_allow_button = QPushButton("السماح بالجهاز المحدد")
+        actions.setSpacing(SP_SM)
+        self.usb_allow_button = QPushButton("✅ السماح")
         self.usb_allow_button.clicked.connect(lambda: self.control_selected_usb_device(True))
-        self.usb_block_button = QPushButton("حجب الجهاز المحدد")
+        self.usb_block_button = QPushButton("🚫 حجب")
         self.usb_block_button.setObjectName("danger")
         self.usb_block_button.clicked.connect(lambda: self.control_selected_usb_device(False))
-        self.usb_scan_button = QPushButton("تحليل وحدة التخزين المحددة")
+        self.usb_scan_button = QPushButton("🔍 تحليل التخزين")
+        self.usb_scan_button.setObjectName("primary")
         self.usb_scan_button.clicked.connect(self.scan_selected_usb_storage)
         for button in (self.usb_allow_button, self.usb_block_button, self.usb_scan_button):
             self.task_buttons.append(button)
             actions.addWidget(button)
         layout.addLayout(actions)
 
-        drives_group = QGroupBox("وحدات التخزين ومؤشرات الفحص")
+        drives_group = QGroupBox("💾 وحدات التخزين وتحليلها")
         drives_layout = QVBoxLayout(drives_group)
         self.usb_drives_table = QTableWidget(0, 4)
         self.usb_drives_table.setHorizontalHeaderLabels(["الجهاز", "الطراز", "الحجم", "نقطة التوصيل"])
@@ -426,174 +536,44 @@ class UnifiedCockpitWindow(QMainWindow):
         self.usb_drives_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.usb_drives_table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         self.usb_drives_table.setAlternatingRowColors(True)
+        self.usb_drives_table.verticalHeader().setVisible(False)
+        self.usb_drives_table.verticalHeader().setDefaultSectionSize(32)
         self.usb_drives_table.cellClicked.connect(self.show_usb_drive_details)
         drives_layout.addWidget(self.usb_drives_table)
         self.usb_detail = QPlainTextEdit(readOnly=True)
-        self.usb_detail.setPlaceholderText("حدد جهازًا أو وحدة تخزين لعرض التفاصيل والمخاطر والتوصيات.")
-        self.usb_detail.setMaximumHeight(150)
+        self.usb_detail.setPlaceholderText("حدد جهازاً أو وحدة تخزين لعرض التفاصيل والمخاطر.")
+        self.usb_detail.setMaximumHeight(160)
         drives_layout.addWidget(self.usb_detail)
         layout.addWidget(drives_group, 2)
 
-    def on_tab_changed(self, index: int) -> None:
-        if self.tabs.widget(index) is self.tab_usb and not self.usb_inventory_loaded:
-            self.refresh_usb_inventory()
+    # ═══════════════════════════════════════════════════════════════════════════
+    #  TOOLS PAGE
+    # ═══════════════════════════════════════════════════════════════════════════
+    def setup_tools_page(self) -> None:
+        layout = QVBoxLayout(self.page_tools)
+        layout.setContentsMargins(SP_XL, SP_LG, SP_XL, SP_LG)
+        layout.setSpacing(SP_LG)
 
-    def refresh_usb_inventory(self) -> None:
-        self.run_background_task(
-            lambda: {"devices": list_usb_devices(), "drives": scan_mounted_drives(usb_only=True)},
-            "تحديث مخزون USB",
-            preserve_findings=True,
-            result_handler=self.render_usb_inventory,
-        )
-
-    def render_usb_inventory(self, inventory: dict) -> None:
-        devices = inventory.get("devices", [])
-        drives = [drive for drive in inventory.get("drives", []) if drive.get("is_usb")]
-        self.usb_inventory_loaded = True
-        self.usb_devices_table.setRowCount(0)
-        for device in devices:
-            row = self.usb_devices_table.rowCount()
-            self.usb_devices_table.insertRow(row)
-            name = device.get("product") or device.get("description") or device.get("manufacturer") or "جهاز غير معرّف"
-            risk = str(device.get("risk", "low")).lower()
-            risk_labels = {"critical": "حرج", "high": "مرتفع", "medium": "متوسط", "low": "منخفض"}
-            values = [
-                f"{device.get('bus', '—')} / {device.get('device', '—')}",
-                name,
-                device.get("class_name") or device.get("device_class") or "غير محدد",
-                f"{device.get('vendor_id', '—')}:{device.get('product_id', '—')}",
-                risk_labels.get(risk, risk),
-            ]
-            for column, value in enumerate(values):
-                item = QTableWidgetItem(str(value))
-                if column == 0:
-                    item.setData(Qt.ItemDataRole.UserRole, device)
-                if column == 4:
-                    item.setForeground(QColor({"critical": "#ff7078", "high": "#f09b64", "medium": "#e7bd66", "low": "#65d2aa"}.get(risk, "#a9bac0")))
-                self.usb_devices_table.setItem(row, column, item)
-
-        self.usb_drives_table.setRowCount(0)
-        for drive in drives:
-            partitions = drive.get("partitions", []) or [{"name": drive.get("name", ""), "mountpoint": drive.get("mountpoint", ""), "analysis": drive.get("analysis", {})}]
-            for partition in partitions:
-                row = self.usb_drives_table.rowCount()
-                self.usb_drives_table.insertRow(row)
-                mountpoint = partition.get("mountpoint") or "غير موصول"
-                values = [drive.get("name", "—") + (f" / {partition.get('name')}" if partition.get("name") else ""),
-                          " ".join(str(part) for part in (drive.get("vendor"), drive.get("model")) if part) or "غير محدد",
-                          partition.get("size") or drive.get("size", "—"), mountpoint]
-                partition_data = {**partition, "drive": drive}
-                for column, value in enumerate(values):
-                    item = QTableWidgetItem(str(value))
-                    if column == 0:
-                        item.setData(Qt.ItemDataRole.UserRole, partition_data)
-                    self.usb_drives_table.setItem(row, column, item)
-
-        self.usb_status.setText(f"الأجهزة: {len(devices)}  |  وحدات تخزين USB: {len(drives)}  |  الحالة: محدثة الآن")
-        if not devices and not drives:
-            self.usb_detail.setPlainText("لا توجد أجهزة USB أو وحدات تخزين متصلة حاليًا.")
-
-    def show_usb_device_details(self, row: int, _column: int) -> None:
-        item = self.usb_devices_table.item(row, 0)
-        if not item:
-            return
-        device = item.data(Qt.ItemDataRole.UserRole) or {}
-        details = [
-            f"الجهاز: {device.get('product') or device.get('description') or 'غير معروف'}",
-            f"الشركة المصنّعة: {device.get('manufacturer') or 'غير محددة'}",
-            f"Bus / Device: {device.get('bus', '—')} / {device.get('device', '—')}",
-            f"VID:PID: {device.get('vendor_id', '—')}:{device.get('product_id', '—')}",
-            f"التصنيف: {device.get('class_name') or device.get('device_class') or 'غير محدد'}",
-            f"مستوى المخاطر: {device.get('risk', 'low')}",
-            f"المؤشرات: {'؛ '.join(device.get('flags', [])) or 'لا توجد مؤشرات مسجلة'}",
-            f"التوصيات: {'؛ '.join(device.get('recommendations', [])) or 'لا توجد توصيات إضافية'}",
-        ]
-        self.usb_detail.setPlainText("\n".join(details))
-
-    def show_usb_drive_details(self, row: int, _column: int) -> None:
-        item = self.usb_drives_table.item(row, 0)
-        if not item:
-            return
-        partition = item.data(Qt.ItemDataRole.UserRole) or {}
-        self.render_usb_drive_analysis(partition.get("analysis", {}), partition.get("mountpoint", ""))
-
-    def render_usb_drive_analysis(self, analysis: dict, mountpoint: str) -> None:
-        suspicious = analysis.get("suspicious_files", [])
-        autorun = analysis.get("autorun_files", [])
-        lines = [
-            f"نقطة التوصيل: {mountpoint or 'غير موصولة'}",
-            f"الملفات المفحوصة: {analysis.get('total_files_checked', 0)}",
-            f"الملفات التنفيذية: {analysis.get('executable_count', 0)}",
-            f"الملفات المشبوهة: {len(suspicious)}",
-            f"ملفات التشغيل التلقائي: {len(autorun)}",
-        ]
-        for finding in analysis.get("findings", []):
-            lines.extend(["", f"[{finding.get('severity', 'info').upper()}] {finding.get('title', '')}",
-                          str(finding.get("detail") or ""), f"التوصية: {finding.get('fix') or 'لا توجد'}"])
-        if not analysis:
-            lines.append("لا يتوفر تحليل مسبق. حدد وحدة تخزين موصولة ثم شغّل التحليل.")
-        self.usb_detail.setPlainText("\n".join(lines))
-
-    def control_selected_usb_device(self, allow: bool) -> None:
-        row = self.usb_devices_table.currentRow()
-        item = self.usb_devices_table.item(row, 0) if row >= 0 else None
-        device = item.data(Qt.ItemDataRole.UserRole) if item else None
-        if not device:
-            QMessageBox.information(self, "اختر جهازًا", "حدد جهاز USB من القائمة أولًا.")
-            return
-        action = "السماح" if allow else "الحجب"
-        name = device.get("product") or device.get("description") or "الجهاز المحدد"
-        answer = QMessageBox.question(
-            self, f"تأكيد {action} USB", f"هل تريد {action} «{name}»؟ قد يؤدي الحجب إلى فصل الجهاز فورًا.",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
-        )
-        if answer != QMessageBox.StandardButton.Yes:
-            return
-        operation = authorize_device if allow else deauthorize_device
-        self.run_background_task(
-            lambda: operation(device.get("bus", ""), device.get("device", "")),
-            f"{action} جهاز USB",
-            preserve_findings=True,
-            result_handler=self.complete_usb_control,
-        )
-
-    def complete_usb_control(self, result: dict) -> None:
-        if result.get("success"):
-            QMessageBox.information(self, "اكتملت العملية", "تم تحديث حالة الجهاز.")
-            QTimer.singleShot(250, self.refresh_usb_inventory)
-        else:
-            QMessageBox.warning(self, "تعذر تنفيذ العملية", result.get("error") or "لم يتمكن النظام من تحديث حالة الجهاز.")
-
-    def scan_selected_usb_storage(self) -> None:
-        row = self.usb_drives_table.currentRow()
-        item = self.usb_drives_table.item(row, 0) if row >= 0 else None
-        partition = item.data(Qt.ItemDataRole.UserRole) if item else None
-        mountpoint = partition.get("mountpoint") if partition else ""
-        if not mountpoint:
-            QMessageBox.information(self, "لا توجد وحدة موصولة", "اختر قسمًا موصولًا قبل بدء التحليل.")
-            return
-        self.run_background_task(
-            lambda: analyze_mounted_filesystem(mountpoint),
-            "تحليل وحدة تخزين USB",
-            preserve_findings=True,
-            result_handler=lambda analysis: self.render_usb_drive_analysis(analysis, mountpoint),
-        )
-
-    def setup_tools_tab(self) -> None:
-        layout = QVBoxLayout(self.tab_tools)
-        group = QGroupBox("أدوات التدقيق والتحصين")
+        group = QGroupBox("🛡️ أدوات التدقيق والتحصين المتقدمة")
         grid = QGridLayout(group)
+        grid.setSpacing(SP_MD)
         self.tool_path = QLineEdit(".")
+        self.tool_path.setPlaceholderText("مسار الفحص (افتراضي: المجلد الحالي)")
         grid.addWidget(QLabel("المسار:"), 0, 0)
         grid.addWidget(self.tool_path, 0, 1, 1, 3)
+
         actions = [
-            ("CIS / Hardening", self.agent._run_deep_audit, False, False), ("Lynis", self.agent._run_lynis_cli, False, False),
-            ("YARA", self.start_yara_scan, False, True),
-            ("Rootkit", self.agent._run_rootkit_cli, False, False), ("كشف الأسرار", self.start_secret_scan, False, True),
-            ("تعلّم خط الأساس", self.agent._run_baseline_learn_cli, False, False), ("فحص خط الأساس", self.agent._run_baseline_check_cli, False, False),
-            ("توليد قواعد دفاعية", self.agent._run_synthesize_rules_cli, True, False), ("خطة المعالجة", self.agent._generate_remediation_plan, True, False),
-            ("تقرير HTML", self.agent._export_html_report, True, False), ("تحديث معلومات التهديدات", self.agent._update_intel, False, False),
+            ("🔒 CIS / Hardening", self.agent._run_deep_audit, False, False),
+            ("📋 Lynis", self.agent._run_lynis_cli, False, False),
+            ("🦠 YARA", self.start_yara_scan, False, True),
+            ("🕵️ Rootkit", self.agent._run_rootkit_cli, False, False),
+            ("🔑 كشف الأسرار", self.start_secret_scan, False, True),
+            ("📊 تعلّم خط الأساس", self.agent._run_baseline_learn_cli, False, False),
+            ("🔍 فحص الشذوذ", self.agent._run_baseline_check_cli, False, False),
+            ("⚡ توليد قواعد", self.agent._run_synthesize_rules_cli, True, False),
+            ("📝 خطة المعالجة", self.agent._generate_remediation_plan, True, False),
+            ("🌐 تقرير HTML", self.agent._export_html_report, True, False),
+            ("🔄 تحديث التهديدات", self.agent._update_intel, False, False),
         ]
         for i, (text, fn, preserve_findings, direct) in enumerate(actions):
             btn = QPushButton(text)
@@ -604,133 +584,195 @@ class UnifiedCockpitWindow(QMainWindow):
             self.task_buttons.append(btn)
             grid.addWidget(btn, 1 + i // 3, i % 3)
         layout.addWidget(group)
-        note = QLabel("تنبيه: أدوات الإصلاح التلقائي قد تغيّر إعدادات النظام. استخدمها من المحادثة أو الطرفية بعد مراجعة النتائج.")
-        note.setStyleSheet("color: #9a641b;")
+
+        note = QLabel("⚠️ أدوات الإصلاح التلقائي قد تغيّر إعدادات النظام. استخدمها بعد مراجعة النتائج.")
+        note.setStyleSheet(f"color: {SEV_MEDIUM}; font-size: {FONT_SIZE_SMALL}px; padding: 4px;")
         layout.addWidget(note)
         layout.addStretch()
 
-    def setup_chat_tab(self) -> None:
-        layout = QVBoxLayout(self.tab_chat)
+    # ═══════════════════════════════════════════════════════════════════════════
+    #  CHAT PAGE
+    # ═══════════════════════════════════════════════════════════════════════════
+    def setup_chat_page(self) -> None:
+        layout = QVBoxLayout(self.page_chat)
+        layout.setContentsMargins(SP_XL, SP_LG, SP_XL, SP_LG)
+        layout.setSpacing(SP_MD)
+
+        intro = QLabel("💬 محادثة ذكية — اكتب بالعربية أو الإنجليزية وسيفهمك الوكيل")
+        intro.setStyleSheet(f"color: {TEXT_SECONDARY}; font-size: {FONT_SIZE_SMALL}px;")
+        layout.addWidget(intro)
+
         self.chat_display = QTextEdit(readOnly=True)
         self.chat_display.setPlaceholderText("ستظهر هنا حالة المهام والنتائج...")
-        self.chat_display.append("[النظام] مرحبًا. اختر فحصًا من مركز الفحوصات أو اكتب أمرًا بسيطًا مثل: افحص الشبكة")
+        self.chat_display.append("🤖 [النظام] مرحباً. اختر فحصاً من تبويب الفحوصات أو اكتب أمراً هنا.")
         layout.addWidget(self.chat_display)
+
         row = QHBoxLayout()
+        row.setSpacing(SP_SM)
         self.chat_input = QLineEdit()
-        self.chat_input.setPlaceholderText("اكتب أمرًا أو سؤالًا...")
+        self.chat_input.setPlaceholderText("اكتب أمراً أو سؤالاً...")
         self.chat_input.returnPressed.connect(self.send_chat_message)
-        send = QPushButton("إرسال")
+        send = QPushButton("📤 إرسال")
+        send.setObjectName("primary")
         send.clicked.connect(self.send_chat_message)
         row.addWidget(self.chat_input)
         row.addWidget(send)
         layout.addLayout(row)
 
-    def setup_playbooks_tab(self) -> None:
-        layout = QVBoxLayout(self.tab_playbooks)
+    # ═══════════════════════════════════════════════════════════════════════════
+    #  PLAYBOOKS PAGE
+    # ═══════════════════════════════════════════════════════════════════════════
+    def setup_playbooks_page(self) -> None:
+        layout = QVBoxLayout(self.page_playbooks)
+        layout.setContentsMargins(SP_XL, SP_LG, SP_XL, SP_LG)
+        layout.setSpacing(SP_MD)
+
+        intro = QLabel("📋 استخرج خطة عمل أمنية مهيكلة لأي أداة أو موضوع من كتبك المفهرسة")
+        intro.setStyleSheet(f"color: {TEXT_SECONDARY}; font-size: {FONT_SIZE_SMALL}px;")
+        layout.addWidget(intro)
+
         row = QHBoxLayout()
+        row.setSpacing(SP_SM)
         self.pb_input = QLineEdit()
         self.pb_input.setPlaceholderText("مثال: nmap أو privilege_escalation أو ufw")
-        button = QPushButton("استخراج الخطة")
+        button = QPushButton("🔍 استخراج")
+        button.setObjectName("primary")
         button.clicked.connect(self.load_playbook)
         row.addWidget(self.pb_input)
         row.addWidget(button)
         layout.addLayout(row)
+
         self.pb_text = QPlainTextEdit(readOnly=True)
+        self.pb_text.setPlaceholderText("ستظهر هنا خطة العمل المهيكلة مع الأوامر والمصادر.")
         layout.addWidget(self.pb_text)
 
-    def setup_reports_tab(self) -> None:
-        layout = QVBoxLayout(self.tab_reports)
+    # ═══════════════════════════════════════════════════════════════════════════
+    #  REPORTS PAGE
+    # ═══════════════════════════════════════════════════════════════════════════
+    def setup_reports_page(self) -> None:
+        layout = QVBoxLayout(self.page_reports)
+        layout.setContentsMargins(SP_XL, SP_LG, SP_XL, SP_LG)
+        layout.setSpacing(SP_MD)
+
+        intro = QLabel("📄 إدارة التقارير الأمنية المُنشأة")
+        intro.setStyleSheet(f"color: {TEXT_SECONDARY}; font-size: {FONT_SIZE_SMALL}px;")
+        layout.addWidget(intro)
+
         row = QHBoxLayout()
+        row.setSpacing(SP_SM)
         self.reports_dir = QLineEdit(self.settings.get("report_dir", os.path.expanduser("~/ayfam-reports")))
-        browse = QPushButton("اختيار مجلد")
+        browse = QPushButton("📁 تصفح")
         browse.clicked.connect(self.choose_reports_dir)
-        refresh = QPushButton("تحديث القائمة")
+        refresh = QPushButton("🔄 تحديث")
         refresh.clicked.connect(self.refresh_reports)
+        row.addWidget(QLabel("المجلد:"))
         row.addWidget(self.reports_dir)
         row.addWidget(browse)
         row.addWidget(refresh)
         layout.addLayout(row)
+
         self.reports_table = QTableWidget(0, 3)
         self.reports_table.setHorizontalHeaderLabels(["الملف", "الحجم", "آخر تعديل"])
         self.reports_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        self.reports_table.setAlternatingRowColors(True)
+        self.reports_table.verticalHeader().setVisible(False)
+        self.reports_table.verticalHeader().setDefaultSectionSize(32)
         self.reports_table.cellDoubleClicked.connect(self.open_report)
         layout.addWidget(self.reports_table)
         self.refresh_reports()
 
-    def setup_library_tab(self) -> None:
-        layout = QVBoxLayout(self.tab_library)
-        intro = QLabel(
-            "تُستخرج النصوص من ملفاتك وتُخزّن محليًا في مكتبة الأداة. "
-            "البحث النصي يعمل بعد الإضافة مباشرة؛ أعد بناء الفهرس لتفعيل ترتيب الصلة والربط بين الكتب."
-        )
+    # ═══════════════════════════════════════════════════════════════════════════
+    #  LIBRARY PAGE
+    # ═══════════════════════════════════════════════════════════════════════════
+    def setup_library_page(self) -> None:
+        layout = QVBoxLayout(self.page_library)
+        layout.setContentsMargins(SP_XL, SP_LG, SP_XL, SP_LG)
+        layout.setSpacing(SP_MD)
+
+        intro = QLabel("📚 مكتبة المعرفة المحلية — أضف كتباً وملفات ويتم استخراج نصها وفهرسته محلياً")
         intro.setWordWrap(True)
-        intro.setStyleSheet("color: #bcc9c1; padding: 4px;")
+        intro.setStyleSheet(f"color: {TEXT_SECONDARY}; font-size: {FONT_SIZE_SMALL}px; padding: 4px;")
         layout.addWidget(intro)
 
         actions = QHBoxLayout()
-        self.add_books_button = QPushButton("إضافة كتب أو ملفات")
+        actions.setSpacing(SP_SM)
+        self.add_books_button = QPushButton("➕ إضافة كتب")
+        self.add_books_button.setObjectName("primary")
         self.add_books_button.clicked.connect(self.choose_books)
-        self.rebuild_index_button = QPushButton("إعادة بناء فهرس الذكاء")
+        self.rebuild_index_button = QPushButton("🔄 إعادة بناء الفهرس")
         self.rebuild_index_button.clicked.connect(self.rebuild_library_index)
-        refresh = QPushButton("تحديث المكتبة")
+        refresh = QPushButton("🔄 تحديث")
         refresh.clicked.connect(self.refresh_library)
         actions.addWidget(self.add_books_button)
         actions.addWidget(self.rebuild_index_button)
         actions.addWidget(refresh)
+        actions.addStretch()
         layout.addLayout(actions)
 
         self.library_status = QLabel("جارٍ تحميل المكتبة...")
-        self.library_status.setStyleSheet("color: #a3dfcd;")
+        self.library_status.setStyleSheet(f"color: {STATUS_OK}; font-size: {FONT_SIZE_SMALL}px;")
         layout.addWidget(self.library_status)
+
         self.library_table = QTableWidget(0, 4)
         self.library_table.setHorizontalHeaderLabels(["العنوان", "النوع", "المقاطع", "تاريخ الإضافة"])
         self.library_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self.library_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         self.library_table.setAlternatingRowColors(True)
+        self.library_table.verticalHeader().setVisible(False)
+        self.library_table.verticalHeader().setDefaultSectionSize(32)
         self.library_table.cellClicked.connect(self.show_library_document)
         layout.addWidget(self.library_table, 2)
 
         search_row = QHBoxLayout()
+        search_row.setSpacing(SP_SM)
         self.library_query = QLineEdit()
-        self.library_query.setPlaceholderText("ابحث في نص الكتب التي أضفتها")
+        self.library_query.setPlaceholderText("ابحث في نص الكتب التي أضفتها...")
         self.library_query.returnPressed.connect(self.search_library)
-        search_button = QPushButton("بحث في المكتبة")
+        search_button = QPushButton("🔍 بحث")
+        search_button.setObjectName("primary")
         search_button.clicked.connect(self.search_library)
         search_row.addWidget(self.library_query)
         search_row.addWidget(search_button)
         layout.addLayout(search_row)
+
         self.library_results = QPlainTextEdit(readOnly=True)
         self.library_results.setPlaceholderText("ستظهر المقاطع المطابقة مع اسم الكتاب ورقم الصفحة هنا.")
         layout.addWidget(self.library_results, 2)
         self.refresh_library()
 
+    # ═══════════════════════════════════════════════════════════════════════════
+    #  LIVE TELEMETRY
+    # ═══════════════════════════════════════════════════════════════════════════
     def update_live_telemetry(self) -> None:
         try:
             conns = LiveReconEngine.get_live_connections()
             self.table_conns.setRowCount(0)
             for c in conns[:30]:
-                values = [c.get("proto", ""), c.get("state", ""), "خارجي" if c.get("is_foreign") else "محلي",
-                          c.get("local", ""), c.get("remote", ""), c.get("process", ""), c.get("pid", "")]
+                values = [c.get("proto", ""), c.get("state", ""),
+                          "خارجي" if c.get("is_foreign") else "محلي",
+                          c.get("local", ""), c.get("remote", ""),
+                          c.get("process", ""), c.get("pid", "")]
                 row = self.table_conns.rowCount()
                 self.table_conns.insertRow(row)
                 for col, value in enumerate(values):
                     item = QTableWidgetItem(str(value))
                     if col == 2:
-                        item.setForeground(QColor("#f0a05e" if c.get("is_foreign") else "#65d2aa"))
+                        item.setForeground(QColor(SEV_HIGH if c.get("is_foreign") else SEV_SAFE))
                     self.table_conns.setItem(row, col, item)
             procs = LiveReconEngine.get_top_processes(15)
             self.table_procs.setRowCount(0)
             for p in procs:
                 row = self.table_procs.rowCount()
                 self.table_procs.insertRow(row)
-                values = [p.get("user", ""), p.get("pid", ""), f"{p.get('cpu', 0)}%", f"{p.get('mem', 0)}%", p.get("command", "")]
+                values = [p.get("user", ""), p.get("pid", ""),
+                          f"{p.get('cpu', 0)}%", f"{p.get('mem', 0)}%", p.get("command", "")]
                 for col, value in enumerate(values):
                     self.table_procs.setItem(row, col, QTableWidgetItem(str(value)))
             self.metric_labels["connections"].setText(str(len(conns)))
             self.metric_labels["processes"].setText(str(len(procs)))
-            external = sum(1 for connection in conns if connection.get("is_foreign"))
+            external = sum(1 for c in conns if c.get("is_foreign"))
             self.connection_summary.setText(
-                f"{len(conns)} اتصال نشط  |  {external} عنوانًا خارجيًا  |  تحديث تلقائي كل 3 ثوانٍ"
+                f"{len(conns)} اتصال نشط  |  {external} خارجي  |  تحديث كل 3 ثوانٍ"
             )
         except Exception as exc:
             self.chat_display.append(f"[تحذير الرادار] {exc}")
@@ -744,21 +786,24 @@ class UnifiedCockpitWindow(QMainWindow):
             self.chat_display.append(f"[{timestamp}] [{level}] {message}")
         self.visible_events = events
 
+    # ═══════════════════════════════════════════════════════════════════════════
+    #  CHAT
+    # ═══════════════════════════════════════════════════════════════════════════
     def send_chat_message(self) -> None:
         text = self.chat_input.text().strip()
         if not text:
             return
         self.chat_input.clear()
-        self.chat_display.append(f"\n[أنت] {text}")
+        self.chat_display.append(f"\n👤 [أنت] {text}")
         cmd = self.agent.nlp.parse(text)
-        self.chat_display.append(f"[الوكيل] فهمت الطلب: {self.agent.nlp.describe_intent(cmd.intent, 'ar')}")
+        self.chat_display.append(f"🤖 [الوكيل] فهمت: {self.agent.nlp.describe_intent(cmd.intent, 'ar')}")
         if cmd.intent == "explain":
             target = cmd.explain_target or text
             self.run_background_task(
                 lambda: self.agent.nlp.explain(target),
                 "شرح السؤال",
                 preserve_findings=True,
-                result_handler=lambda answer: self.chat_display.append(f"[الوكيل]\n{answer}"),
+                result_handler=lambda answer: self.chat_display.append(f"🤖 [الوكيل]\n{answer}"),
             )
             return
 
@@ -768,20 +813,20 @@ class UnifiedCockpitWindow(QMainWindow):
             "scan_system": ("فحص النظام", self.agent._scan_system),
             "scan_logs": ("تحليل السجلات", self.agent._scan_logs),
             "full_scan": ("الفحص الشامل", self.agent._full_scan),
-            "usb_control": ("فحص USB والأجهزة", self.agent._usb_control_center),
-            "check_firewall": ("فحص جدار الحماية", self.agent._check_firewall),
-            "wifi": ("فحص شبكات Wi-Fi", self.agent._wifi_status),
-            "scan_trend": ("مقارنة الفحوص السابقة", self.agent._show_trend),
-            "rebuild_index": ("إعادة بناء فهرس الذكاء", self.agent._rebuild_index),
-            "show_learned": ("عرض ما تعلمته الأداة", self.agent._show_learned),
+            "usb_control": ("فحص USB", self.agent._usb_control_center),
+            "check_firewall": ("جدار الحماية", self.agent._check_firewall),
+            "wifi": ("Wi-Fi", self.agent._wifi_status),
+            "scan_trend": ("تطور الوضع", self.agent._show_trend),
+            "rebuild_index": ("بناء الفهرس", self.agent._rebuild_index),
+            "show_learned": ("ما تعلمته", self.agent._show_learned),
             "concept_explore": ("استكشاف مفهوم", lambda: self.agent._concept_explore(entities.get("concept", ""))),
             "concept_link": ("ربط مفهومين", lambda: self.agent._concept_link(entities.get("concept_a", ""), entities.get("concept_b", ""))),
             "summarize_doc": ("تلخيص كتاب", lambda: self.agent._summarize_doc(entities.get("book_title", ""))),
-            "teach": ("حفظ معلومة للتذكر", lambda: self.agent._teach(entities.get("fact", ""))),
-            "cve_search": ("البحث عن ثغرات CVE", lambda: self.agent._cve_search(entities.get("cve") or entities.get("keyword") or text)),
-            "pkg_vuln_search": ("فحص ثغرات حزمة", lambda: self.agent._pkg_vuln_search(entities.get("package", ""))),
-            "web_search": ("البحث في الويب", lambda: self.agent._web_search(entities.get("keyword") or text)),
-            "update_intel": ("تحديث معلومات التهديدات", self.agent._update_intel),
+            "teach": ("حفظ معلومة", lambda: self.agent._teach(entities.get("fact", ""))),
+            "cve_search": ("بحث CVE", lambda: self.agent._cve_search(entities.get("cve") or entities.get("keyword") or text)),
+            "pkg_vuln_search": ("ثغرات حزمة", lambda: self.agent._pkg_vuln_search(entities.get("package", ""))),
+            "web_search": ("بحث ويب", lambda: self.agent._web_search(entities.get("keyword") or text)),
+            "update_intel": ("تحديث التهديدات", self.agent._update_intel),
         }
         if cmd.intent in routes:
             title, handler = routes[cmd.intent]
@@ -812,11 +857,14 @@ class UnifiedCockpitWindow(QMainWindow):
                     result_handler=lambda _result: self.refresh_library(),
                 )
             else:
-                self.tabs.setCurrentWidget(self.tab_library)
-                self.chat_display.append("[الوكيل] اختر «إضافة كتب أو ملفات» من مكتبة المعرفة.")
+                self.switch_page("library")
+                self.chat_display.append("🤖 [الوكيل] اختر «إضافة كتب» من مكتبة المعرفة.")
             return
-        self.chat_display.append("[الوكيل] لم أنفذ هذا الطلب تلقائيًا. استخدم التبويب المناسب؛ لا أطبق إصلاحات النظام دون تأكيد.")
+        self.chat_display.append("🤖 [الوكيل] لم أنفذ هذا الطلب تلقائياً. استخدم التبويب المناسب.")
 
+    # ═══════════════════════════════════════════════════════════════════════════
+    #  BACKGROUND TASK EXECUTION
+    # ═══════════════════════════════════════════════════════════════════════════
     def run_background_task(
         self,
         fn: Callable[..., Any],
@@ -827,8 +875,8 @@ class UnifiedCockpitWindow(QMainWindow):
         if self.worker and self.worker.isRunning():
             QMessageBox.information(self, "مهمة قيد التنفيذ", "انتظر انتهاء المهمة الحالية قبل تشغيل مهمة أخرى.")
             return
-        self.set_activity_state("running", f"الحالة: يعمل — {title}")
-        self.chat_display.append(f"\n[بدء] {title}")
+        self.set_activity_state("running", f"يعمل — {title}")
+        self.chat_display.append(f"\n⚙️ [بدء] {title}")
         self.scan_progress.show()
         self.scan_hint.setText(f"جارٍ التنفيذ: {title}")
         self.active_task_title = title
@@ -841,6 +889,10 @@ class UnifiedCockpitWindow(QMainWindow):
 
     def set_activity_state(self, state: str, text: str) -> None:
         self.status_badge.setText(text)
+        status_text = {"idle": "● جاهز", "running": "● يعمل", "error": "● خطأ"}.get(state, "● جاهز")
+        status_color = {"idle": STATUS_OK, "running": "#d29922", "error": STATUS_ERROR}.get(state, STATUS_OK)
+        self.sidebar_status.setText(status_text)
+        self.sidebar_status.setStyleSheet(f"color: {status_color}; font-size: {FONT_SIZE_SMALL}px; padding: 8px 6px;")
         for widget in (self.status_badge, self.activity_lamp):
             widget.setProperty("state", state)
             widget.style().unpolish(widget)
@@ -865,10 +917,13 @@ class UnifiedCockpitWindow(QMainWindow):
         self.agent._last_findings = findings or []
         return self.agent._last_findings
 
+    # ═══════════════════════════════════════════════════════════════════════════
+    #  SCAN STARTERS
+    # ═══════════════════════════════════════════════════════════════════════════
     def start_website_scan(self) -> None:
         url = self.website_input.text().strip()
         if not url:
-            QMessageBox.warning(self, "رابط الموقع مطلوب", "أدخل رابط الموقع قبل بدء الفحص.")
+            QMessageBox.warning(self, "رابط مطلوب", "أدخل رابط الموقع قبل بدء الفحص.")
             return
         self.run_background_task(lambda: self.agent._test_website(url), "فحص الموقع")
 
@@ -882,7 +937,7 @@ class UnifiedCockpitWindow(QMainWindow):
         try:
             ipaddress.ip_address(target)
         except ValueError:
-            QMessageBox.warning(self, "عنوان IP غير صالح", "أدخل عنوان IPv4 أو IPv6 صالحًا لفحص السمعة.")
+            QMessageBox.warning(self, "IP غير صالح", "أدخل عنوان IPv4 أو IPv6 صالحاً.")
             return
         self.run_background_task(lambda: self.agent._check_ip(target), "سمعة IP")
 
@@ -894,11 +949,292 @@ class UnifiedCockpitWindow(QMainWindow):
         path = self.tool_path.text().strip() or "."
         self.run_background_task(lambda: self.agent._scan_secrets_cli(path), "كشف الأسرار")
 
+    # ═══════════════════════════════════════════════════════════════════════════
+    #  USB
+    # ═══════════════════════════════════════════════════════════════════════════
+    def refresh_usb_inventory(self) -> None:
+        self.run_background_task(
+            lambda: {"devices": list_usb_devices(), "drives": scan_mounted_drives(usb_only=True)},
+            "تحديث USB",
+            preserve_findings=True,
+            result_handler=self.render_usb_inventory,
+        )
+
+    def render_usb_inventory(self, inventory: dict) -> None:
+        devices = inventory.get("devices", [])
+        drives = [d for d in inventory.get("drives", []) if d.get("is_usb")]
+        self.usb_inventory_loaded = True
+        self.usb_devices_table.setRowCount(0)
+        for device in devices:
+            row = self.usb_devices_table.rowCount()
+            self.usb_devices_table.insertRow(row)
+            name = device.get("product") or device.get("description") or device.get("manufacturer") or "جهاز غير معرّف"
+            risk = str(device.get("risk", "low")).lower()
+            risk_labels = {"critical": "🔴 حرج", "high": "🟠 مرتفع", "medium": "🟡 متوسط", "low": "🟢 منخفض"}
+            values = [
+                f"{device.get('bus', '—')} / {device.get('device', '—')}",
+                name,
+                device.get("class_name") or device.get("device_class") or "غير محدد",
+                f"{device.get('vendor_id', '—')}:{device.get('product_id', '—')}",
+                risk_labels.get(risk, risk),
+            ]
+            for column, value in enumerate(values):
+                item = QTableWidgetItem(str(value))
+                if column == 0:
+                    item.setData(Qt.ItemDataRole.UserRole, device)
+                if column == 4:
+                    item.setForeground(_sev_brush(risk))
+                self.usb_devices_table.setItem(row, column, item)
+
+        self.usb_drives_table.setRowCount(0)
+        for drive in drives:
+            partitions = drive.get("partitions", []) or [{"name": drive.get("name", ""), "mountpoint": drive.get("mountpoint", ""), "analysis": drive.get("analysis", {})}]
+            for partition in partitions:
+                row = self.usb_drives_table.rowCount()
+                self.usb_drives_table.insertRow(row)
+                mountpoint = partition.get("mountpoint") or "غير موصول"
+                values = [drive.get("name", "—") + (f" / {partition.get('name')}" if partition.get("name") else ""),
+                          " ".join(str(p) for p in (drive.get("vendor"), drive.get("model")) if p) or "غير محدد",
+                          partition.get("size") or drive.get("size", "—"), mountpoint]
+                partition_data = {**partition, "drive": drive}
+                for column, value in enumerate(values):
+                    item = QTableWidgetItem(str(value))
+                    if column == 0:
+                        item.setData(Qt.ItemDataRole.UserRole, partition_data)
+                    self.usb_drives_table.setItem(row, column, item)
+
+        self.usb_status.setText(f"📱 {len(devices)} جهاز  |  💾 {len(drives)} وحدة تخزين  |  محدث")
+        if not devices and not drives:
+            self.usb_detail.setPlainText("لا توجد أجهزة USB أو وحدات تخزين متصلة حالياً.")
+
+    def show_usb_device_details(self, row: int, _column: int) -> None:
+        item = self.usb_devices_table.item(row, 0)
+        if not item:
+            return
+        device = item.data(Qt.ItemDataRole.UserRole) or {}
+        details = [
+            f"الجهاز: {device.get('product') or device.get('description') or 'غير معروف'}",
+            f"الشركة: {device.get('manufacturer') or 'غير محددة'}",
+            f"Bus/Device: {device.get('bus', '—')} / {device.get('device', '—')}",
+            f"VID:PID: {device.get('vendor_id', '—')}:{device.get('product_id', '—')}",
+            f"التصنيف: {device.get('class_name') or device.get('device_class') or 'غير محدد'}",
+            f"المخاطر: {device.get('risk', 'low')}",
+            f"المؤشرات: {'؛ '.join(device.get('flags', [])) or 'لا توجد'}",
+            f"التوصيات: {'؛ '.join(device.get('recommendations', [])) or 'لا توجد'}",
+        ]
+        self.usb_detail.setPlainText("\n".join(details))
+
+    def show_usb_drive_details(self, row: int, _column: int) -> None:
+        item = self.usb_drives_table.item(row, 0)
+        if not item:
+            return
+        partition = item.data(Qt.ItemDataRole.UserRole) or {}
+        self.render_usb_drive_analysis(partition.get("analysis", {}), partition.get("mountpoint", ""))
+
+    def render_usb_drive_analysis(self, analysis: dict, mountpoint: str) -> None:
+        suspicious = analysis.get("suspicious_files", [])
+        autorun = analysis.get("autorun_files", [])
+        lines = [
+            f"نقطة التوصيل: {mountpoint or 'غير موصولة'}",
+            f"الملفات المفحوصة: {analysis.get('total_files_checked', 0)}",
+            f"التنفيذية: {analysis.get('executable_count', 0)}",
+            f"المشبوهة: {len(suspicious)}",
+            f"التشغيل التلقائي: {len(autorun)}",
+        ]
+        for finding in analysis.get("findings", []):
+            lines.extend(["", f"[{finding.get('severity', 'info').upper()}] {finding.get('title', '')}",
+                          str(finding.get("detail") or ""), f"التوصية: {finding.get('fix') or 'لا توجد'}"])
+        if not analysis:
+            lines.append("لا يتوفر تحليل مسبق. حدد وحدة تخزين موصولة ثم شغّل التحليل.")
+        self.usb_detail.setPlainText("\n".join(lines))
+
+    def control_selected_usb_device(self, allow: bool) -> None:
+        row = self.usb_devices_table.currentRow()
+        item = self.usb_devices_table.item(row, 0) if row >= 0 else None
+        device = item.data(Qt.ItemDataRole.UserRole) if item else None
+        if not device:
+            QMessageBox.information(self, "اختر جهازاً", "حدد جهاز USB من القائمة أولاً.")
+            return
+        action = "السماح" if allow else "الحجب"
+        name = device.get("product") or device.get("description") or "الجهاز المحدد"
+        answer = QMessageBox.question(
+            self, f"تأكيد {action} USB", f"هل تريد {action} «{name}»؟",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        operation = authorize_device if allow else deauthorize_device
+        self.run_background_task(
+            lambda: operation(device.get("bus", ""), device.get("device", "")),
+            f"{action} USB",
+            preserve_findings=True,
+            result_handler=self.complete_usb_control,
+        )
+
+    def complete_usb_control(self, result: dict) -> None:
+        if result.get("success"):
+            QMessageBox.information(self, "اكتمل", "تم تحديث حالة الجهاز.")
+            QTimer.singleShot(250, self.refresh_usb_inventory)
+        else:
+            QMessageBox.warning(self, "فشل", result.get("error") or "لم يتمكن النظام من تحديث حالة الجهاز.")
+
+    def scan_selected_usb_storage(self) -> None:
+        row = self.usb_drives_table.currentRow()
+        item = self.usb_drives_table.item(row, 0) if row >= 0 else None
+        partition = item.data(Qt.ItemDataRole.UserRole) if item else None
+        mountpoint = partition.get("mountpoint") if partition else ""
+        if not mountpoint:
+            QMessageBox.information(self, "لا توجد وحدة موصولة", "اختر قسماً موصولاً قبل بدء التحليل.")
+            return
+        self.run_background_task(
+            lambda: analyze_mounted_filesystem(mountpoint),
+            "تحليل تخزين USB",
+            preserve_findings=True,
+            result_handler=lambda analysis: self.render_usb_drive_analysis(analysis, mountpoint),
+        )
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    #  FINDINGS DISPLAY
+    # ═══════════════════════════════════════════════════════════════════════════
+    def show_finding_details(self, row: int, _column: int) -> None:
+        if row >= len(self.current_findings):
+            return
+        finding = self.current_findings[row]
+        confidence = finding.get("confidence")
+        confidence_text = f"{float(confidence):.0%}" if isinstance(confidence, (int, float)) else "غير محددة"
+        evidence = finding.get("evidence") or {}
+        lines = [
+            f"النتيجة: {finding.get('title', 'بلا عنوان')}",
+            f"الخطورة: {str(finding.get('severity', 'info')).upper()} | الثقة: {confidence_text}",
+            f"الفئة: {finding.get('category', 'غير مصنفة')}",
+            "",
+            "ماذا رُصد:",
+            str(finding.get("detail") or "لم يوفر الفاحص تفاصيل إضافية."),
+            "",
+            "التوصية:",
+            str(finding.get("fix") or "لا توجد توصية آلية مسجلة."),
+        ]
+        if evidence:
+            lines.extend(["", "الدليل المسجل:", json.dumps(evidence, ensure_ascii=False, indent=2, default=str)])
+        tags = finding.get("tags") or []
+        if tags:
+            lines.extend(["", f"الوسوم: {', '.join(str(t) for t in tags)}"])
+        attack_ids = finding.get("attack_ids") or []
+        if attack_ids:
+            lines.extend([f"ATT&CK: {', '.join(str(i) for i in attack_ids)}"])
+        self.finding_detail.setPlainText("\n".join(lines))
+
+    def task_done(self, result: Any, title: str) -> None:
+        self.scan_progress.hide()
+        for button in self.task_buttons:
+            button.setEnabled(True)
+        if isinstance(result, Exception):
+            self.active_result_handler = None
+            self.set_activity_state("error", "فشل")
+            self.chat_display.append(f"❌ [خطأ] {title}: {result}")
+            self.scan_hint.setText(f"تعذر إكمال: {title}")
+            return
+        if self.active_result_handler:
+            handler, self.active_result_handler = self.active_result_handler, None
+            try:
+                handler(result)
+            except Exception as exc:
+                self.set_activity_state("error", "فشل")
+                self.chat_display.append(f"❌ [خطأ عرض] {title}: {exc}")
+                return
+            self.set_activity_state("idle", "جاهز")
+            self.scan_hint.setText(f"✅ اكتمل: {title}")
+            self.chat_display.append(f"✅ [اكتمل] {title}")
+            return
+        findings = result if isinstance(result, list) else []
+        self.render_findings(findings)
+        self.set_activity_state("idle", "جاهز")
+        self.scan_hint.setText(f"✅ اكتمل: {title} | النتائج: {len(findings)}")
+        self.chat_display.append(f"✅ [اكتمل] {title} | النتائج: {len(findings)}")
+
+    def render_findings(self, findings: list) -> None:
+        self.current_findings = findings
+        self.table_findings.setRowCount(0)
+        self.finding_detail.clear()
+        if not findings:
+            self.finding_detail.setPlaceholderText("لم يسجل هذا الفحص نتائج أمنية.")
+        for finding in findings:
+            row = self.table_findings.rowCount()
+            self.table_findings.insertRow(row)
+            severity = str(finding.get("severity", "info")).upper()
+            sev_item = QTableWidgetItem(severity)
+            sev_item.setForeground(_sev_brush(severity))
+            confidence = finding.get("confidence")
+            confidence_text = f"{float(confidence):.0%}" if isinstance(confidence, (int, float)) else "—"
+            values = [sev_item, QTableWidgetItem(str(finding.get("title", ""))),
+                      QTableWidgetItem(str(finding.get("category", ""))), QTableWidgetItem(confidence_text)]
+            for col, cell in enumerate(values):
+                self.table_findings.setItem(row, col, cell)
+        evaluation = RiskEngine.evaluate(findings)
+        self.metric_labels["findings"].setText(str(len(findings)))
+        self.metric_labels["score"].setText(f"{evaluation.get('score', 100)}/100")
+        score = evaluation.get('score', 100)
+        grade = evaluation.get('grade', 'A+')
+        self.score_badge.setText(f"الدرجة: {score}/100 ({grade})")
+        # Color the score badge based on score
+        score_color = SEV_SAFE if score >= 85 else SEV_MEDIUM if score >= 70 else SEV_HIGH if score >= 50 else SEV_CRITICAL
+        self.score_badge.setStyleSheet(
+            f"color: {score_color}; font-weight: 700; padding: 8px 14px; "
+            f"background: {BG_SURFACE}; border: 1px solid {score_color}44; border-radius: 6px;"
+        )
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    #  PLAYBOOKS
+    # ═══════════════════════════════════════════════════════════════════════════
+    def load_playbook(self) -> None:
+        topic = self.pb_input.text().strip()
+        if not topic:
+            return
+        from brain.playbook_engine import PlaybookEngine
+        pb = PlaybookEngine(kb=self.agent.kb).generate_playbook(topic)
+        lines = [f"📋 خطة العمل: {topic}", f"عدد الأوامر: {pb.get('total_commands', 0)}", ""]
+        for stage, steps in pb.get("stages", {}).items():
+            if steps:
+                lines.append(f"── {stage} ──")
+                for step in steps:
+                    lines.append(f"  $ {step.get('cmd', '')}\n    المصدر: {step.get('book', '')} — صفحة {step.get('page', '')}")
+        self.pb_text.setPlainText("\n".join(lines))
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    #  REPORTS
+    # ═══════════════════════════════════════════════════════════════════════════
+    def choose_reports_dir(self) -> None:
+        path = QFileDialog.getExistingDirectory(self, "اختيار مجلد التقارير", self.reports_dir.text())
+        if path:
+            self.reports_dir.setText(path)
+            self.refresh_reports()
+
+    def refresh_reports(self) -> None:
+        directory = Path(self.reports_dir.text()).expanduser()
+        self.reports_table.setRowCount(0)
+        if not directory.exists():
+            return
+        for path in sorted(directory.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True):
+            if not path.is_file():
+                continue
+            row = self.reports_table.rowCount()
+            self.reports_table.insertRow(row)
+            self.reports_table.setItem(row, 0, QTableWidgetItem(str(path)))
+            self.reports_table.setItem(row, 1, QTableWidgetItem(f"{path.stat().st_size / 1024:.1f} KB"))
+            self.reports_table.setItem(row, 2, QTableWidgetItem(str(path.stat().st_mtime)))
+
+    def open_report(self, row: int, _column: int) -> None:
+        path = self.reports_table.item(row, 0)
+        if path:
+            QDesktopServices.openUrl(QUrl.fromLocalFile(path.text()))
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    #  LIBRARY
+    # ═══════════════════════════════════════════════════════════════════════════
     def choose_books(self) -> None:
         paths, _ = QFileDialog.getOpenFileNames(
-            self,
-            "إضافة كتب أو ملفات إلى المكتبة المحلية",
-            str(Path.home()),
+            self, "إضافة كتب أو ملفات إلى المكتبة المحلية", str(Path.home()),
             "الكتب والملفات المدعومة (*.pdf *.txt *.md *.markdown)",
         )
         if not paths:
@@ -914,57 +1250,50 @@ class UnifiedCockpitWindow(QMainWindow):
             return {"imported": imported, "errors": errors}
 
         self.run_background_task(
-            ingest_books,
-            "استيعاب الكتب",
-            preserve_findings=True,
-            result_handler=self.show_ingest_results,
+            ingest_books, "استيعاب الكتب",
+            preserve_findings=True, result_handler=self.show_ingest_results,
         )
 
     def show_ingest_results(self, result: dict) -> None:
         self.refresh_library()
         lines = []
-        for document in result.get("imported", []):
-            lines.append(
-                f"تمت إضافة: {document['title']} | "
-                f"{document['chunks']} مقطع | {document['total_chars']:,} حرف"
-            )
-            lines.extend(document.get("diagnostics", []))
+        for doc in result.get("imported", []):
+            lines.append(f"✅ تمت إضافة: {doc['title']} | {doc['chunks']} مقطع | {doc['total_chars']:,} حرف")
+            lines.extend(doc.get("diagnostics", []))
         for failure in result.get("errors", []):
-            lines.append(f"تعذر استيعاب {failure['path']}: {failure['error']}")
+            lines.append(f"❌ تعذر: {failure['path']}: {failure['error']}")
         self.library_results.setPlainText("\n\n".join(lines) or "لم تتم إضافة أي ملف.")
 
     def rebuild_library_index(self) -> None:
         if not self.agent.kb.list_library_documents():
-            QMessageBox.information(self, "المكتبة فارغة", "أضف كتابًا أو ملفًا قبل بناء الفهرس.")
+            QMessageBox.information(self, "المكتبة فارغة", "أضف كتاباً أو ملفاً قبل بناء الفهرس.")
             return
         self.run_background_task(
-            self.agent._rebuild_index,
-            "إعادة بناء فهرس الذكاء",
-            preserve_findings=True,
-            result_handler=lambda _result: self.refresh_library(),
+            self.agent._rebuild_index, "بناء الفهرس",
+            preserve_findings=True, result_handler=lambda _r: self.refresh_library(),
         )
 
     def refresh_library(self) -> None:
         documents = self.agent.kb.list_library_documents()
         self.library_table.setRowCount(0)
-        for document in documents:
+        for doc in documents:
             row = self.library_table.rowCount()
             self.library_table.insertRow(row)
-            title = QTableWidgetItem(str(document.get("title", "")))
-            title.setData(Qt.ItemDataRole.UserRole, document["id"])
-            values = [title, QTableWidgetItem(str(document.get("file_type", ""))),
-                      QTableWidgetItem(str(document.get("chunk_count", 0))),
-                      QTableWidgetItem(str(document.get("added_at", "")))]
-            for column, item in enumerate(values):
-                self.library_table.setItem(row, column, item)
+            title = QTableWidgetItem(str(doc.get("title", "")))
+            title.setData(Qt.ItemDataRole.UserRole, doc["id"])
+            values = [title, QTableWidgetItem(str(doc.get("file_type", ""))),
+                      QTableWidgetItem(str(doc.get("chunk_count", 0))),
+                      QTableWidgetItem(str(doc.get("added_at", "")))]
+            for col, item in enumerate(values):
+                self.library_table.setItem(row, col, item)
 
         if relevance_engine.is_index_current(self.agent.kb):
             meta = relevance_engine.get_index_meta()
-            status = f"{len(documents)} كتاب | الفهرس مبني: {meta.get('chunks_indexed', 0)} مقطع"
+            status = f"📚 {len(documents)} كتاب | الفهرس مبني: {meta.get('chunks_indexed', 0)} مقطع"
         elif relevance_engine.is_index_built():
-            status = f"{len(documents)} كتاب | الفهرس قديم؛ أعد بناءه لإدخال الكتب الجديدة"
+            status = f"📚 {len(documents)} كتاب | الفهرس قديم — أعد بناءه"
         else:
-            status = f"{len(documents)} كتاب | البحث النصي متاح، والفهرس المرتب لم يُبنَ بعد"
+            status = f"📚 {len(documents)} كتاب | البحث النصي متاح"
         self.library_status.setText(status)
 
     def show_library_document(self, row: int, _column: int) -> None:
@@ -991,138 +1320,17 @@ class UnifiedCockpitWindow(QMainWindow):
             ranked = False
 
         if not results:
-            self.library_results.setPlainText("لم أجد مقاطع مطابقة في الكتب التي أُضيفت.")
+            self.library_results.setPlainText("لم أجد مقاطع مطابقة.")
             return
-        output = ["نتائج مرتبة حسب الصلة" if ranked else "نتائج بحث نصي محلي؛ أعد بناء الفهرس لتحديث ترتيب الصلة"]
-        for index, result in enumerate(results, 1):
+        output = ["نتائج مرتبة حسب الصلة" if ranked else "نتائج بحث نصي — أعد بناء الفهرس للترتيب"]
+        for i, result in enumerate(results, 1):
             if "error" in result:
                 output.append(result["error"])
                 continue
             location = result.get("page_hint") or f"المقطع {result.get('chunk_index', '')}"
             relevance = f" | الصلة: {result['relevance']:.3f}" if ranked and "relevance" in result else ""
-            output.append(
-                f"\n{index}. {result.get('title', 'كتاب غير معروف')} | {location}{relevance}\n"
-                f"{result.get('content', '').strip()}"
-            )
+            output.append(f"\n{i}. {result.get('title', 'كتاب غير معروف')} | {location}{relevance}\n{result.get('content', '').strip()}")
         self.library_results.setPlainText("\n".join(output))
-
-    def show_finding_details(self, row: int, _column: int) -> None:
-        if row >= len(self.current_findings):
-            return
-        finding = self.current_findings[row]
-        confidence = finding.get("confidence")
-        confidence_text = f"{float(confidence):.0%}" if isinstance(confidence, (int, float)) else "غير محددة"
-        evidence = finding.get("evidence") or {}
-        lines = [
-            f"النتيجة: {finding.get('title', 'بلا عنوان')}",
-            f"الخطورة: {str(finding.get('severity', 'info')).upper()} | الثقة: {confidence_text}",
-            f"الفئة: {finding.get('category', 'غير مصنفة')}",
-            "",
-            "ماذا رُصد:",
-            str(finding.get("detail") or "لم يوفر الفاحص تفاصيل إضافية لهذه النتيجة."),
-            "",
-            "التوصية:",
-            str(finding.get("fix") or "لا توجد توصية آلية مسجلة؛ راجع إعداد الخدمة يدويًا."),
-        ]
-        if evidence:
-            lines.extend(["", "الدليل المسجل:", json.dumps(evidence, ensure_ascii=False, indent=2, default=str)])
-        tags = finding.get("tags") or []
-        if tags:
-            lines.extend(["", f"الوسوم: {', '.join(str(tag) for tag in tags)}"])
-        attack_ids = finding.get("attack_ids") or []
-        if attack_ids:
-            lines.extend([f"معرّفات ATT&CK: {', '.join(str(item) for item in attack_ids)}"])
-        self.finding_detail.setPlainText("\n".join(lines))
-
-    def task_done(self, result: Any, title: str) -> None:
-        self.scan_progress.hide()
-        for button in self.task_buttons:
-            button.setEnabled(True)
-        if isinstance(result, Exception):
-            self.active_result_handler = None
-            self.set_activity_state("error", "الحالة: فشل")
-            self.chat_display.append(f"[خطأ] {title}: {result}")
-            self.scan_hint.setText(f"تعذر إكمال المهمة: {title}")
-            return
-        if self.active_result_handler:
-            handler, self.active_result_handler = self.active_result_handler, None
-            try:
-                handler(result)
-            except Exception as exc:
-                self.set_activity_state("error", "الحالة: فشل")
-                self.chat_display.append(f"[خطأ في عرض نتيجة {title}] {exc}")
-                return
-            self.set_activity_state("idle", "الحالة: جاهز")
-            self.scan_hint.setText(f"اكتملت المهمة: {title}")
-            self.chat_display.append(f"[اكتمل] {title}")
-            return
-        findings = result if isinstance(result, list) else []
-        self.render_findings(findings)
-        self.set_activity_state("idle", "الحالة: جاهز")
-        self.scan_hint.setText(f"اكتملت المهمة: {title} | النتائج: {len(findings)}")
-        self.chat_display.append(f"[اكتمل] {title} | النتائج: {len(findings)}")
-
-    def render_findings(self, findings: list) -> None:
-        self.current_findings = findings
-        self.table_findings.setRowCount(0)
-        self.finding_detail.clear()
-        if not findings:
-            self.finding_detail.setPlaceholderText("لم يسجل هذا الفحص نتائج أمنية.")
-        for finding in findings:
-            row = self.table_findings.rowCount()
-            self.table_findings.insertRow(row)
-            severity = str(finding.get("severity", "info")).upper()
-            severity_item = QTableWidgetItem(severity)
-            severity_item.setForeground(QColor({"CRITICAL": "#ff7780", "HIGH": "#f1a361", "MEDIUM": "#e7c36b", "LOW": "#82b9df"}.get(severity, "#78c6a6")))
-            confidence = finding.get("confidence")
-            confidence_text = f"{float(confidence):.0%}" if isinstance(confidence, (int, float)) else "—"
-            values = [severity_item, QTableWidgetItem(str(finding.get("title", ""))),
-                      QTableWidgetItem(str(finding.get("category", ""))), QTableWidgetItem(confidence_text)]
-            for col, cell in enumerate(values):
-                self.table_findings.setItem(row, col, cell)
-        evaluation = RiskEngine.evaluate(findings)
-        self.metric_labels["findings"].setText(str(len(findings)))
-        self.metric_labels["score"].setText(f"{evaluation.get('score', 100)}/100")
-        self.score_badge.setText(f"الدرجة: {evaluation.get('score', 100)}/100 ({evaluation.get('grade', 'A+')})")
-
-    def load_playbook(self) -> None:
-        topic = self.pb_input.text().strip()
-        if not topic:
-            return
-        from brain.playbook_engine import PlaybookEngine
-        pb = PlaybookEngine(kb=self.agent.kb).generate_playbook(topic)
-        lines = [f"خطة العمل: {topic}", f"عدد الأوامر: {pb.get('total_commands', 0)}", ""]
-        for stage, steps in pb.get("stages", {}).items():
-            if steps:
-                lines.append(f"[{stage}]")
-                for step in steps:
-                    lines.append(f"$ {step.get('cmd', '')}\n  المصدر: {step.get('book', '')} — صفحة {step.get('page', '')}")
-        self.pb_text.setPlainText("\n".join(lines))
-
-    def choose_reports_dir(self) -> None:
-        path = QFileDialog.getExistingDirectory(self, "اختيار مجلد التقارير", self.reports_dir.text())
-        if path:
-            self.reports_dir.setText(path)
-            self.refresh_reports()
-
-    def refresh_reports(self) -> None:
-        directory = Path(self.reports_dir.text()).expanduser()
-        self.reports_table.setRowCount(0)
-        if not directory.exists():
-            return
-        for path in sorted(directory.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True):
-            if not path.is_file():
-                continue
-            row = self.reports_table.rowCount()
-            self.reports_table.insertRow(row)
-            self.reports_table.setItem(row, 0, QTableWidgetItem(str(path)))
-            self.reports_table.setItem(row, 1, QTableWidgetItem(f"{path.stat().st_size / 1024:.1f} KB"))
-            self.reports_table.setItem(row, 2, QTableWidgetItem(str(path.stat().st_mtime)))
-
-    def open_report(self, row: int, _column: int) -> None:
-        path = self.reports_table.item(row, 0)
-        if path:
-            QDesktopServices.openUrl(QUrl.fromLocalFile(path.text()))
 
 
 def launch_gui() -> None:

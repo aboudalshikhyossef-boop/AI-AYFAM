@@ -65,5 +65,18 @@ check("task exposes only its current findings", result == current)
 preserved = UnifiedCockpitWindow._execute_gui_task(window, lambda: None, True)
 check("report tasks retain findings from the previous scan", preserved == current)
 
+print("\n[4] Theme module loads correctly")
+from ui.theme import QSS, ACCENT, SEV_CRITICAL, severity_color
+check("QSS stylesheet is non-empty", len(QSS) > 500)
+check("accent color defined", ACCENT.startswith("#"))
+check("severity color mapping works", severity_color("critical") == SEV_CRITICAL)
+check("unknown severity falls back to info", severity_color("unknown") != SEV_CRITICAL)
+
+print("\n[5] Navigation structure")
+from ui.gui_app import NAV_ITEMS
+check("navigation has 8 items", len(NAV_ITEMS) == 8)
+check("dashboard is first nav item", NAV_ITEMS[0][0] == "dashboard")
+check("reports is last nav item", NAV_ITEMS[-1][0] == "reports")
+
 print(f"\nTOTAL GUI TESTS: {passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)
