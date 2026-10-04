@@ -47,7 +47,7 @@ check("2 independent rules both fire", len(multi) == 2)
 print("\n[5] English language output")
 intel_en = SecurityIntelligence(language="en")
 compound_en = intel_en.detect_compound_risks(findings)
-check("english title used", compound_en[0]["title"].startswith("🔗 Compound risk"))
+check("english title used", "Compound risk" in compound_en[0]["title"])
 
 # ── compare_scans / trend ────────────────────────────────────────────────
 print("\n[6] compare_scans — first-ever scan (no previous)")
@@ -77,7 +77,7 @@ check("1 resolved finding detected", len(cmp1["resolved"]) == 1 and "Telnet" in 
 check("0 new findings", len(cmp1["new_findings"]) == 0)
 check("score_delta negative", cmp1["score_delta"] == 40 - 150)
 narrative = intel.generate_trend_narrative(cmp1)
-check("narrative mentions improvement emoji", "✅" in narrative)
+check("narrative mentions improvement status", "[تحسّن]" in narrative or "Improved" in narrative)
 check("narrative mentions resolved count", "تم حلّ 1 مشكلة" in narrative)
 
 print("\n[8] compare_scans — worsened (new critical finding appeared)")
@@ -92,7 +92,7 @@ cmp2 = intel.compare_scans(prev, cur2)
 check("trend is worsened", cmp2["trend"] == "worsened")
 check("1 new finding detected", len(cmp2["new_findings"]) == 1)
 narrative2 = intel.generate_trend_narrative(cmp2)
-check("narrative mentions warning emoji", "⚠️" in narrative2)
+check("narrative mentions warning status", "[تدهور]" in narrative2 or "Worsened" in narrative2)
 check("narrative mentions new-issue count", "ظهرت 1 مشكلة جديدة" in narrative2)
 
 print("\n[9] compare_scans — stable (identical findings/score)")

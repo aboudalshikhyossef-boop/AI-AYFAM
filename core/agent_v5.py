@@ -29,18 +29,18 @@ from reports.html_report import generate_interactive_html
 class AgentV5Mixin:
     def _run_baseline_learn_cli(self):
         """التقاط وحفظ خط الأساس السلوكي للنظام."""
-        self.ui.section(self._t("🧠 بناء خط الأساس السلوكي للنظام (Behavioral Baseline)", "🧠 Learning System Behavioral Baseline"))
+        self.ui.section(self._t("بناء خط الأساس السلوكي للنظام (Behavioral Baseline)", "Learning System Behavioral Baseline"))
         engine = BaselineEngine()
         with self.ui.spinner(self._t("حفظ البصمة الموثوقة للمستخدمين، المنافذ، والملفات...", "Capturing baseline snapshot...")):
             ok = engine.save_baseline()
         if ok:
-            self.ui.success(self._t("✅ تم حفظ خط الأساس بنجاح! سيعتمد الوكيل هذه الحالة كمرجع للسلوك الطبيعي.", "Baseline captured successfully."))
+            self.ui.success(self._t("تم حفظ خط الأساس بنجاح! سيعتمد الوكيل هذه الحالة كمرجع للسلوك الطبيعي.", "Baseline captured successfully."))
         else:
             self.ui.error(self._t("تعذر حفظ خط الأساس في قاعدة البيانات.", "Failed to save baseline."))
 
     def _run_baseline_check_cli(self):
         """مقارنة حالة النظام بخط الأساس لكشف أي شذوذ."""
-        self.ui.section(self._t("🔍 فحص انحرافات وشذوذ النظام عن خط الأساس", "🔍 Checking Baseline Deviations & Anomalies"))
+        self.ui.section(self._t("فحص انحرافات وشذوذ النظام عن خط الأساس", "Checking Baseline Deviations & Anomalies"))
         engine = BaselineEngine()
         with self.ui.spinner(self._t("مقارنة الحالة الحالية بالبصمة المعتمدة...", "Analyzing deviations...")):
             findings = engine.check_deviations()
@@ -49,13 +49,13 @@ class AgentV5Mixin:
             for f in findings:
                 self.ui.print_finding(f["severity"], f["title"], f.get("detail", ""), f.get("fix", ""))
         else:
-            self.ui.success(self._t("🟢 النظام متطابق تماماً مع خط الأساس ولا توجد أي انحرافات مريبة.", "System is compliant with baseline."))
+            self.ui.success(self._t("النظام متطابق تماماً مع خط الأساس ولا توجد أي انحرافات مريبة.", "System is compliant with baseline."))
         self._last_findings = findings
         return findings
 
     def _run_synthesize_rules_cli(self):
         """توليد قواعد حماية وجدار ناري بناءً على التهديدات المرصودة."""
-        self.ui.section(self._t("🛡️ التوليد التلقائي لقواعد الحماية (Auto-Rule Synthesis)", "🛡️ Synthesizing Defensive Rules"))
+        self.ui.section(self._t("التوليد التلقائي لقواعد الحماية (Auto-Rule Synthesis)", "Synthesizing Defensive Rules"))
         if not self._last_findings:
             self.ui.warning(self._t("شغّل فحصاً أولاً لرصد التهديدات وتوليد قواعد لها.", "Run a scan first."))
             return
@@ -68,7 +68,7 @@ class AgentV5Mixin:
             self.ui.info(self._t("لم تظهر تهديدات نشطة تتطلب توليد قواعد حظر جديدة.", "No active threats requiring new rules."))
 
     def _show_playbook_cli(self, topic: str):
-        self.ui.section(self._t(f"📖 خطة العمل الأمنية (Security Playbook): {topic}", f"📖 Security Playbook: {topic}"))
+        self.ui.section(self._t(f"خطة العمل الأمنية (Security Playbook): {topic}", f"Security Playbook: {topic}"))
         from brain.playbook_engine import PlaybookEngine
         engine = PlaybookEngine(kb=self.kb)
         pb = engine.generate_playbook(topic)
@@ -92,7 +92,7 @@ class AgentV5Mixin:
                     self.ui.raw(f"  $ {cmd_text}\n    [dim]— المصدر: «{book_name}» ({page_num})[/dim]")
 
     def _run_deep_audit(self):
-        self.ui.section(self._t("🛡️ فحص التحصين المتقدم (CIS Benchmark & Hardening)", "🛡️ Deep Hardening Audit"))
+        self.ui.section(self._t("فحص التحصين المتقدم (CIS Benchmark & Hardening)", "Deep Hardening Audit"))
         findings = []
 
         with self.ui.spinner(self._t("تدقيق معايير النواة والأذونات...", "Auditing sysctl & permissions...")):
@@ -128,7 +128,7 @@ class AgentV5Mixin:
 
         chokepoints = ae.chokepoint_analysis(findings)
         if chokepoints:
-            self.ui.subsection(self._t("🎯 نقاط الاختناق (أكثر الإصلاحات حسماً وأثراً):", "🎯 Chokepoint Analysis (Top Fixes):"))
+            self.ui.subsection(self._t("نقاط الاختناق (أكثر الإصلاحات حسماً وأثراً):", "Chokepoint Analysis (Top Fixes):"))
             for cp in chokepoints[:3]:
                 broken = cp["broken_techniques_count"]
                 cmd_fix = cp["fix_cmd"]
@@ -138,7 +138,7 @@ class AgentV5Mixin:
         return findings
 
     def _run_lynis_cli(self):
-        self.ui.section(self._t("🔍 فحص وتدقيق النظام بأداة Lynis القياسية", "🔍 Lynis System Security Audit"))
+        self.ui.section(self._t("فحص وتدقيق النظام بأداة Lynis القياسية", "Lynis System Security Audit"))
         arsenal = SecurityArsenal()
         with self.ui.spinner(self._t("جاري تشغيل Lynis وتحليل النتائج...", "Running Lynis audit...")):
             res = arsenal.run_lynis_audit()
@@ -153,7 +153,7 @@ class AgentV5Mixin:
         return self._last_findings
 
     def _run_yara_cli(self, target_path: str = "."):
-        self.ui.section(self._t(f"🦠 فحص البرمجيات الخبيثة بـ YARA: {target_path}", f"🦠 YARA Malware Scan: {target_path}"))
+        self.ui.section(self._t(f"فحص البرمجيات الخبيثة بـ YARA: {target_path}", f"YARA Malware Scan: {target_path}"))
         arsenal = SecurityArsenal()
         with self.ui.spinner(self._t("مطابقة التوقيعات مع محرك YARA...", "Matching YARA signatures...")):
             findings = arsenal.scan_with_yara(target_path)
@@ -162,12 +162,12 @@ class AgentV5Mixin:
             for f in findings:
                 self.ui.print_finding(f["severity"], f["title"], f.get("detail", ""), f.get("fix", ""))
         else:
-            self.ui.success(self._t("✅ تم الفحص: لا توجد برمجيات خبيثة مطابقة لتوقيعات YARA.", "Clean: No YARA threats detected."))
+            self.ui.success(self._t("تم الفحص: لا توجد برمجيات خبيثة مطابقة لتوقيعات YARA.", "Clean: No YARA threats detected."))
         self._last_findings = findings
         return findings
 
     def _run_rootkit_cli(self):
-        self.ui.section(self._t("🕵️ فحص الجذور الخفية (Rootkit Hunter)", "🕵️ Rootkit Detection Scan"))
+        self.ui.section(self._t("فحص الجذور الخفية (Rootkit Hunter)", "Rootkit Detection Scan"))
         arsenal = SecurityArsenal()
         with self.ui.spinner(self._t("فحص النواة والبرمجيات المتسللة...", "Scanning kernel and system...")):
             findings = arsenal.check_rootkits()
@@ -178,7 +178,7 @@ class AgentV5Mixin:
         return findings
 
     def _run_sentinel_cli(self):
-        self.ui.section(self._t("🛡️ الحارس النشط (Active Sentinel)", "🛡️ Active Sentinel Daemon"))
+        self.ui.section(self._t("الحارس النشط (Active Sentinel)", "Active Sentinel Daemon"))
         self.ui.info(self._t("يعمل الحارس الآن في خلفية النظام لمراقبة الملفات والاتصالات وإرسال إشعارات.", "Sentinel is running in the background."))
         sentinel = ActiveSentinel(check_interval=5)
         sentinel.start()
@@ -191,7 +191,7 @@ class AgentV5Mixin:
             self.ui.warning(self._t("تم إيقاف الحارس النشط.", "Sentinel stopped."))
 
     def _scan_secrets_cli(self, path: str = "."):
-        self.ui.section(self._t("🔑 فحص الأسرار والمفاتيح الحساسة", "🔑 Secret & Key Scanner"))
+        self.ui.section(self._t("فحص الأسرار والمفاتيح الحساسة", "Secret & Key Scanner"))
         scanner = SecretScanner()
         with self.ui.spinner(self._t("فحص الإنتروبيا والتوقيعات...", "Scanning entropy & patterns...")):
             secrets = scanner.scan_path(path)
@@ -206,7 +206,7 @@ class AgentV5Mixin:
         return secrets
 
     def _generate_remediation_plan(self):
-        self.ui.section(self._t("📋 توليد سكريبت خطة المعالجة", "📋 Generating Remediation Script"))
+        self.ui.section(self._t("توليد سكريبت خطة المعالجة", "Generating Remediation Script"))
         if not self._last_findings:
             self.ui.warning(self._t("شغّل فحصاً أولاً لتوليد خطة الإصلاح.", "Run a scan first to generate a plan."))
             return
@@ -216,10 +216,10 @@ class AgentV5Mixin:
         with open(out_path, "w", encoding="utf-8") as f:
             f.write(script)
         os.chmod(out_path, 0o755)
-        self.ui.success(self._t(f"✅ تم حفظ السكريبت في: {out_path}", f"✅ Script saved to: {out_path}"))
+        self.ui.success(self._t(f"تم حفظ السكريبت في: {out_path}", f"Script saved to: {out_path}"))
 
     def _export_html_report(self):
-        self.ui.section(self._t("🌐 تصدير تقرير HTML تفاعلي", "🌐 Exporting Interactive HTML Report"))
+        self.ui.section(self._t("تصدير تقرير HTML تفاعلي", "Exporting Interactive HTML Report"))
         if not self._last_findings:
             self.ui.warning(self._t("شغّل فحصاً أولاً لتوليد التقرير.", "Run a scan first."))
             return
@@ -229,4 +229,4 @@ class AgentV5Mixin:
         os.makedirs(os.path.dirname(out_path), exist_ok=True)
         with open(out_path, "w", encoding="utf-8") as f:
             f.write(html_doc)
-        self.ui.success(self._t(f"✅ تم إنشاء التقرير بنجاح: {out_path}", f"✅ HTML Report saved: {out_path}"))
+        self.ui.success(self._t(f"تم إنشاء التقرير بنجاح: {out_path}", f"HTML Report saved: {out_path}"))

@@ -42,15 +42,15 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 
 # Navigation items: (key, icon, label_ar)
 NAV_ITEMS = [
-    ("dashboard",  "🏠", "غرفة العمليات"),
-    ("scans",      "🔍", "الفحوصات"),
-    ("usb",        "🔌", "الأجهزة"),
-    ("tools",      "🛡️", "الترسانة"),
-    ("chat",       "💬", "المحادثة"),
-    ("library",    "📚", "المكتبة"),
-    ("playbooks",  "📋", "خطط العمل"),
-    ("reports",    "📄", "التقارير"),
-    ("settings",   "⚙️", "الإعدادات"),
+    ("dashboard", "غرفة العمليات"),
+    ("scans",     "الفحوصات الأمنية"),
+    ("usb",       "الأجهزة المتصلة"),
+    ("tools",     "ترسانة الأدوات"),
+    ("chat",      "المحادثة الأمنية"),
+    ("library",   "المكتبة المحلية"),
+    ("playbooks", "خطط العمل"),
+    ("reports",   "التقارير"),
+    ("settings",  "إعدادات النظام"),
 ]
 
 
@@ -144,18 +144,18 @@ class UnifiedCockpitWindow(QMainWindow):
         sidebar_layout.setSpacing(SP_XS)
 
         # Logo / Brand
-        brand = QLabel("🛡️ AI AYFAM")
-        brand.setStyleSheet(f"color: {TEXT_PRIMARY}; font-size: {FONT_SIZE_TITLE}px; font-weight: 800; padding: 8px 6px 16px 6px;")
+        brand = QLabel("AI AYFAM")
+        brand.setStyleSheet(f"color: {TEXT_PRIMARY}; font-size: {FONT_SIZE_TITLE}px; font-weight: 800; padding: 8px 6px 4px 6px;")
         sidebar_layout.addWidget(brand)
 
-        sub = QLabel("Security Operations")
+        sub = QLabel("Security Operations Center")
         sub.setStyleSheet(f"color: {TEXT_MUTED}; font-size: {FONT_SIZE_SMALL}px; padding: 0 6px 20px 6px;")
         sidebar_layout.addWidget(sub)
 
         # Nav buttons
         self.nav_button_map: dict[str, QPushButton] = {}
-        for key, icon, label in NAV_ITEMS:
-            btn = QPushButton(f"  {icon}   {label}")
+        for key, label in NAV_ITEMS:
+            btn = QPushButton(f"  [ {label} ]")
             btn.setObjectName("navButton")
             btn.setCheckable(True)
             btn.clicked.connect(lambda checked=False, k=key: self.switch_page(k))
@@ -166,7 +166,7 @@ class UnifiedCockpitWindow(QMainWindow):
         sidebar_layout.addStretch()
 
         # Status indicator at bottom of sidebar
-        self.sidebar_status = QLabel("● جاهز")
+        self.sidebar_status = QLabel("[ جاهز ]")
         self.sidebar_status.setStyleSheet(f"color: {STATUS_OK}; font-size: {FONT_SIZE_SMALL}px; padding: 8px 6px;")
         sidebar_layout.addWidget(self.sidebar_status)
 
@@ -344,7 +344,7 @@ class UnifiedCockpitWindow(QMainWindow):
         self.dashboard_splitter.setHandleWidth(2)
 
         # Connections panel
-        conn_group = QGroupBox("📡 رادار الاتصالات الحية")
+        conn_group = QGroupBox("رادار الاتصالات الحية")
         conn_layout = QVBoxLayout(conn_group)
         conn_layout.setSpacing(SP_SM)
         self.connection_summary = QLabel("جارٍ قراءة حالة الشبكة...")
@@ -362,7 +362,7 @@ class UnifiedCockpitWindow(QMainWindow):
         self.dashboard_splitter.addWidget(conn_group)
 
         # Processes panel
-        proc_group = QGroupBox("⚙️ أعلى العمليات استهلاكاً")
+        proc_group = QGroupBox("أعلى العمليات استهلاكاً")
         proc_layout = QVBoxLayout(proc_group)
         self.table_procs = QTableWidget(0, 5)
         self.table_procs.setHorizontalHeaderLabels(["المستخدم", "PID", "CPU", "RAM", "الأمر"])
@@ -414,13 +414,13 @@ class UnifiedCockpitWindow(QMainWindow):
         grid.addWidget(self.path_input, 3, 1, 1, 3)
 
         buttons = [
-            ("🔍 فحص الشبكة", "primary", lambda: self.run_background_task(lambda: self.agent._scan_network(), "فحص الشبكة")),
-            ("🔌 فحص المنافذ", "primary", self.start_port_scan),
-            ("🖥️ فحص النظام", "primary", lambda: self.run_background_task(self.agent._scan_system, "فحص النظام")),
-            ("📋 تحليل السجلات", "primary", lambda: self.run_background_task(self.agent._scan_logs, "تحليل السجلات")),
-            ("🔒 الفحص الشامل", "primary", lambda: self.run_background_task(self.agent._full_scan, "الفحص الشامل")),
-            ("🌐 فحص موقع", "", self.start_website_scan),
-            ("🛡️ سمعة IP", "", self.start_ip_reputation),
+            ("فحص الشبكة", "primary", lambda: self.run_background_task(lambda: self.agent._scan_network(), "فحص الشبكة")),
+            ("فحص المنافذ", "primary", self.start_port_scan),
+            ("فحص النظام", "primary", lambda: self.run_background_task(self.agent._scan_system, "فحص النظام")),
+            ("تحليل السجلات", "primary", lambda: self.run_background_task(self.agent._scan_logs, "تحليل السجلات")),
+            ("الفحص الشامل", "primary", lambda: self.run_background_task(self.agent._full_scan, "الفحص الشامل")),
+            ("فحص موقع", "", self.start_website_scan),
+            ("سمعة IP", "", self.start_ip_reputation),
         ]
         for i, (text, btn_style, callback) in enumerate(buttons):
             btn = QPushButton(text)
@@ -469,7 +469,7 @@ class UnifiedCockpitWindow(QMainWindow):
         detail_header.addWidget(detail_label)
         detail_header.addStretch()
 
-        self.btn_apply_autofix = QPushButton("🔧 تطبيق الإصلاح التلقائي")
+        self.btn_apply_autofix = QPushButton("تطبيق الإصلاح التلقائي")
         self.btn_apply_autofix.setObjectName("primary")
         self.btn_apply_autofix.setToolTip("تطبيق أمر الإصلاح للنتيجة المحددة إن وجد")
         self.btn_apply_autofix.clicked.connect(self.apply_selected_finding_fix)
@@ -545,14 +545,14 @@ class UnifiedCockpitWindow(QMainWindow):
         self.usb_status.setStyleSheet(f"color: {TEXT_SECONDARY}; font-weight: 600;")
         heading.addWidget(self.usb_status)
         heading.addStretch()
-        self.usb_refresh_button = QPushButton("🔄 تحديث")
+        self.usb_refresh_button = QPushButton("تحديث")
         self.usb_refresh_button.setObjectName("primary")
         self.usb_refresh_button.clicked.connect(self.refresh_usb_inventory)
         self.task_buttons.append(self.usb_refresh_button)
         heading.addWidget(self.usb_refresh_button)
         layout.addLayout(heading)
 
-        devices_group = QGroupBox("📱 الأجهزة المتصلة")
+        devices_group = QGroupBox("الأجهزة المتصلة بالنظام")
         devices_layout = QVBoxLayout(devices_group)
         self.usb_devices_table = QTableWidget(0, 5)
         self.usb_devices_table.setHorizontalHeaderLabels(["Bus/Device", "المنتج", "الفئة", "VID:PID", "المخاطر"])
@@ -568,12 +568,12 @@ class UnifiedCockpitWindow(QMainWindow):
 
         actions = QHBoxLayout()
         actions.setSpacing(SP_SM)
-        self.usb_allow_button = QPushButton("✅ السماح")
+        self.usb_allow_button = QPushButton("السماح")
         self.usb_allow_button.clicked.connect(lambda: self.control_selected_usb_device(True))
-        self.usb_block_button = QPushButton("🚫 حجب")
+        self.usb_block_button = QPushButton("حجب")
         self.usb_block_button.setObjectName("danger")
         self.usb_block_button.clicked.connect(lambda: self.control_selected_usb_device(False))
-        self.usb_scan_button = QPushButton("🔍 تحليل التخزين")
+        self.usb_scan_button = QPushButton("تحليل التخزين")
         self.usb_scan_button.setObjectName("primary")
         self.usb_scan_button.clicked.connect(self.scan_selected_usb_storage)
         for button in (self.usb_allow_button, self.usb_block_button, self.usb_scan_button):
@@ -581,7 +581,7 @@ class UnifiedCockpitWindow(QMainWindow):
             actions.addWidget(button)
         layout.addLayout(actions)
 
-        drives_group = QGroupBox("💾 وحدات التخزين وتحليلها")
+        drives_group = QGroupBox("وحدات التخزين وتحليلها")
         drives_layout = QVBoxLayout(drives_group)
         self.usb_drives_table = QTableWidget(0, 4)
         self.usb_drives_table.setHorizontalHeaderLabels(["الجهاز", "الطراز", "الحجم", "نقطة التوصيل"])
@@ -619,14 +619,14 @@ class UnifiedCockpitWindow(QMainWindow):
         groups_layout.setSpacing(SP_MD)
 
         # 1. Audit & Hardening
-        g_audit = QGroupBox("🔒 التدقيق والتحصين")
+        g_audit = QGroupBox("التدقيق والتحصين")
         l_audit = QVBoxLayout(g_audit)
         audit_btns = [
-            ("🔒 CIS / Hardening", lambda: self._run_tool_and_display(self.agent._run_deep_audit, "فحص CIS Hardening")),
-            ("📋 Lynis Audit", lambda: self._run_tool_and_display(self.agent._run_lynis_cli, "فحص Lynis")),
-            ("📊 تعلّم خط الأساس", lambda: self._run_tool_and_display(self.agent._run_baseline_learn_cli, "تعلّم خط الأساس")),
-            ("🔍 فحص شذوذ النظام", lambda: self._run_tool_and_display(self.agent._run_baseline_check_cli, "فحص الشذوذ")),
-            ("📝 خطة المعالجة", lambda: self._run_tool_and_display(self.agent._generate_remediation_plan, "خطة المعالجة")),
+            ("فحص CIS Hardening", lambda: self._run_tool_and_display(self.agent._run_deep_audit, "فحص CIS Hardening")),
+            ("فحص Lynis Audit", lambda: self._run_tool_and_display(self.agent._run_lynis_cli, "فحص Lynis")),
+            ("تعلّم خط الأساس", lambda: self._run_tool_and_display(self.agent._run_baseline_learn_cli, "تعلّم خط الأساس")),
+            ("فحص شذوذ النظام", lambda: self._run_tool_and_display(self.agent._run_baseline_check_cli, "فحص الشذوذ")),
+            ("خطة المعالجة", lambda: self._run_tool_and_display(self.agent._generate_remediation_plan, "خطة المعالجة")),
         ]
         for name, fn in audit_btns:
             btn = QPushButton(name)
@@ -637,13 +637,13 @@ class UnifiedCockpitWindow(QMainWindow):
         groups_layout.addWidget(g_audit)
 
         # 2. Scanning & Malware
-        g_scan = QGroupBox("🔍 كشف التهديدات والأسرار")
+        g_scan = QGroupBox("كشف التهديدات والأسرار")
         l_scan = QVBoxLayout(g_scan)
         scan_btns = [
-            ("🦠 فحص YARA", lambda: self._run_tool_and_display(lambda: self.agent._run_yara_cli(self.tool_path.text().strip() or "."), "فحص YARA")),
-            ("🔑 كشف الأسرار", lambda: self._run_tool_and_display(lambda: self.agent._scan_secrets_cli(self.tool_path.text().strip() or "."), "كشف الأسرار")),
-            ("🕵️ فحص Rootkit", lambda: self._run_tool_and_display(self.agent._run_rootkit_cli, "فحص Rootkit")),
-            ("⚡ توليد قواعد التفاعل", lambda: self._run_tool_and_display(self.agent._run_synthesize_rules_cli, "توليد قواعد")),
+            ("فحص YARA", lambda: self._run_tool_and_display(lambda: self.agent._run_yara_cli(self.tool_path.text().strip() or "."), "فحص YARA")),
+            ("كشف الأسرار", lambda: self._run_tool_and_display(lambda: self.agent._scan_secrets_cli(self.tool_path.text().strip() or "."), "كشف الأسرار")),
+            ("فحص Rootkit", lambda: self._run_tool_and_display(self.agent._run_rootkit_cli, "فحص Rootkit")),
+            ("توليد قواعد التفاعل", lambda: self._run_tool_and_display(self.agent._run_synthesize_rules_cli, "توليد قواعد")),
         ]
         for name, fn in scan_btns:
             btn = QPushButton(name)
@@ -654,12 +654,12 @@ class UnifiedCockpitWindow(QMainWindow):
         groups_layout.addWidget(g_scan)
 
         # 3. Threat Intel & CTI
-        g_intel = QGroupBox("🛰️ استخبارات التهديدات")
+        g_intel = QGroupBox("استخبارات التهديدات")
         l_intel = QVBoxLayout(g_intel)
         intel_btns = [
-            ("🔄 تحديث التهديدات (KEV/Exploit-DB)", lambda: self._run_tool_and_display(self.agent._update_intel, "تحديث التهديدات")),
-            ("🛰️ Gemini CTI (48h)", lambda: self._run_tool_and_display(lambda: self.agent.run_gemini_threat_scan(48), "Gemini CTI")),
-            ("🌐 تصدير تقرير HTML", lambda: self._run_tool_and_display(self.agent._export_html_report, "تصدير HTML")),
+            ("تحديث التهديدات (KEV/Exploit-DB)", lambda: self._run_tool_and_display(self.agent._update_intel, "تحديث التهديدات")),
+            ("Gemini CTI (48h)", lambda: self._run_tool_and_display(lambda: self.agent.run_gemini_threat_scan(48), "Gemini CTI")),
+            ("تصدير تقرير HTML", lambda: self._run_tool_and_display(self.agent._export_html_report, "تصدير HTML")),
         ]
         for name, fn in intel_btns:
             btn = QPushButton(name)
@@ -674,7 +674,7 @@ class UnifiedCockpitWindow(QMainWindow):
         layout.addLayout(groups_layout)
 
         # Output viewer pane directly on Tools page
-        out_box = QGroupBox("🖥️ نتائج تشغيل الأدوات والمخرجات المباشرة")
+        out_box = QGroupBox("نتائج تشغيل الأدوات والمخرجات المباشرة")
         out_layout = QVBoxLayout(out_box)
         self.tool_output = QPlainTextEdit(readOnly=True)
         self.tool_output.setPlaceholderText("اختر أداة تشغيل من المجموعات أعلاه لعرض نتائجها هنا مباشرة...")
@@ -700,13 +700,13 @@ class UnifiedCockpitWindow(QMainWindow):
         layout.setContentsMargins(SP_XL, SP_LG, SP_XL, SP_LG)
         layout.setSpacing(SP_MD)
 
-        intro = QLabel("💬 محادثة ذكية — اكتب بالعربية أو الإنجليزية وسيفهمك الوكيل")
+        intro = QLabel("محادثة أمنية — اكتب بالعربية أو الإنجليزية وسيفهمك الوكيل")
         intro.setStyleSheet(f"color: {TEXT_SECONDARY}; font-size: {FONT_SIZE_SMALL}px;")
         layout.addWidget(intro)
 
         self.chat_display = QTextEdit(readOnly=True)
         self.chat_display.setPlaceholderText("ستظهر هنا حالة المهام والنتائج...")
-        self.chat_display.append("🤖 [النظام] مرحباً. اختر فحصاً من تبويب الفحوصات أو اكتب أمراً هنا.")
+        self.chat_display.append("[النظام] مرحباً. اختر فحصاً من تبويب الفحوصات أو اكتب أمراً هنا.")
         layout.addWidget(self.chat_display)
 
         row = QHBoxLayout()
@@ -714,7 +714,7 @@ class UnifiedCockpitWindow(QMainWindow):
         self.chat_input = QLineEdit()
         self.chat_input.setPlaceholderText("اكتب أمراً أو سؤالاً...")
         self.chat_input.returnPressed.connect(self.send_chat_message)
-        send = QPushButton("📤 إرسال")
+        send = QPushButton("إرسال")
         send.setObjectName("primary")
         send.clicked.connect(self.send_chat_message)
         row.addWidget(self.chat_input)
@@ -729,7 +729,7 @@ class UnifiedCockpitWindow(QMainWindow):
         layout.setContentsMargins(SP_XL, SP_LG, SP_XL, SP_LG)
         layout.setSpacing(SP_MD)
 
-        intro = QLabel("📋 استخرج خطة عمل أمنية مهيكلة لأي أداة أو موضوع من كتبك المفهرسة")
+        intro = QLabel("استخرج خطة عمل أمنية مهيكلة لأي أداة أو موضوع من كتبك المفهرسة")
         intro.setStyleSheet(f"color: {TEXT_SECONDARY}; font-size: {FONT_SIZE_SMALL}px;")
         layout.addWidget(intro)
 
@@ -737,7 +737,7 @@ class UnifiedCockpitWindow(QMainWindow):
         row.setSpacing(SP_SM)
         self.pb_input = QLineEdit()
         self.pb_input.setPlaceholderText("مثال: nmap أو privilege_escalation أو ufw")
-        button = QPushButton("🔍 استخراج")
+        button = QPushButton("استخراج")
         button.setObjectName("primary")
         button.clicked.connect(self.load_playbook)
         row.addWidget(self.pb_input)
@@ -756,16 +756,16 @@ class UnifiedCockpitWindow(QMainWindow):
         layout.setContentsMargins(SP_XL, SP_LG, SP_XL, SP_LG)
         layout.setSpacing(SP_MD)
 
-        intro = QLabel("📄 إدارة التقارير الأمنية المُنشأة والمعاينة المباشرة")
+        intro = QLabel("إدارة التقارير الأمنية المُنشأة والمعاينة المباشرة")
         intro.setStyleSheet(f"color: {TEXT_SECONDARY}; font-size: {FONT_SIZE_SMALL}px;")
         layout.addWidget(intro)
 
         row = QHBoxLayout()
         row.setSpacing(SP_SM)
         self.reports_dir = QLineEdit(self.settings.get("report_dir", os.path.expanduser("~/ayfam-reports")))
-        browse = QPushButton("📁 تصفح")
+        browse = QPushButton("تصفح")
         browse.clicked.connect(self.choose_reports_dir)
-        refresh = QPushButton("🔄 تحديث")
+        refresh = QPushButton("تحديث")
         refresh.clicked.connect(self.refresh_reports)
         row.addWidget(QLabel("المجلد:"))
         row.addWidget(self.reports_dir)
@@ -786,7 +786,7 @@ class UnifiedCockpitWindow(QMainWindow):
         self.reports_table.cellDoubleClicked.connect(self.open_report)
         reports_splitter.addWidget(self.reports_table)
 
-        preview_box = QGroupBox("🔍 معاينة التقرير المحدد")
+        preview_box = QGroupBox("معاينة التقرير المحدد")
         pv_layout = QVBoxLayout(preview_box)
         self.report_preview = QPlainTextEdit(readOnly=True)
         self.report_preview.setPlaceholderText("حدد تقريراً من الجدول أعلاه لمعاينته هنا مباشرة...")
@@ -818,7 +818,7 @@ class UnifiedCockpitWindow(QMainWindow):
         layout.setContentsMargins(SP_XL, SP_LG, SP_XL, SP_LG)
         layout.setSpacing(SP_LG)
 
-        form_group = QGroupBox("⚙️ إعدادات النظام ومفاتيح APIs")
+        form_group = QGroupBox("إعدادات النظام ومفاتيح APIs")
         grid = QGridLayout(form_group)
         grid.setSpacing(SP_MD)
 
@@ -868,14 +868,14 @@ class UnifiedCockpitWindow(QMainWindow):
         btns_row = QHBoxLayout()
         btns_row.setSpacing(SP_MD)
 
-        save_btn = QPushButton("💾 حفظ الإعدادات")
+        save_btn = QPushButton("حفظ الإعدادات")
         save_btn.setObjectName("primary")
         save_btn.clicked.connect(self.save_settings)
 
-        test_gemini_btn = QPushButton("🛰️ اختبار مفتاح Gemini")
+        test_gemini_btn = QPushButton("اختبار مفتاح Gemini")
         test_gemini_btn.clicked.connect(self.test_gemini_settings)
 
-        clear_hist_btn = QPushButton("🗑️ مسح تاريخ المحادثات")
+        clear_hist_btn = QPushButton("مسح تاريخ المحادثات")
         clear_hist_btn.clicked.connect(self.clear_history_settings)
 
         btns_row.addWidget(save_btn)
@@ -939,19 +939,19 @@ class UnifiedCockpitWindow(QMainWindow):
         layout.setContentsMargins(SP_XL, SP_LG, SP_XL, SP_LG)
         layout.setSpacing(SP_MD)
 
-        intro = QLabel("📚 مكتبة المعرفة المحلية — أضف كتباً وملفات ويتم استخراج نصها وفهرسته محلياً")
+        intro = QLabel("مكتبة المعرفة المحلية — أضف كتباً وملفات ويتم استخراج نصها وفهرسته محلياً")
         intro.setWordWrap(True)
         intro.setStyleSheet(f"color: {TEXT_SECONDARY}; font-size: {FONT_SIZE_SMALL}px; padding: 4px;")
         layout.addWidget(intro)
 
         actions = QHBoxLayout()
         actions.setSpacing(SP_SM)
-        self.add_books_button = QPushButton("➕ إضافة كتب")
+        self.add_books_button = QPushButton("إضافة كتب")
         self.add_books_button.setObjectName("primary")
         self.add_books_button.clicked.connect(self.choose_books)
-        self.rebuild_index_button = QPushButton("🔄 إعادة بناء الفهرس")
+        self.rebuild_index_button = QPushButton("إعادة بناء الفهرس")
         self.rebuild_index_button.clicked.connect(self.rebuild_library_index)
-        refresh = QPushButton("🔄 تحديث")
+        refresh = QPushButton("تحديث")
         refresh.clicked.connect(self.refresh_library)
         actions.addWidget(self.add_books_button)
         actions.addWidget(self.rebuild_index_button)
@@ -978,7 +978,7 @@ class UnifiedCockpitWindow(QMainWindow):
         self.library_query = QLineEdit()
         self.library_query.setPlaceholderText("ابحث في نص الكتب التي أضفتها...")
         self.library_query.returnPressed.connect(self.search_library)
-        search_button = QPushButton("🔍 بحث")
+        search_button = QPushButton("بحث")
         search_button.setObjectName("primary")
         search_button.clicked.connect(self.search_library)
         search_row.addWidget(self.library_query)
@@ -1139,7 +1139,7 @@ class UnifiedCockpitWindow(QMainWindow):
 
     def set_activity_state(self, state: str, text: str) -> None:
         self.status_badge.setText(text)
-        status_text = {"idle": "● جاهز", "running": "● يعمل", "error": "● خطأ"}.get(state, "● جاهز")
+        status_text = {"idle": "[ جاهز ]", "running": "[ يعمل ]", "error": "[ خطأ ]"}.get(state, "[ جاهز ]")
         status_color = {"idle": STATUS_OK, "running": "#d29922", "error": STATUS_ERROR}.get(state, STATUS_OK)
         self.sidebar_status.setText(status_text)
         self.sidebar_status.setStyleSheet(f"color: {status_color}; font-size: {FONT_SIZE_SMALL}px; padding: 8px 6px;")
@@ -1220,7 +1220,7 @@ class UnifiedCockpitWindow(QMainWindow):
             self.usb_devices_table.insertRow(row)
             name = device.get("product") or device.get("description") or device.get("manufacturer") or "جهاز غير معرّف"
             risk = str(device.get("risk", "low")).lower()
-            risk_labels = {"critical": "🔴 حرج", "high": "🟠 مرتفع", "medium": "🟡 متوسط", "low": "🟢 منخفض"}
+            risk_labels = {"critical": "[حرج]", "high": "[مرتفع]", "medium": "[متوسط]", "low": "[منخفض]"}
             values = [
                 f"{device.get('bus', '—')} / {device.get('device', '—')}",
                 name,

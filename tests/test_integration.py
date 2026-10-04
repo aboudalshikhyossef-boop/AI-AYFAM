@@ -43,12 +43,12 @@ out1, err1 = run_silently(agent._scan_system)
 check("no exception raised", err1 is None)
 if err1:
     print("     EXCEPTION:", repr(err1))
-check("first run: no trend narrative yet (no prior scan)", "📈" not in out1)
+check("first run: no trend narrative yet (no prior scan)", "[مقارنة]" not in out1 and "[Trend]" not in out1)
 
 print("\n[2] second _scan_system run produces a trend comparison")
 out2, err2 = run_silently(agent._scan_system)
 check("no exception raised", err2 is None)
-check("trend narrative present on 2nd run", "📈" in out2)
+check("trend narrative present on 2nd run", "[مقارنة]" in out2 or "[Trend]" in out2)
 history = agent.kb.get_scan_history("system", limit=5)
 check("2 scans recorded in history", len(history) == 2)
 
@@ -98,7 +98,7 @@ if err9:
 print("\n[10] _show_trend renders after several scans exist")
 out10, err10 = run_silently(agent._show_trend)
 check("no exception raised", err10 is None)
-check("shows a table for system scans", "system" in out10.lower() or "🖥️" in out10)
+check("shows a table for system scans", "system" in out10.lower() or "النظام" in out10)
 if err10:
     print("     EXCEPTION:", repr(err10))
 

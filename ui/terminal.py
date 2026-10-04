@@ -55,12 +55,12 @@ PANEL_PAD = (1, 2)
 # خطورة → (لون، أيقونة). الألوان هنا مقصودة لتكون متمايزة بصرياً بوضوح
 # عن بعضها (لم يعد الحرج والخطير يتشاركان درجتي أحمر شبه متطابقتين).
 _SEV = {
-    "critical": ("bold red",         "🔴", "CRITICAL"),
-    "high":     ("bold dark_orange", "🟠", "HIGH"),
-    "medium":   ("bold yellow",      "🟡", "MEDIUM"),
-    "low":      ("bold cyan",        "🔵", "LOW"),
-    "info":     ("grey58",           "⚪", "INFO"),
-    "safe":     ("bold green",       "🟢", "SAFE"),
+    "critical": ("bold red",         "[CRITICAL]", "CRITICAL"),
+    "high":     ("bold dark_orange", "[HIGH]",     "HIGH"),
+    "medium":   ("bold yellow",      "[MEDIUM]",   "MEDIUM"),
+    "low":      ("bold cyan",        "[LOW]",      "LOW"),
+    "info":     ("grey58",           "[INFO]",     "INFO"),
+    "safe":     ("bold green",       "[SAFE]",     "SAFE"),
 }
 
 _THREAT_COLOR = {
@@ -104,9 +104,9 @@ class TerminalUI:
             return
         try:
             steps = [
-                "⚙  تهيئة الوحدات الأمنية",
-                "🧠 تحميل محرك الذكاء المحلي",
-                "📡 الاتصال بقاعدة المعرفة",
+                "تهيئة الوحدات الأمنية",
+                "تحميل محرك الذكاء المحلي",
+                "الاتصال بقاعدة المعرفة",
             ]
             per_step = max(0.12, seconds / len(steps))
             with Progress(
@@ -239,7 +239,7 @@ class TerminalUI:
         wifi = dev_ctx.get("wifi_adapters", [])
         dev_tbl.add_row("واجهات WiFi", ", ".join(wifi) if wifi else "لا يوجد")
         phones = dev_ctx.get("android_phones", [])
-        dev_tbl.add_row("أجهزة أندرويد", str(len(phones)) + (" 📱" if phones else ""))
+        dev_tbl.add_row("أجهزة أندرويد", str(len(phones)) + (f" ({len(phones)} نشط)" if phones else ""))
         if kb_stats:
             dev_tbl.add_row("سجلات المعرفة", f"{kb_stats.get('knowledge_entries',0)}")
             dev_tbl.add_row("حجم القاعدة", f"{kb_stats.get('db_size_mb',0)}MB")
@@ -339,7 +339,7 @@ class TerminalUI:
 
         ts = datetime.now().strftime("%H:%M:%S")
         badge = f"  [{TEXT_DIM}]·[/{TEXT_DIM}]  [bold {ACCENT}]{intent.upper()}[/bold {ACCENT}]" if intent else ""
-        self.console.print(f"\n[{TEXT_DIM}][{ts}][/{TEXT_DIM}] [bold {ACCENT}]🛡  AYFAM[/bold {ACCENT}]{badge}")
+        self.console.print(f"\n[{TEXT_DIM}][{ts}][/{TEXT_DIM}] [bold {ACCENT}]AYFAM[/bold {ACCENT}]{badge}")
         body_src = self._to_markdown_friendly(msg.strip())
         try:
             body = Markdown(body_src, style=TEXT)
@@ -349,7 +349,7 @@ class TerminalUI:
 
     def chat_thinking(self, msg: str = "أحلل طلبك..."):
         if self.console:
-            self.console.print(f"[{TEXT_DIM}]⏳ {msg}[/{TEXT_DIM}]", end="\r")
+            self.console.print(f"[{TEXT_DIM}][...] {msg}[/{TEXT_DIM}]", end="\r")
 
     # ─── Sections ────────────────────────────────────────────────────────────
     def section(self, title: str, color: str = ACCENT):
@@ -385,7 +385,7 @@ class TerminalUI:
     def critical(self, msg: str):
         self._log_event("CRIT", msg)
         if self.console:
-            self.console.print(Panel(f"[bold white]⚠  {msg}[/bold white]", border_style="red",
+            self.console.print(Panel(f"[bold white][CRITICAL] {msg}[/bold white]", border_style="red",
                                        box=PANEL_BOX, padding=(0, 1), expand=False))
         else:
             print(f"\n  [!!!] {msg}")
@@ -406,7 +406,7 @@ class TerminalUI:
         if detail:
             body += f"\n[{TEXT_DIM}]{detail.strip()[:300]}[/{TEXT_DIM}]"
         if fix:
-            body += f"\n\n[{SUCCESS}]🔧 الحل:[/{SUCCESS}]\n[italic {TEXT_DIM}]{fix.strip()[:300]}[/italic {TEXT_DIM}]"
+            body += f"\n\n[{SUCCESS}][الإصلاح]:[/{SUCCESS}]\n[italic {TEXT_DIM}]{fix.strip()[:300]}[/italic {TEXT_DIM}]"
         self.console.print(Panel(
             body, title=f"[{color}]{icon} {label}[/{color}]",
             border_style=color, padding=(0, 2), width=self._chat_width(), box=PANEL_BOX,
@@ -437,13 +437,13 @@ class TerminalUI:
             for cell in row:
                 cs = str(cell)
                 cl = cs.lower()
-                if any(w in cl for w in ["critical", "🔴", "خطير جداً", "crit"]):
+                if any(w in cl for w in ["critical", "خطير جداً", "crit"]):
                     styled.append(f"[bold red]{cs}[/bold red]")
-                elif any(w in cl for w in ["high", "🟠", "suspicious", "مشبوه"]):
+                elif any(w in cl for w in ["high", "suspicious", "مشبوه"]):
                     styled.append(f"[bold dark_orange]{cs}[/bold dark_orange]")
-                elif any(w in cl for w in ["safe", "آمن", "trusted", "🟢", "ok ✓", "low"]):
+                elif any(w in cl for w in ["safe", "آمن", "trusted", "ok ✓", "low"]):
                     styled.append(f"[{SUCCESS}]{cs}[/{SUCCESS}]")
-                elif any(w in cl for w in ["medium", "🟡", "warning"]):
+                elif any(w in cl for w in ["medium", "warning"]):
                     styled.append(f"[{WARN}]{cs}[/{WARN}]")
                 elif any(w in cl for w in ["open", "مفتوح", "active", "نشط"]):
                     styled.append(f"[{ACCENT}]{cs}[/{ACCENT}]")
@@ -500,7 +500,7 @@ class TerminalUI:
                 console=self.console, transient=True,
             )
         class _F:
-            def __enter__(self): print(f"  ⏳ {msg}..."); return self
+            def __enter__(self): print(f"  [...] {msg}..."); return self
             def __exit__(self, *a): pass
             def add_task(self, *a, **kw): return 0
         return _F()
