@@ -144,9 +144,20 @@ class GeminiHTTPError(GeminiCTIError):
 
 
 def _interaction_output_text(body: Any) -> str:
-    """Extract text from current REST steps, with compatibility for older responses."""
+    """Extract text from current REST steps, generateContent candidates, with compatibility for older responses."""
     if not isinstance(body, Mapping):
         return ""
+    candidates = body.get("candidates")
+    if isinstance(candidates, list) and candidates:
+        first = candidates[0]
+        if isinstance(first, Mapping):
+            content = first.get("content")
+            if isinstance(content, Mapping):
+                parts = content.get("parts")
+                if isinstance(parts, list):
+                    texts = [_text(p.get("text")) for p in parts if isinstance(p, Mapping) and _text(p.get("text"))]
+                    if texts:
+                        return "\n".join(texts)
     direct = _text(body.get("output_text"))
     if direct:
         return direct
@@ -337,10 +348,43 @@ class GeminiThreatClient:
         Direct HTTP avoids SDK retries and AFC behavior, both of which can make a
         failed request look like an endless wait and consume quota unexpectedly.
         """
+        model_name = model.short_name
+        tool_type = _google_search_tool_type(model)
+
+        # 1. Standard generateContent REST API
+        gc_payload = {
+            "contents": [{"parts": [{"text": query}]}],
+            "tools": [{"googleSearch": {}}],
+            "generationConfig": {
+                "responseMimeType": "application/json",
+                "responseSchema": THREAT_SCHEMA,
+            },
+        }
+        gc_url = f"{self.base_url}/models/{model_name}:generateContent"
+        try:
+            response = requests.post(
+                gc_url,
+                headers={"x-goog-api-key": self.api_key, "Content-Type": "application/json"},
+                json=gc_payload,
+                timeout=(10, self.timeout),
+            )
+            if response.status_code < 400:
+                body = response.json()
+                text = _interaction_output_text(body)
+                if text:
+                    return text
+            elif response.status_code == 429:
+                raise GeminiHTTPError(response)
+        except GeminiHTTPError:
+            raise
+        except (requests.RequestException, ValueError):
+            pass
+
+        # 2. Fallback to /interactions endpoint for backward compatibility
         payload = {
-            "model": model.short_name,
+            "model": model_name,
             "input": query,
-            "tools": [{"type": _google_search_tool_type(model)}],
+            "tools": [{"type": tool_type}],
             "response_format": {"type": "text", "mime_type": "application/json", "schema": THREAT_SCHEMA},
         }
         try:

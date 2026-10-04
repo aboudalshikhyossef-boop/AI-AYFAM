@@ -119,8 +119,8 @@ class AYFAMAgent(AgentV5Mixin):
         """Fetch general CTI, then perform all host matching strictly offline."""
         key = resolve_api_key(self.settings.get("gemini_api_key", ""))
         if not key:
-            self.ui.error(self._t("أضف مفتاح Gemini أولاً عبر --configure-gemini أو GEMINI_API_KEY.", "Configure Gemini first with --configure-gemini or GEMINI_API_KEY."))
-            return None
+            self.ui.error(self._t("أضف مفتاح Gemini أولاً عبر الإعدادات أو --configure-gemini.", "Configure Gemini first in Settings or via --configure-gemini."))
+            return []
         client = None
         try:
             self.ui.info(self._t("جلب معلومات تهديدات عامة من المصادر الموثوقة...", "Fetching public threat intelligence from authoritative sources..."))
@@ -136,11 +136,27 @@ class AYFAMAgent(AgentV5Mixin):
             report_dir.mkdir(parents=True, exist_ok=True)
             path = report_dir / f"gemini_cti_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
             path.write_text(report, encoding="utf-8")
+
+            findings = []
+            for item in matched:
+                findings.append({
+                    "severity": item.get("severity", "high"),
+                    "title": f"Gemini CTI: {item.get('id', 'Threat')} — {item.get('title', '')}",
+                    "detail": f"{item.get('description', '')}\n\nLocal Match: {json.dumps(item.get('local_match', {}), ensure_ascii=False)}",
+                    "fix": "\n".join(item.get("recommendations", [])) or "راجع التقارير والمصادر المرفقة لتحديث الحزمة أو علاج الثغرة.",
+                    "category": "threat_intel",
+                    "confidence": 0.9,
+                    "tags": ["gemini_cti", "threat_intel"],
+                    "cve_enriched": True,
+                    "evidence": {"sources": item.get("sources", []), "iocs": item.get("iocs", [])}
+                })
+            self._last_findings = findings
+
             self.ui.success(self._t(f"اكتمل الفحص: {len(feed['threats'])} تهديد، {len(matched)} مطابق محلياً. التقرير: {path}", f"Scan complete: {len(feed['threats'])} threats, {len(matched)} local matches. Report: {path}"))
-            return {"feed": feed, "matched": matched, "report_path": str(path), "model": model}
+            return findings
         except GeminiCTIError as exc:
             self.ui.error(self._t(f"فشل فحص Gemini: {exc}", f"Gemini scan failed: {exc}"))
-            return None
+            return []
         finally:
             if client:
                 client.close()
@@ -1729,6 +1745,10 @@ You can type any of these or anything similar in plain language:
         else:
             self.ui.warning(self._t(f"تعذّر تحديث فهرس Exploit-DB: {edb.get('error','?')}",
                                       f"Could not update Exploit-DB index: {edb.get('error','?')}"))
+
+        if resolve_api_key(self.settings.get("gemini_api_key", "")):
+            self.ui.subsection(self._t("جلب معلومات التهديدات الحديثة من Gemini CTI...", "Fetching latest threat intelligence via Gemini CTI..."))
+            self.run_gemini_threat_scan(window_hours=48)
 
     # ─────────────────────────────────────────────────────────────────────────
     #  CONFIG

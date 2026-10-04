@@ -74,9 +74,9 @@ check("unknown severity falls back to info", severity_color("unknown") != SEV_CR
 
 print("\n[5] Navigation structure")
 from ui.gui_app import NAV_ITEMS
-check("navigation has 8 items", len(NAV_ITEMS) == 8)
+check("navigation has 9 items", len(NAV_ITEMS) == 9)
 check("dashboard is first nav item", NAV_ITEMS[0][0] == "dashboard")
-check("reports is last nav item", NAV_ITEMS[-1][0] == "reports")
+check("settings is last nav item", NAV_ITEMS[-1][0] == "settings")
 
 print(f"\nTOTAL GUI TESTS: {passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)
