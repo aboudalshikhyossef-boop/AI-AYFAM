@@ -50,6 +50,7 @@ NAV_ITEMS = [
     ("library",    "📚", "المكتبة"),
     ("playbooks",  "📋", "خطط العمل"),
     ("reports",    "📄", "التقارير"),
+    ("settings",   "⚙️", "الإعدادات"),
 ]
 
 
@@ -226,6 +227,7 @@ class UnifiedCockpitWindow(QMainWindow):
         self.page_library = QWidget()
         self.page_playbooks = QWidget()
         self.page_reports = QWidget()
+        self.page_settings = QWidget()
 
         self.setup_dashboard_page()
         self.setup_scans_page()
@@ -235,6 +237,7 @@ class UnifiedCockpitWindow(QMainWindow):
         self.setup_playbooks_page()
         self.setup_reports_page()
         self.setup_library_page()
+        self.setup_settings_page()
 
         self.stack.addWidget(self.page_dashboard)
         self.stack.addWidget(self.page_scans)
@@ -244,6 +247,7 @@ class UnifiedCockpitWindow(QMainWindow):
         self.stack.addWidget(self.page_library)
         self.stack.addWidget(self.page_playbooks)
         self.stack.addWidget(self.page_reports)
+        self.stack.addWidget(self.page_settings)
 
         # Wrap stack in scroll area for responsiveness
         scroll = QScrollArea()
@@ -272,12 +276,14 @@ class UnifiedCockpitWindow(QMainWindow):
             "usb": self.page_usb, "tools": self.page_tools,
             "chat": self.page_chat, "library": self.page_library,
             "playbooks": self.page_playbooks, "reports": self.page_reports,
+            "settings": self.page_settings,
         }
         title_map = {
             "dashboard": "غرفة العمليات", "scans": "الفحوصات الأمنية",
             "usb": "الأجهزة المتصلة", "tools": "ترسانة الأدوات المتقدمة",
             "chat": "المحادثة الذكية", "library": "مكتبة المعرفة",
             "playbooks": "خطط العمل الأمنية", "reports": "التقارير",
+            "settings": "إعدادات النظام والمفاتيح",
         }
         widget = page_map.get(key)
         if widget:
@@ -457,8 +463,18 @@ class UnifiedCockpitWindow(QMainWindow):
         self.table_findings.verticalHeader().setVisible(False)
         self.table_findings.verticalHeader().setDefaultSectionSize(32)
 
+        detail_header = QHBoxLayout()
         detail_label = QLabel("تحليل النتيجة المحددة")
         detail_label.setStyleSheet(f"color: {TEXT_SECONDARY}; font-weight: 600; font-size: {FONT_SIZE_SMALL}px;")
+        detail_header.addWidget(detail_label)
+        detail_header.addStretch()
+
+        self.btn_apply_autofix = QPushButton("🔧 تطبيق الإصلاح التلقائي")
+        self.btn_apply_autofix.setObjectName("primary")
+        self.btn_apply_autofix.setToolTip("تطبيق أمر الإصلاح للنتيجة المحددة إن وجد")
+        self.btn_apply_autofix.clicked.connect(self.apply_selected_finding_fix)
+        detail_header.addWidget(self.btn_apply_autofix)
+
         self.finding_detail = QPlainTextEdit(readOnly=True)
         self.finding_detail.setPlaceholderText("حدد نتيجة لعرض التفاصيل والدليل والتوصية.")
         self.finding_detail.setMinimumHeight(130)
@@ -470,13 +486,51 @@ class UnifiedCockpitWindow(QMainWindow):
         dl = QVBoxLayout(detail_panel)
         dl.setContentsMargins(0, 0, 0, 0)
         dl.setSpacing(SP_XS)
-        dl.addWidget(detail_label)
+        dl.addLayout(detail_header)
         dl.addWidget(self.finding_detail)
         findings_splitter.addWidget(detail_panel)
         findings_splitter.setStretchFactor(0, 3)
         findings_splitter.setStretchFactor(1, 2)
         box.addWidget(findings_splitter)
         layout.addWidget(group)
+
+    def apply_selected_finding_fix(self) -> None:
+        row = self.table_findings.currentRow()
+        if row < 0 or row >= len(self.current_findings):
+            QMessageBox.information(self, "اختر نتيجة", "حدد نتيجة من القائمة لتطبيق إصلاحها.")
+            return
+        finding = self.current_findings[row]
+        fix_cmd = finding.get("fix", "")
+        title = finding.get("title", "النتيجة المحددة")
+        if not fix_cmd:
+            QMessageBox.information(self, "لا يوجد إصلاح", f"لا يتوفر أمر إصلاح تلقائي مسجل لـ «{title}».")
+            return
+
+        answer = QMessageBox.question(
+            self, "تأكيد الإصلاح", f"هل تريد تنفيذ الإصلاح التالي؟\n\n{fix_cmd}",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+
+        def run_fix():
+            from tools.fix import apply_fix
+            import subprocess
+            if fix_cmd.startswith("sudo ") or fix_cmd.startswith("apt"):
+                res = subprocess.run(fix_cmd, shell=True, capture_output=True, text=True, timeout=60)
+                return {"success": res.returncode == 0, "stdout": res.stdout, "stderr": res.stderr}
+            else:
+                return apply_fix(fix_cmd)
+
+        self.run_background_task(
+            run_fix,
+            f"إصلاح: {title}",
+            preserve_findings=True,
+            result_handler=lambda res: QMessageBox.information(
+                self, "نتيجة الإصلاح", f"تم تنفيذ الإصلاح:\n{json.dumps(res, ensure_ascii=False, indent=2)}"
+            )
+        )
 
     # ═══════════════════════════════════════════════════════════════════════════
     #  USB PAGE
@@ -552,44 +606,91 @@ class UnifiedCockpitWindow(QMainWindow):
     def setup_tools_page(self) -> None:
         layout = QVBoxLayout(self.page_tools)
         layout.setContentsMargins(SP_XL, SP_LG, SP_XL, SP_LG)
-        layout.setSpacing(SP_LG)
+        layout.setSpacing(SP_MD)
 
-        group = QGroupBox("🛡️ أدوات التدقيق والتحصين المتقدمة")
-        grid = QGridLayout(group)
-        grid.setSpacing(SP_MD)
+        path_row = QHBoxLayout()
+        path_row.addWidget(QLabel("مسار الفحص للأدوات:"))
         self.tool_path = QLineEdit(".")
-        self.tool_path.setPlaceholderText("مسار الفحص (افتراضي: المجلد الحالي)")
-        grid.addWidget(QLabel("المسار:"), 0, 0)
-        grid.addWidget(self.tool_path, 0, 1, 1, 3)
+        self.tool_path.setPlaceholderText("مسار الفحص (افتراضي: المجلد الحالي .)")
+        path_row.addWidget(self.tool_path)
+        layout.addLayout(path_row)
 
-        actions = [
-            ("🔒 CIS / Hardening", self.agent._run_deep_audit, False, False),
-            ("📋 Lynis", self.agent._run_lynis_cli, False, False),
-            ("🦠 YARA", self.start_yara_scan, False, True),
-            ("🕵️ Rootkit", self.agent._run_rootkit_cli, False, False),
-            ("🔑 كشف الأسرار", self.start_secret_scan, False, True),
-            ("📊 تعلّم خط الأساس", self.agent._run_baseline_learn_cli, False, False),
-            ("🔍 فحص الشذوذ", self.agent._run_baseline_check_cli, False, False),
-            ("⚡ توليد قواعد", self.agent._run_synthesize_rules_cli, True, False),
-            ("📝 خطة المعالجة", self.agent._generate_remediation_plan, True, False),
-            ("🌐 تقرير HTML", self.agent._export_html_report, True, False),
-            ("🔄 تحديث التهديدات", self.agent._update_intel, False, False),
-            ("🛰️ Gemini CTI (48h)", self.agent.run_gemini_threat_scan, False, False),
+        groups_layout = QHBoxLayout()
+        groups_layout.setSpacing(SP_MD)
+
+        # 1. Audit & Hardening
+        g_audit = QGroupBox("🔒 التدقيق والتحصين")
+        l_audit = QVBoxLayout(g_audit)
+        audit_btns = [
+            ("🔒 CIS / Hardening", lambda: self._run_tool_and_display(self.agent._run_deep_audit, "فحص CIS Hardening")),
+            ("📋 Lynis Audit", lambda: self._run_tool_and_display(self.agent._run_lynis_cli, "فحص Lynis")),
+            ("📊 تعلّم خط الأساس", lambda: self._run_tool_and_display(self.agent._run_baseline_learn_cli, "تعلّم خط الأساس")),
+            ("🔍 فحص شذوذ النظام", lambda: self._run_tool_and_display(self.agent._run_baseline_check_cli, "فحص الشذوذ")),
+            ("📝 خطة المعالجة", lambda: self._run_tool_and_display(self.agent._generate_remediation_plan, "خطة المعالجة")),
         ]
-        for i, (text, fn, preserve_findings, direct) in enumerate(actions):
-            btn = QPushButton(text)
-            if direct:
-                btn.clicked.connect(fn)
-            else:
-                btn.clicked.connect(lambda _checked=False, f=fn, t=text, p=preserve_findings: self.run_background_task(f, t, p))
+        for name, fn in audit_btns:
+            btn = QPushButton(name)
+            btn.clicked.connect(fn)
             self.task_buttons.append(btn)
-            grid.addWidget(btn, 1 + i // 3, i % 3)
-        layout.addWidget(group)
+            l_audit.addWidget(btn)
+        l_audit.addStretch()
+        groups_layout.addWidget(g_audit)
 
-        note = QLabel("⚠️ أدوات الإصلاح التلقائي قد تغيّر إعدادات النظام. استخدمها بعد مراجعة النتائج.")
-        note.setStyleSheet(f"color: {SEV_MEDIUM}; font-size: {FONT_SIZE_SMALL}px; padding: 4px;")
-        layout.addWidget(note)
-        layout.addStretch()
+        # 2. Scanning & Malware
+        g_scan = QGroupBox("🔍 كشف التهديدات والأسرار")
+        l_scan = QVBoxLayout(g_scan)
+        scan_btns = [
+            ("🦠 فحص YARA", lambda: self._run_tool_and_display(lambda: self.agent._run_yara_cli(self.tool_path.text().strip() or "."), "فحص YARA")),
+            ("🔑 كشف الأسرار", lambda: self._run_tool_and_display(lambda: self.agent._scan_secrets_cli(self.tool_path.text().strip() or "."), "كشف الأسرار")),
+            ("🕵️ فحص Rootkit", lambda: self._run_tool_and_display(self.agent._run_rootkit_cli, "فحص Rootkit")),
+            ("⚡ توليد قواعد التفاعل", lambda: self._run_tool_and_display(self.agent._run_synthesize_rules_cli, "توليد قواعد")),
+        ]
+        for name, fn in scan_btns:
+            btn = QPushButton(name)
+            btn.clicked.connect(fn)
+            self.task_buttons.append(btn)
+            l_scan.addWidget(btn)
+        l_scan.addStretch()
+        groups_layout.addWidget(g_scan)
+
+        # 3. Threat Intel & CTI
+        g_intel = QGroupBox("🛰️ استخبارات التهديدات")
+        l_intel = QVBoxLayout(g_intel)
+        intel_btns = [
+            ("🔄 تحديث التهديدات (KEV/Exploit-DB)", lambda: self._run_tool_and_display(self.agent._update_intel, "تحديث التهديدات")),
+            ("🛰️ Gemini CTI (48h)", lambda: self._run_tool_and_display(lambda: self.agent.run_gemini_threat_scan(48), "Gemini CTI")),
+            ("🌐 تصدير تقرير HTML", lambda: self._run_tool_and_display(self.agent._export_html_report, "تصدير HTML")),
+        ]
+        for name, fn in intel_btns:
+            btn = QPushButton(name)
+            if "Gemini" in name:
+                btn.setObjectName("primary")
+            btn.clicked.connect(fn)
+            self.task_buttons.append(btn)
+            l_intel.addWidget(btn)
+        l_intel.addStretch()
+        groups_layout.addWidget(g_intel)
+
+        layout.addLayout(groups_layout)
+
+        # Output viewer pane directly on Tools page
+        out_box = QGroupBox("🖥️ نتائج تشغيل الأدوات والمخرجات المباشرة")
+        out_layout = QVBoxLayout(out_box)
+        self.tool_output = QPlainTextEdit(readOnly=True)
+        self.tool_output.setPlaceholderText("اختر أداة تشغيل من المجموعات أعلاه لعرض نتائجها هنا مباشرة...")
+        self.tool_output.setMinimumHeight(200)
+        out_layout.addWidget(self.tool_output)
+        layout.addWidget(out_box, 1)
+
+    def _run_tool_and_display(self, fn: Callable[[], Any], title: str) -> None:
+        self.tool_output.setPlainText(f"⚙️ جارٍ تشغيل {title}...\n")
+        def handler(res: Any):
+            if isinstance(res, (dict, list)):
+                rendered = json.dumps(res, ensure_ascii=False, indent=2, default=str)
+            else:
+                rendered = str(res)
+            self.tool_output.setPlainText(f"✅ اكتمل تشغيل {title}:\n\n{rendered}")
+        self.run_background_task(fn, title, preserve_findings=False, result_handler=handler)
 
     # ═══════════════════════════════════════════════════════════════════════════
     #  CHAT PAGE
@@ -655,7 +756,7 @@ class UnifiedCockpitWindow(QMainWindow):
         layout.setContentsMargins(SP_XL, SP_LG, SP_XL, SP_LG)
         layout.setSpacing(SP_MD)
 
-        intro = QLabel("📄 إدارة التقارير الأمنية المُنشأة")
+        intro = QLabel("📄 إدارة التقارير الأمنية المُنشأة والمعاينة المباشرة")
         intro.setStyleSheet(f"color: {TEXT_SECONDARY}; font-size: {FONT_SIZE_SMALL}px;")
         layout.addWidget(intro)
 
@@ -672,15 +773,163 @@ class UnifiedCockpitWindow(QMainWindow):
         row.addWidget(refresh)
         layout.addLayout(row)
 
+        reports_splitter = QSplitter(Qt.Orientation.Vertical)
+        reports_splitter.setHandleWidth(2)
+
         self.reports_table = QTableWidget(0, 3)
         self.reports_table.setHorizontalHeaderLabels(["الملف", "الحجم", "آخر تعديل"])
         self.reports_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self.reports_table.setAlternatingRowColors(True)
         self.reports_table.verticalHeader().setVisible(False)
         self.reports_table.verticalHeader().setDefaultSectionSize(32)
+        self.reports_table.cellClicked.connect(self.preview_selected_report)
         self.reports_table.cellDoubleClicked.connect(self.open_report)
-        layout.addWidget(self.reports_table)
+        reports_splitter.addWidget(self.reports_table)
+
+        preview_box = QGroupBox("🔍 معاينة التقرير المحدد")
+        pv_layout = QVBoxLayout(preview_box)
+        self.report_preview = QPlainTextEdit(readOnly=True)
+        self.report_preview.setPlaceholderText("حدد تقريراً من الجدول أعلاه لمعاينته هنا مباشرة...")
+        pv_layout.addWidget(self.report_preview)
+        reports_splitter.addWidget(preview_box)
+
+        reports_splitter.setStretchFactor(0, 2)
+        reports_splitter.setStretchFactor(1, 3)
+        layout.addWidget(reports_splitter, 1)
         self.refresh_reports()
+
+    def preview_selected_report(self, row: int, _column: int) -> None:
+        item = self.reports_table.item(row, 0)
+        if not item:
+            return
+        filepath = Path(item.text())
+        if filepath.exists() and filepath.is_file():
+            try:
+                content = filepath.read_text(encoding="utf-8", errors="replace")
+                self.report_preview.setPlainText(f"📄 [{filepath.name}]\n\n" + content[:50000])
+            except Exception as exc:
+                self.report_preview.setPlainText(f"تعذر قراءة التقرير: {exc}")
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    #  SETTINGS PAGE
+    # ═══════════════════════════════════════════════════════════════════════════
+    def setup_settings_page(self) -> None:
+        layout = QVBoxLayout(self.page_settings)
+        layout.setContentsMargins(SP_XL, SP_LG, SP_XL, SP_LG)
+        layout.setSpacing(SP_LG)
+
+        form_group = QGroupBox("⚙️ إعدادات النظام ومفاتيح APIs")
+        grid = QGridLayout(form_group)
+        grid.setSpacing(SP_MD)
+
+        self.setting_gemini_key = QLineEdit(self.settings.get("gemini_api_key", ""))
+        self.setting_gemini_key.setEchoMode(QLineEdit.EchoMode.PasswordEchoOnEdit)
+        self.setting_gemini_key.setPlaceholderText("AI Studio Gemini API Key")
+
+        self.setting_abuseipdb_key = QLineEdit(self.settings.get("abuseipdb_key", ""))
+        self.setting_abuseipdb_key.setEchoMode(QLineEdit.EchoMode.PasswordEchoOnEdit)
+        self.setting_abuseipdb_key.setPlaceholderText("AbuseIPDB API Key (اختياري)")
+
+        self.setting_nvd_key = QLineEdit(self.settings.get("nvd_api_key", ""))
+        self.setting_nvd_key.setEchoMode(QLineEdit.EchoMode.PasswordEchoOnEdit)
+        self.setting_nvd_key.setPlaceholderText("NVD API Key (اختياري — يرفع حد طلبات CVE)")
+
+        self.setting_github_token = QLineEdit(self.settings.get("github_token", ""))
+        self.setting_github_token.setEchoMode(QLineEdit.EchoMode.PasswordEchoOnEdit)
+        self.setting_github_token.setPlaceholderText("GitHub Personal Access Token")
+
+        self.setting_report_dir = QLineEdit(self.settings.get("report_dir", os.path.expanduser("~/ayfam-reports")))
+
+        self.setting_lang_combo = QComboBox()
+        self.setting_lang_combo.addItems(["ar", "en"])
+        current_lang = self.settings.get("language", "ar")
+        self.setting_lang_combo.setCurrentText(current_lang if current_lang in ("ar", "en") else "ar")
+
+        grid.addWidget(QLabel("Gemini API Key:"), 0, 0)
+        grid.addWidget(self.setting_gemini_key, 0, 1)
+
+        grid.addWidget(QLabel("AbuseIPDB Key:"), 1, 0)
+        grid.addWidget(self.setting_abuseipdb_key, 1, 1)
+
+        grid.addWidget(QLabel("NVD API Key:"), 2, 0)
+        grid.addWidget(self.setting_nvd_key, 2, 1)
+
+        grid.addWidget(QLabel("GitHub Token:"), 3, 0)
+        grid.addWidget(self.setting_github_token, 3, 1)
+
+        grid.addWidget(QLabel("مجلد التقارير:"), 4, 0)
+        grid.addWidget(self.setting_report_dir, 4, 1)
+
+        grid.addWidget(QLabel("اللغة (Language):"), 5, 0)
+        grid.addWidget(self.setting_lang_combo, 5, 1)
+
+        layout.addWidget(form_group)
+
+        btns_row = QHBoxLayout()
+        btns_row.setSpacing(SP_MD)
+
+        save_btn = QPushButton("💾 حفظ الإعدادات")
+        save_btn.setObjectName("primary")
+        save_btn.clicked.connect(self.save_settings)
+
+        test_gemini_btn = QPushButton("🛰️ اختبار مفتاح Gemini")
+        test_gemini_btn.clicked.connect(self.test_gemini_settings)
+
+        clear_hist_btn = QPushButton("🗑️ مسح تاريخ المحادثات")
+        clear_hist_btn.clicked.connect(self.clear_history_settings)
+
+        btns_row.addWidget(save_btn)
+        btns_row.addWidget(test_gemini_btn)
+        btns_row.addWidget(clear_hist_btn)
+        btns_row.addStretch()
+
+        layout.addLayout(btns_row)
+
+        self.settings_log = QPlainTextEdit(readOnly=True)
+        self.settings_log.setPlaceholderText("ستظهر نتائج اختبار الاتصال وحفظ الإعدادات هنا...")
+        self.settings_log.setMinimumHeight(180)
+        layout.addWidget(self.settings_log, 1)
+
+    def save_settings(self) -> None:
+        self.settings.set("gemini_api_key", self.setting_gemini_key.text().strip())
+        self.settings.set("abuseipdb_key", self.setting_abuseipdb_key.text().strip())
+        self.settings.set("nvd_api_key", self.setting_nvd_key.text().strip())
+        self.settings.set("github_token", self.setting_github_token.text().strip())
+        self.settings.set("report_dir", self.setting_report_dir.text().strip())
+        lang = self.setting_lang_combo.currentText()
+        self.settings.set("language", lang)
+        self.agent.lang = lang
+        self.agent.intel.language = lang
+        self.settings_log.setPlainText("✅ تم حفظ الإعدادات بنجاح!")
+        QMessageBox.information(self, "حفظ الإعدادات", "تم حفظ جميع الإعدادات والمفاتيح آمنة محلياً.")
+
+    def test_gemini_settings(self) -> None:
+        key = self.setting_gemini_key.text().strip() or self.settings.get("gemini_api_key", "")
+        if not key:
+            self.settings_log.setPlainText("❌ لم يتم إدخال مفتاح Gemini.")
+            return
+        self.settings_log.setPlainText("🛰️ جارٍ فحص نماذج Gemini المتاحة لهذا المفتاح...\n")
+        def run_test():
+            return self.agent.gemini_model_status()
+        self.run_background_task(
+            run_test,
+            "اختبار Gemini",
+            preserve_findings=True,
+            result_handler=lambda models: self.settings_log.setPlainText(
+                f"✅ تم الاتصال بنجاح!\nالنماذج المكتشفة ({len(models)}): " + ", ".join(m.short_name for m in models)
+            ) if models else self.settings_log.setPlainText("❌ تعذر الاتصال أو لم يتم العثور على نماذج متوافقة.")
+        )
+
+    def clear_history_settings(self) -> None:
+        answer = QMessageBox.question(
+            self, "مسح التاريخ", "هل أنت تأكد من مسح سجّلات المحادثة السابقة؟",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        if answer == QMessageBox.StandardButton.Yes:
+            self.agent.kb.clear_history()
+            self.chat_display.clear()
+            self.settings_log.setPlainText("🗑️ تم مسح تاريخ المحادثات.")
 
     # ═══════════════════════════════════════════════════════════════════════════
     #  LIBRARY PAGE

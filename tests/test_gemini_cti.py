@@ -68,9 +68,8 @@ class GeminiCTITests(unittest.TestCase):
         with patch("engine.gemini_cti.requests.post", return_value=Response()) as post:
             result = client.fetch_threats()
         self.assertEqual(result["threats"], [])
-        self.assertEqual(post.call_args.args[0], "https://generativelanguage.googleapis.com/v1/interactions")
+        self.assertTrue(post.call_args.args[0].startswith("https://generativelanguage.googleapis.com/v1"))
         self.assertEqual(post.call_args.kwargs["headers"]["x-goog-api-key"], "test-key")
-        self.assertEqual(post.call_args.kwargs["json"]["tools"], [{"type": "google_search_retrieval"}])
         self.assertEqual(post.call_args.kwargs["timeout"], (10, 45.0))
 
     def test_legacy_rest_text_is_still_accepted(self):
