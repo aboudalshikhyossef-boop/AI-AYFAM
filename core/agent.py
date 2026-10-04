@@ -349,11 +349,11 @@ class AYFAMAgent(AgentV5Mixin):
 
         # Announce what we're doing
         desc = self.nlp.describe_intent(intent, self.lang)
-        self.ui.info(self._t(f"🧠 فهمت طلبك: {desc} — سأبدأ الآن.", f"🧠 Understood: {desc} — starting now."))
+        self.ui.info(self._t(f"فهمت طلبك: {desc} — سأبدأ الآن.", f"Understood: {desc} — starting now."))
         self.kb.save_message("agent", f"[{intent}] {desc}", intent=intent, entities=entities)
 
         if intent == "exit":
-            self.ui.chat_agent(self._t("مع السلامة! 🛡️", "Goodbye! 🛡️"), intent="EXIT")
+            self.ui.chat_agent(self._t("تم إنهاء الجلسة بنجاح.", "Session ended successfully."), intent="EXIT")
             raise EOFError()
 
         handler = handlers.get(intent)
@@ -382,7 +382,7 @@ class AYFAMAgent(AgentV5Mixin):
     # ─────────────────────────────────────────────────────────────────────────
 
     def _explain(self, target: str):
-        self.ui.section(self._t(f"📖 شرح: {target}", f"📖 Explain: {target}"))
+        self.ui.section(self._t(f"شرح وتحليل: {target}", f"Explain & Analyze: {target}"))
         explanation = self.nlp.explain(target)
         self.ui.chat_agent(explanation, intent="EXPLAIN")
 
@@ -754,7 +754,7 @@ class AYFAMAgent(AgentV5Mixin):
     # ─────────────────────────────────────────────────────────────────────────
 
     def _agent_status(self):
-        self.ui.section(self._t("🤖 حالة الوكيل", "🤖 Agent Status"))
+        self.ui.section(self._t("حالة النظام والوكيل", "Agent & System Status"))
         self.ui.banner(context=self.ctx)
         self.ui.dashboard(context=self.ctx, kb_stats=self.kb.get_stats())
         self.ui.show_event_stream(n=10)
@@ -771,7 +771,7 @@ class AYFAMAgent(AgentV5Mixin):
             "أنماط أخطاء": str(stats['error_patterns']),
             "تحسينات منتظرة": str(stats['pending_improvements']),
             "حجم قاعدة البيانات": f"{stats['db_size_mb']} MB / 1024 MB",
-        }, "📊 إحصائيات الوكيل")
+        }, "إحصائيات النظام")
 
         # Diagnostics
         diag = self.healer.full_diagnostics()
@@ -779,9 +779,9 @@ class AYFAMAgent(AgentV5Mixin):
         for k, v in diag.items():
             status = v.get("status","?")
             value  = v.get("value","")
-            icon   = "✅" if status == "ok" else "⚠️ " if status == "warning" else "❌"
+            icon   = "[OK]" if status == "ok" else "[WARN]" if status == "warning" else "[FAIL]"
             rows.append([icon, k, value])
-        self.ui.print_table(["", "Component", "Status"], rows, title="🔬 تشخيص الوكيل")
+        self.ui.print_table(["State", "Component", "Status"], rows, title="تشخيص مكونات النظام")
 
     # ─────────────────────────────────────────────────────────────────────────
     #  AGENT SELF-UPDATE — يقترح ما يحتاجه ليتطور
@@ -936,7 +936,7 @@ You can type any of these or anything similar in plain language:
     # ─────────────────────────────────────────────────────────────────────────
 
     def _scan_network(self):
-        self.ui.section(self._t("🌐 فحص الشبكة الذكي", "🌐 Smart Network Scan"))
+        self.ui.section(self._t("فحص الشبكة الذكي", "Smart Network Scan"))
         with self.ui.spinner(self._t("تحليل الشبكة...", "Analyzing network...")):
             pass
 
@@ -959,13 +959,13 @@ You can type any of these or anything similar in plain language:
             self.ui.print_table(["Proto","Local","Remote","Process","Risk","Reason"], rows,
                                 title=self._t("اتصالات تحتاج مراجعة","Connections to Review"))
         else:
-            self.ui.success(self._t("✅ جميع الاتصالات موثوقة","✅ All connections trusted"))
+            self.ui.success(self._t("جميع الاتصالات موثوقة","All connections trusted"))
 
         leak = network.check_data_leaks()
         fw   = network.check_firewall()
         self.ui.info(self._t(
-            f"UFW: {'🟢 مُفعَّل' if fw['enabled'] else '🔴 معطَّل'}",
-            f"UFW: {'🟢 Active' if fw['enabled'] else '🔴 Disabled'}"
+            f"UFW: {'[نشط]' if fw['enabled'] else '[معطَّل]'}",
+            f"UFW: {'[Active]' if fw['enabled'] else '[Disabled]'}"
         ))
 
         wifi = network.get_wifi_networks()
@@ -983,7 +983,7 @@ You can type any of these or anything similar in plain language:
         for f in all_findings:
             self.ui.print_finding(f["severity"], f["title"], f.get("detail",""), f.get("fix",""))
         if not all_findings:
-            self.ui.success(self._t("🟢 الشبكة نظيفة","🟢 Network looks clean"))
+            self.ui.success(self._t("الشبكة نظيفة","Network looks clean"))
 
         risk = self.intel.compute_risk_score(all_findings)
         self.ui.raw(self.intel.generate_summary(risk, all_findings, self._t("فحص الشبكة","Network Scan")), style=_risk_border_style(risk["level"]))
@@ -996,11 +996,11 @@ You can type any of these or anything similar in plain language:
         return all_findings
 
     def _check_firewall(self):
-        self.ui.section(self._t("🔥 جدار الحماية","🔥 Firewall"))
+        self.ui.section(self._t("جدار الحماية","Firewall"))
         fw = network.check_firewall()
         self.ui.info(self._t(
-            f"UFW: {'🟢 مُفعَّل' if fw['enabled'] else '🔴 معطَّل'} | الإصدار: {fw.get('version','')}",
-            f"UFW: {'🟢 Active' if fw['enabled'] else '🔴 Disabled'} | Version: {fw.get('version','')}"
+            f"UFW: {'[نشط]' if fw['enabled'] else '[معطَّل]'} | الإصدار: {fw.get('version','')}",
+            f"UFW: {'[Active]' if fw['enabled'] else '[Disabled]'} | Version: {fw.get('version','')}"
         ))
         for rule in fw.get("rules", [])[:10]:
             self.ui.info(f"  {rule}")
@@ -1023,7 +1023,7 @@ You can type any of these or anything similar in plain language:
     def _scan_ports(self, target: str, port_range: str = None):
         if not target or target == "127.0.0.1":
             target = self.ui.ask(self._t("IP أو hostname","IP or hostname"), default="127.0.0.1")
-        self.ui.section(self._t(f"🔍 فحص المنافذ: {target}", f"🔍 Port Scan: {target}"))
+        self.ui.section(self._t(f"فحص المنافذ: {target}", f"Port Scan: {target}"))
         if port_range is None:
             port_range = self.ui.ask(self._t("نطاق المنافذ","Port range"), default="1-1024")
         with self.ui.spinner(self._t(f"فحص {port_range}...", f"Scanning {port_range}...")):
@@ -1059,7 +1059,7 @@ You can type any of these or anything similar in plain language:
     # ─────────────────────────────────────────────────────────────────────────
 
     def _usb_control_center(self):
-        self.ui.section(self._t("🔌 مركز تحكم USB","🔌 USB Control Center"))
+        self.ui.section(self._t("مركز تحكم USB","USB Control Center"))
         while True:
             devices = list_usb_devices()
             if not devices:
@@ -1226,7 +1226,7 @@ You can type any of these or anything similar in plain language:
     # ─────────────────────────────────────────────────────────────────────────
 
     def _scan_system(self):
-        self.ui.section(self._t("🖥️ فحص النظام الذكي","🖥️ Smart System Scan"))
+        self.ui.section(self._t("فحص النظام الذكي","Smart System Scan"))
         sysinfo = system.get_system_info()
         self.ui.print_tree({
             "Hostname": sysinfo.get("hostname",""), "OS": sysinfo.get("os",""),
@@ -1271,7 +1271,7 @@ You can type any of these or anything similar in plain language:
         for f in all_findings:
             self.ui.print_finding(f["severity"], f["title"], f.get("detail",""), f.get("fix",""))
         if not all_findings:
-            self.ui.success(self._t("🟢 النظام يبدو آمناً","🟢 System looks secure"))
+            self.ui.success(self._t("النظام يبدو آمناً","System looks secure"))
 
         self.ui.raw(self.intel.get_remediation_plan(all_findings))
         # ── Smart Remediation Prioritization ──
@@ -1290,7 +1290,7 @@ You can type any of these or anything similar in plain language:
     # ─────────────────────────────────────────────────────────────────────────
 
     def _scan_logs(self):
-        self.ui.section(self._t("📋 تحليل السجلات","📋 Log Analysis"))
+        self.ui.section(self._t("تحليل السجلات","Log Analysis"))
         with self.ui.spinner(self._t("تحليل السجلات...","Analyzing logs...")):
             pass
         logs = system.analyze_logs()
@@ -1309,7 +1309,7 @@ You can type any of these or anything similar in plain language:
         for f in all_findings:
             self.ui.print_finding(f["severity"], f["title"], f.get("detail",""), f.get("fix",""))
         if not all_findings:
-            self.ui.success(self._t("🟢 السجلات نظيفة","🟢 Logs are clean"))
+            self.ui.success(self._t("السجلات نظيفة","Logs are clean"))
 
         risk = self.intel.compute_risk_score(all_findings)
         self.ui.raw(self.intel.generate_summary(risk, all_findings, self._t("تحليل السجلات","Log Analysis")), style=_risk_border_style(risk["level"]))
@@ -1326,7 +1326,7 @@ You can type any of these or anything similar in plain language:
             url = self.ui.ask(self._t("رابط الموقع","Website URL"))
         if not url.startswith("http"):
             url = "https://" + url
-        self.ui.section(self._t(f"🌐 فحص الموقع: {url}",f"🌐 Website Scan: {url}"))
+        self.ui.section(self._t(f"فحص الموقع: {url}",f"Website Scan: {url}"))
         with self.ui.spinner(self._t("فحص...","Scanning...")):
             pass
         result = web.test_website_security(url)
@@ -1365,7 +1365,7 @@ You can type any of these or anything similar in plain language:
     def _cve_search(self, keyword: str):
         if not keyword:
             keyword = self.ui.ask(self._t("كلمة البحث CVE","CVE keyword"))
-        self.ui.section(self._t(f"🔍 بحث CVE: {keyword}",f"🔍 CVE Search: {keyword}"))
+        self.ui.section(self._t(f"بحث CVE: {keyword}",f"CVE Search: {keyword}"))
         nvd_key = self.settings.get("nvd_api_key", "")
 
         # Check local KB first
@@ -1425,7 +1425,7 @@ You can type any of these or anything similar in plain language:
     # ─────────────────────────────────────────────────────────────────────────
 
     def _github_center(self):
-        self.ui.section(self._t("🐙 مركز GitHub","🐙 GitHub Center"))
+        self.ui.section(self._t("مركز GitHub","GitHub Center"))
         token = self.settings.get("github_token","")
         if not token:
             self.ui.warning(self._t("رمز GitHub غير مُعيَّن","GitHub token not set"))
@@ -1517,7 +1517,7 @@ You can type any of these or anything similar in plain language:
     def _web_search(self, query: str):
         if not query:
             query = self.ui.ask(self._t("ماذا تريد البحث عنه؟","What to search for?"))
-        self.ui.section(self._t(f"🔍 بحث: {query}",f"🔍 Search: {query}"))
+        self.ui.section(self._t(f"بحث: {query}",f"Search: {query}"))
         with self.ui.spinner(self._t("البحث في عدة مصادر (DuckDuckGo + Wikipedia)...","Searching multiple sources (DuckDuckGo + Wikipedia)...")):
             pass
         results = web.web_search(query)
@@ -1542,7 +1542,7 @@ You can type any of these or anything similar in plain language:
     def _check_ip(self, ip: str):
         if not ip:
             ip = self.ui.ask("IP")
-        self.ui.section(self._t(f"🌐 سمعة IP: {ip}",f"🌐 IP Rep: {ip}"))
+        self.ui.section(self._t(f"سمعة IP: {ip}",f"IP Rep: {ip}"))
         with self.ui.spinner("Checking..."):
             pass
         result = web.check_ip_reputation(ip, abuseipdb_key=self.settings.get("abuseipdb_key",""))
@@ -1574,8 +1574,8 @@ You can type any of these or anything similar in plain language:
         valid = [v for v in vulns if "error" not in v]
 
         if not valid:
-            self.ui.success(self._t(f"🟢 لا ثغرات معروفة لـ {package} على OSV.dev",
-                                      f"🟢 No known vulnerabilities for {package} on OSV.dev"))
+            self.ui.success(self._t(f"لا ثغرات معروفة لـ {package} على OSV.dev",
+                                      f"No known vulnerabilities for {package} on OSV.dev"))
         else:
             rows = [[v["id"], ", ".join(v.get("cve_ids", [])) or "—", v.get("published","?")[:10],
                      v.get("summary","")[:60]] for v in valid]
@@ -1595,11 +1595,11 @@ You can type any of these or anything similar in plain language:
     # ─────────────────────────────────────────────────────────────────────────
 
     def _show_trend(self):
-        self.ui.section(self._t("📈 تطوّر الوضع الأمني","📈 Security Trend"))
+        self.ui.section(self._t("تطوّر الوضع الأمني","Security Trend"))
         any_history = False
         labels = {
-            "network": self._t("🌐 الشبكة","🌐 Network"), "system": self._t("🖥️ النظام","🖥️ System"),
-            "logs": self._t("📋 السجلات","📋 Logs"), "full": self._t("🔒 شامل","🔒 Full"),
+            "network": self._t("الشبكة","Network"), "system": self._t("النظام","System"),
+            "logs": self._t("السجلات","Logs"), "full": self._t("شامل","Full"),
         }
         for scan_type, label in labels.items():
             history = self.kb.get_scan_history(scan_type, limit=8)
@@ -1629,7 +1629,7 @@ You can type any of these or anything similar in plain language:
     # ─────────────────────────────────────────────────────────────────────────
 
     def _autofix_menu(self):
-        self.ui.section(self._t("🔧 الإصلاح التلقائي","🔧 Auto-Fix"))
+        self.ui.section(self._t("الإصلاح التلقائي","Auto-Fix"))
         self.ui.warning(self._t("⚠️  بعض الإصلاحات تُعدّل إعدادات النظام!","⚠️  Some fixes modify system settings!"))
         available = list_available_fixes()
         rows = [[str(i+1), fix_id] for i, fix_id in enumerate(available)]
@@ -1662,7 +1662,7 @@ You can type any of these or anything similar in plain language:
     # ─────────────────────────────────────────────────────────────────────────
 
     def _full_scan(self):
-        self.ui.section(self._t("🔒 الفحص الشامل الكامل","🔒 Full Comprehensive Scan"))
+        self.ui.section(self._t("الفحص الشامل الكامل","Full Comprehensive Scan"))
         self.ui.warning(self._t("قد يستغرق عدة دقائق...","May take several minutes..."))
         all_findings = []
         steps = [
@@ -1716,7 +1716,7 @@ You can type any of these or anything similar in plain language:
     # ─────────────────────────────────────────────────────────────────────────
 
     def _update_intel(self):
-        self.ui.section(self._t("🔄 تحديث معلومات التهديدات","🔄 Threat Intelligence Update"))
+        self.ui.section(self._t("تحديث معلومات التهديدات","Threat Intelligence Update"))
         conn = web.check_connectivity()
         if not conn["connected"]:
             self.ui.error(self._t("لا اتصال بالإنترنت","No internet")); return
@@ -1755,7 +1755,7 @@ You can type any of these or anything similar in plain language:
     # ─────────────────────────────────────────────────────────────────────────
 
     def _config_menu(self):
-        self.ui.section(self._t("⚙️ الإعدادات","⚙️ Settings"))
+        self.ui.section(self._t("الإعدادات","Settings"))
         rows = [[k, str(v)] for k, v in self.settings.all().items()]
         self.ui.print_table(["Setting","Value"], rows)
         options = [

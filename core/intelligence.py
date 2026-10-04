@@ -147,24 +147,24 @@ class SecurityIntelligence:
 
         if total >= RISK_THRESHOLDS["critical"] or counts["critical"] >= 2:
             level = "critical"
-            label_ar = "🔴 خطر شديد"
-            label_en = "🔴 CRITICAL RISK"
+            label_ar = "[حرج] خطر شديد"
+            label_en = "[CRITICAL] CRITICAL RISK"
         elif total >= RISK_THRESHOLDS["high"] or counts["critical"] >= 1 or counts["high"] >= 3:
             level = "high"
-            label_ar = "🟠 خطر عالي"
-            label_en = "🟠 HIGH RISK"
+            label_ar = "[مرتفع] خطر عالي"
+            label_en = "[HIGH] HIGH RISK"
         elif total >= RISK_THRESHOLDS["medium"] or counts["high"] >= 1:
             level = "medium"
-            label_ar = "🟡 خطر متوسط"
-            label_en = "🟡 MEDIUM RISK"
+            label_ar = "[متوسط] خطر متوسط"
+            label_en = "[MEDIUM] MEDIUM RISK"
         elif total >= RISK_THRESHOLDS["low"] or counts["medium"] >= 1:
             level = "low"
-            label_ar = "🔵 خطر منخفض"
-            label_en = "🔵 LOW RISK"
+            label_ar = "[منخفض] خطر منخفض"
+            label_en = "[LOW] LOW RISK"
         else:
             level = "safe"
-            label_ar = "🟢 آمن"
-            label_en = "🟢 SAFE"
+            label_ar = "[آمن] آمن"
+            label_en = "[SAFE] SAFE"
 
         return {
             "score": total,
@@ -185,56 +185,56 @@ class SecurityIntelligence:
 
         if lang == "ar":
             summary = f"""
-💬 {narration}
+[التحليل]: {narration}
 
-📊 ملخص الفحص الأمني — AI AYFAM
+[ملخص الفحص الأمني — AI AYFAM]
 {'='*50}
 نوع الفحص  : {scan_type}
 وقت الفحص  : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 مستوى الخطر : {risk['label_ar']}
 نقاط الخطر : {score}
 
-📋 إحصائيات النتائج:
-  🔴 خطير جداً : {counts['critical']}
-  🟠 خطير      : {counts['high']}
-  🟡 متوسط     : {counts['medium']}
-  🔵 منخفض     : {counts['low']}
-  ⚪ معلومات   : {counts['info']}
+إحصائيات النتائج:
+  [حرج] خطير جداً : {counts['critical']}
+  [مرتفع] خطير   : {counts['high']}
+  [متوسط] متوسط  : {counts['medium']}
+  [منخفض] منخفض  : {counts['low']}
+  [معلومات] معلومات: {counts['info']}
   ─────────────────
   المجموع       : {risk['total_findings']}
 """
             if level == "safe":
-                summary += "\n✅ النظام في حالة جيدة. لم يتم رصد مشاكل أمنية كبيرة.\n"
+                summary += "\n[آمن] النظام في حالة جيدة. لم يتم رصد مشاكل أمنية كبيرة.\n"
             elif level in ("critical", "high"):
-                summary += "\n⚠️  تحذير: تم رصد مشاكل أمنية خطيرة تستوجب التدخل الفوري!\n"
+                summary += "\n[تحذير] تم رصد مشاكل أمنية خطيرة تستوجب التدخل الفوري!\n"
             else:
-                summary += "\n⚡ يُنصح بمعالجة النتائج المُكتشفة لتعزيز أمان النظام.\n"
+                summary += "\n[ملاحظة] يُنصح بمعالجة النتائج المُكتشفة لتعزيز أمان النظام.\n"
         else:
             summary = f"""
-💬 {narration}
+[Analysis]: {narration}
 
-📊 Security Scan Summary — AI AYFAM
+[Security Scan Summary — AI AYFAM]
 {'='*50}
 Scan Type  : {scan_type}
 Timestamp  : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 Risk Level : {risk['label_en']}
 Risk Score : {score}
 
-📋 Findings Summary:
-  🔴 Critical : {counts['critical']}
-  🟠 High     : {counts['high']}
-  🟡 Medium   : {counts['medium']}
-  🔵 Low      : {counts['low']}
-  ⚪ Info     : {counts['info']}
+Findings Summary:
+  [CRITICAL] Critical : {counts['critical']}
+  [HIGH]     High     : {counts['high']}
+  [MEDIUM]   Medium   : {counts['medium']}
+  [LOW]      Low      : {counts['low']}
+  [INFO]     Info     : {counts['info']}
   ─────────────────
-  Total       : {risk['total_findings']}
+  Total               : {risk['total_findings']}
 """
             if level == "safe":
-                summary += "\n✅ System appears to be in good security posture.\n"
+                summary += "\n[SAFE] System appears to be in good security posture.\n"
             elif level in ("critical", "high"):
-                summary += "\n⚠️  WARNING: Critical security issues detected! Immediate action required!\n"
+                summary += "\n[WARNING] Critical security issues detected! Immediate action required!\n"
             else:
-                summary += "\n⚡ Review and address findings to improve system security.\n"
+                summary += "\n[NOTE] Review and address findings to improve system security.\n"
 
         return summary
 
@@ -379,34 +379,34 @@ Risk Score : {score}
         when = (comparison.get("previous_scanned_at") or "")[:16]
 
         if lang == "ar":
-            lines = [f"📈 مقارنة بالفحص السابق ({when}):"]
+            lines = [f"[مقارنة] مقارنة بالفحص السابق ({when}):"]
             if comparison["trend"] == "improved":
-                lines.append(f"  ✅ تحسّن الوضع — انخفضت نقاط الخطر {abs(delta)} نقطة ({comparison['prev_level']} ← {comparison['cur_level']})")
+                lines.append(f"  [تحسّن] انخفضت نقاط الخطر {abs(delta)} نقطة ({comparison['prev_level']} ← {comparison['cur_level']})")
             elif comparison["trend"] == "worsened":
-                lines.append(f"  ⚠️  تدهور الوضع — ارتفعت نقاط الخطر {delta} نقطة ({comparison['prev_level']} ← {comparison['cur_level']})")
+                lines.append(f"  [تدهور] ارتفعت نقاط الخطر {delta} نقطة ({comparison['prev_level']} ← {comparison['cur_level']})")
             else:
-                lines.append(f"  ➖ الوضع مستقر — نفس نقاط الخطر ({comparison['cur_level']})")
+                lines.append(f"  [مستقر] نفس نقاط الخطر ({comparison['cur_level']})")
             if resolved_n:
-                lines.append(f"  🟢 تم حلّ {resolved_n} مشكلة كانت موجودة سابقاً:")
+                lines.append(f"  [تم الحل] تم حلّ {resolved_n} مشكلة كانت موجودة سابقاً:")
                 lines.extend(f"     • {f.get('title','')[:70]}" for f in comparison["resolved"][:3])
             if new_n:
-                lines.append(f"  🆕 ظهرت {new_n} مشكلة جديدة منذ آخر فحص:")
+                lines.append(f"  [جديد] ظهرت {new_n} مشكلة جديدة منذ آخر فحص:")
                 lines.extend(f"     • {f.get('title','')[:70]}" for f in comparison["new_findings"][:3])
             if not resolved_n and not new_n:
                 lines.append("  (لا فرق في النتائج منذ آخر فحص)")
         else:
-            lines = [f"📈 Compared to previous scan ({when}):"]
+            lines = [f"[Trend] Compared to previous scan ({when}):"]
             if comparison["trend"] == "improved":
-                lines.append(f"  ✅ Improved — risk score dropped {abs(delta)} pts ({comparison['prev_level']} → {comparison['cur_level']})")
+                lines.append(f"  [Improved] risk score dropped {abs(delta)} pts ({comparison['prev_level']} → {comparison['cur_level']})")
             elif comparison["trend"] == "worsened":
-                lines.append(f"  ⚠️  Worsened — risk score rose {delta} pts ({comparison['prev_level']} → {comparison['cur_level']})")
+                lines.append(f"  [Worsened] risk score rose {delta} pts ({comparison['prev_level']} → {comparison['cur_level']})")
             else:
-                lines.append(f"  ➖ Stable — same risk score ({comparison['cur_level']})")
+                lines.append(f"  [Stable] same risk score ({comparison['cur_level']})")
             if resolved_n:
-                lines.append(f"  🟢 {resolved_n} issue(s) resolved since last scan:")
+                lines.append(f"  [Resolved] {resolved_n} issue(s) resolved since last scan:")
                 lines.extend(f"     • {f.get('title','')[:70]}" for f in comparison["resolved"][:3])
             if new_n:
-                lines.append(f"  🆕 {new_n} new issue(s) since last scan:")
+                lines.append(f"  [New] {new_n} new issue(s) since last scan:")
                 lines.extend(f"     • {f.get('title','')[:70]}" for f in comparison["new_findings"][:3])
             if not resolved_n and not new_n:
                 lines.append("  (No difference in findings since last scan)")
@@ -420,39 +420,39 @@ Risk Score : {score}
         medium = [f for f in findings if f.get("severity", "").lower() == "medium"]
 
         if lang == "ar":
-            plan = "🗂️  خطة المعالجة الأمنية — AI AYFAM\n" + "="*50 + "\n"
+            plan = "خطة المعالجة الأمنية — AI AYFAM\n" + "="*50 + "\n"
             if critical:
-                plan += "\n🔴 الأولوية القصوى (فوري):\n"
+                plan += "\n[حرج] الأولوية القصوى (فوري):\n"
                 for i, f in enumerate(critical[:5], 1):
                     plan += f"  {i}. {f.get('title', '')}\n"
                     if f.get("fix"):
                         plan += f"     الحل: {f['fix'].split(chr(10))[0]}\n"
             if high:
-                plan += "\n🟠 الأولوية العالية (خلال 24 ساعة):\n"
+                plan += "\n[مرتفع] الأولوية العالية (خلال 24 ساعة):\n"
                 for i, f in enumerate(high[:5], 1):
                     plan += f"  {i}. {f.get('title', '')}\n"
             if medium:
-                plan += "\n🟡 الأولوية المتوسطة (خلال أسبوع):\n"
+                plan += "\n[متوسط] الأولوية المتوسطة (خلال أسبوع):\n"
                 for i, f in enumerate(medium[:5], 1):
                     plan += f"  {i}. {f.get('title', '')}\n"
             if not any([critical, high, medium]):
-                plan += "\n✅ لا توجد مشاكل أمنية عاجلة.\n"
+                plan += "\n[آمن] لا توجد مشاكل أمنية عاجلة.\n"
         else:
-            plan = "🗂️  Security Remediation Plan — AI AYFAM\n" + "="*50 + "\n"
+            plan = "Security Remediation Plan — AI AYFAM\n" + "="*50 + "\n"
             if critical:
-                plan += "\n🔴 IMMEDIATE (Critical):\n"
+                plan += "\n[CRITICAL] IMMEDIATE:\n"
                 for i, f in enumerate(critical[:5], 1):
                     plan += f"  {i}. {f.get('title', '')}\n"
                     if f.get("fix"):
                         plan += f"     Fix: {f['fix'].split(chr(10))[0]}\n"
             if high:
-                plan += "\n🟠 HIGH PRIORITY (24 hours):\n"
+                plan += "\n[HIGH] HIGH PRIORITY (24 hours):\n"
                 for i, f in enumerate(high[:5], 1):
                     plan += f"  {i}. {f.get('title', '')}\n"
             if medium:
-                plan += "\n🟡 MEDIUM PRIORITY (1 week):\n"
+                plan += "\n[MEDIUM] MEDIUM PRIORITY (1 week):\n"
                 for i, f in enumerate(medium[:5], 1):
                     plan += f"  {i}. {f.get('title', '')}\n"
             if not any([critical, high, medium]):
-                plan += "\n✅ No urgent security issues found.\n"
+                plan += "\n[SAFE] No urgent security issues found.\n"
         return plan

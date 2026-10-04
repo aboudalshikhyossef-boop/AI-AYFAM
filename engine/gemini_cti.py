@@ -309,15 +309,13 @@ class GeminiThreatClient:
             raise GeminiCTIError("The Gemini key has no usable generate-content model")
         models.sort(key=_score_model, reverse=True)
         by_name = {model.short_name.lower(): model for model in models}
-        free_search_models = [by_name[name] for name in FREE_TIER_SEARCH_MODELS if name in by_name]
-        if not free_search_models:
-            raise GeminiCTIError(
-                "No Free-tier Google Search model is available for this API key. "
-                "This setup requires Gemini 2.5 Flash or Gemini 2.5 Flash-Lite; "
-                "Gemini 3.x Search grounding requires the Paid tier."
-            )
-        self._models = free_search_models
-        self._model = free_search_models[0]
+        preferred = [by_name[name] for name in FREE_TIER_SEARCH_MODELS if name in by_name]
+        remaining = [m for m in models if m not in preferred]
+        usable_models = preferred + remaining
+        if not usable_models:
+            raise GeminiCTIError("No usable text model is available for this Gemini API key.")
+        self._models = usable_models
+        self._model = usable_models[0]
         return list(self._models)
 
     @property
@@ -351,7 +349,7 @@ class GeminiThreatClient:
         model_name = model.short_name
         tool_type = _google_search_tool_type(model)
 
-        # 1. Standard generateContent REST API
+        # 1. Standard generateContent REST API (with search tool)
         gc_payload = {
             "contents": [{"parts": [{"text": query}]}],
             "tools": [{"googleSearch": {}}],
@@ -366,6 +364,33 @@ class GeminiThreatClient:
                 gc_url,
                 headers={"x-goog-api-key": self.api_key, "Content-Type": "application/json"},
                 json=gc_payload,
+                timeout=(10, self.timeout),
+            )
+            if response.status_code < 400:
+                body = response.json()
+                text = _interaction_output_text(body)
+                if text:
+                    return text
+            elif response.status_code == 429:
+                raise GeminiHTTPError(response)
+        except GeminiHTTPError:
+            raise
+        except (requests.RequestException, ValueError):
+            pass
+
+        # 1b. Fallback: generateContent REST API without search tool (for models/tiers without grounding support)
+        gc_payload_noground = {
+            "contents": [{"parts": [{"text": query}]}],
+            "generationConfig": {
+                "responseMimeType": "application/json",
+                "responseSchema": THREAT_SCHEMA,
+            },
+        }
+        try:
+            response = requests.post(
+                gc_url,
+                headers={"x-goog-api-key": self.api_key, "Content-Type": "application/json"},
+                json=gc_payload_noground,
                 timeout=(10, self.timeout),
             )
             if response.status_code < 400:
