@@ -1,192 +1,177 @@
 #!/usr/bin/env python3
 """
-AI AYFAM v3 — وكيل الأمن السيبراني الذكي
+AI AYFAM — Unified Cybersecurity Operations Center
+Target: Linux Mint / Ubuntu Desktop (PyQt6 + Terminal CLI)
 """
 
-import sys
-import os
+from __future__ import annotations
+
 import argparse
-import getpass
+import os
+import sys
+from pathlib import Path
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# Add project root to sys.path
+ROOT_DIR = Path(__file__).resolve().parent
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
 
-from utils.preflight import check_requirements, feature_flags, is_root, root_error
+from config.settings import Settings
+from core.agent import AYFAMAgent
+from ui.terminal import TerminalUI
+from utils.preflight import check_requirements, is_root
 
 
-def main():
+def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="ayfam",
-        description="AI AYFAM v3 — وكيل الأمن السيبراني الذكي | Smart Cybersecurity Agent",
+        description="AI AYFAM — Unified Cybersecurity Suite for Linux Mint",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-أمثلة / Examples:
-  ayfam                              → وضع محادثة ذكي (موصى به)
-  ayfam --scan network               → فحص الشبكة
-  ayfam --scan ports --target 192.168.1.1
-  ayfam --scan system
-  ayfam --scan full
-  ayfam --status                     → حالة الوكيل
-  ayfam --update                     → تحديث معلومات التهديدات
-  ayfam --set-github-token ghp_XXX
-  ayfam --language en
-        """
     )
-    parser.add_argument("--set-github-token", metavar="TOKEN", help="حفظ رمز GitHub")
-    parser.add_argument("--language", choices=["ar", "en"], help="تغيير اللغة")
-    parser.add_argument("--scan", metavar="TARGET",
-                        choices=["network", "ports", "system", "logs", "usb", "full"],
-                        help="فحص: network | ports | system | logs | usb | full")
-    parser.add_argument("--target", metavar="IP/URL", help="هدف الفحص")
-    parser.add_argument("--report", action="store_true", help="إنشاء تقرير شامل")
-    parser.add_argument("--fix",    action="store_true", help="تشغيل الإصلاح التلقائي")
-    parser.add_argument("--update", action="store_true", help="تحديث معلومات التهديدات")
-    parser.add_argument("--status", action="store_true", help="حالة الوكيل")
-    parser.add_argument("--gui", action="store_true", help="تشغيل واجهة سطح المكتب الرسومية (GUI Cockpit)")
-    parser.add_argument("--audit", action="store_true", help="فحص تحصين شامل بنمط CIS")
-    parser.add_argument("--baseline-learn", action="store_true", help="التقاط وحفظ خط الأساس السلوكي للنظام")
-    parser.add_argument("--baseline-check", action="store_true", help="كشف شذوذ النظام بالمقارنة بخط الأساس")
-    parser.add_argument("--synthesize-rules", action="store_true", help="توليد قواعد جدار ناري وحماية تلقائية")
-    parser.add_argument("--playbook", metavar="TOPIC", help="استخراج خطة عمل أمنية مهيكلة لأداة أو موضوع من الكتب")
-    parser.add_argument("--lynis", action="store_true", help="تشغيل فحص Lynis القياسي المتقدم")
-    parser.add_argument("--yara", metavar="PATH", nargs="?", const=".", help="فحص البرمجيات الخبيثة بمحرك YARA")
-    parser.add_argument("--rootkits", action="store_true", help="كشف الجذور الخفية والـ Rootkits")
-    parser.add_argument("--sentinel", action="store_true", help="تشغيل الحارس النشط في الخلفية")
-    parser.add_argument("--hunt", action="store_true", help="صيد التهديدات والاستمرارية والأبواب الخلفية")
-    parser.add_argument("--secrets", metavar="PATH", nargs="?", const=".", help="كشف الأسرار والمفاتيح الحساسة")
-    parser.add_argument("--plan", action="store_true", help="توليد سكريبت معالجة Bash آمن")
-    parser.add_argument("--html-report", action="store_true", help="تصدير تقرير HTML تفاعلي")
-    parser.add_argument("--learn", metavar="FILE", help="تعلّم من ملف (PDF/TXT/MD) وفهرسته في المكتبة الشخصية")
-    parser.add_argument("--teach", metavar="FACT", help="علّم الأداة حقيقة مباشرة تتذكرها لاحقاً")
-    parser.add_argument("--learned", action="store_true", help="اعرض كل ما تعلمته الأداة حتى الآن")
-    parser.add_argument("--no-color", action="store_true", help="بدون ألوان")
-    parser.add_argument("--verbose",  action="store_true", help="وضع التصحيح المفصّل")
-    parser.add_argument("--check-deps", action="store_true", help="فحص مكتبات Python وأدوات النظام المطلوبة")
-    parser.add_argument("--configure-gemini", action="store_true", help="إدخال مفتاح Gemini محلياً بدون إظهاره على الشاشة")
-    parser.add_argument("--gemini-models", action="store_true", help="اكتشاف نماذج Gemini المتاحة للمفتاح تلقائياً")
-    parser.add_argument("--gemini-threats", action="store_true", help="جلب CTI عام من آخر 48 ساعة ومطابقته محلياً")
-    args = parser.parse_args()
+    mode_group = parser.add_mutually_exclusive_group()
+    mode_group.add_argument("--gui", action="store_true", help="Launch PyQt6 Desktop GUI Cockpit")
+    mode_group.add_argument("--cli", action="store_true", help="Launch interactive Terminal UI")
+    mode_group.add_argument("--scan", action="store_true", help="Execute immediate full security audit")
+    mode_group.add_argument("--harden", action="store_true", help="Run automated Linux Mint hardening routine")
+    mode_group.add_argument("--check", action="store_true", help="Run preflight diagnostic checks")
+
+    parser.add_argument("--no-color", action="store_true", help="Disable colored output in terminal")
+    parser.add_argument("--cve", type=str, metavar="QUERY", help="Search CVE / vulnerability intelligence")
+    parser.add_argument("--version", action="version", version="AI AYFAM v5.2.0 (Linux Mint Edition)")
+    return parser.parse_args()
+
+
+def run_gui() -> int:
+    try:
+        from PyQt6.QtWidgets import QApplication
+        from PyQt6.QtCore import Qt
+        from ui.gui_app import UnifiedCockpitWindow
+    except ImportError as exc:
+        print(f"[!] PyQt6 is not installed or GUI libraries are missing: {exc}", file=sys.stderr)
+        print("[*] Falling back to Terminal UI...\n", file=sys.stderr)
+        return run_cli()
+
+    app = QApplication.instance()
+    if not app:
+        # High DPI scaling enabled by default in Qt6
+        app = QApplication(sys.argv)
+        app.setApplicationName("AI AYFAM")
+        app.setDesktopFileName("ai-ayfam")
+
+    window = UnifiedCockpitWindow()
+    window.show()
+    return app.exec()
+
+
+def run_cli(no_color: bool = False) -> int:
+    ui = TerminalUI(no_color=no_color)
+    settings = Settings()
+    agent = AYFAMAgent(settings=settings, ui=ui)
 
     if not is_root():
-        print(f"❌ {root_error()}")
-        return 1
+        ui.warning("تنبيه: الأداة تعمل بدون صلاحيات root. بعض الفحوصات العميقة (مثل فحص المنافذ وجدار الحماية) قد تكون محدودة.")
 
-    preflight = check_requirements(feature_flags(args))
-    if args.check_deps:
-        print(preflight.text())
-        return 0 if preflight.ok else 2
-    if not preflight.ok:
-        print("❌ متطلبات أساسية ناقصة، لا يمكن تشغيل هذا الخيار بأمان.")
-        print(preflight.text())
-        return 2
-    if preflight.missing_optional:
-        print("⚠️ بعض الأدوات الاختيارية غير مثبتة؛ ستبقى الوظائف الأخرى متاحة:")
-        print(preflight.text())
-
-    from config.settings import Settings
-    from ui.terminal import TerminalUI
-    settings = Settings()
-    ui = TerminalUI(no_color=args.no_color)
-
-    # ── Quick commands (no full agent load) ──────────────────────────────────
-    if args.gui:
-        from ui.gui_app import launch_gui
-        launch_gui()
-        return 0
-
-    if args.set_github_token:
-        token = args.set_github_token.strip()
-        if not token or any(ord(c) < 0x21 for c in token) or len(token) < 20:
-            print("❌ الرمز المُدخَل لا يبدو رمز GitHub صالحاً (تحقق من عدم وجود مسافات أو قصّه بالخطأ).")
-            return 1
-        settings.set("github_token", token)
-        print(f"✅ تم حفظ رمز GitHub ({token[:8]}...)")
-        return 0
-
-    if args.language:
-        settings.set("language", args.language)
-        print(f"✅ تم تغيير اللغة إلى: {args.language}")
-        return 0
-
-    if args.configure_gemini:
-        key = getpass.getpass("Gemini API key (input hidden): ").strip()
-        if not key:
-            print("❌ لم يتم إدخال مفتاح.")
-            return 1
-        settings.set("gemini_api_key", key)
-        print("✅ تم حفظ مفتاح Gemini محلياً في ~/.ayfam/config.json بصلاحيات 0600.")
-        return 0
-
-    # ── Load full agent ───────────────────────────────────────────────────────
-    from core.agent import AYFAMAgent
-    agent = AYFAMAgent(settings=settings, ui=ui, verbose=args.verbose)
-
-    try:
-        if args.status:
-            agent._agent_status()
-        elif args.scan:
-            agent.run_scan(args.scan, value=args.target)
-        elif args.report:
-            agent.generate_full_report()
-        elif args.fix:
-            agent.run_autofix()
-        elif args.update:
-            agent.update_intelligence()
-        elif args.learn:
-            agent._learn_from_file(args.learn)
-        elif args.teach:
-            agent._teach(args.teach)
-        elif args.learned:
-            agent._show_learned()
-        elif args.audit:
-            agent._run_deep_audit()
-        elif args.baseline_learn:
-            agent._run_baseline_learn_cli()
-        elif args.baseline_check:
-            agent._run_baseline_check_cli()
-        elif args.synthesize_rules:
-            agent._run_synthesize_rules_cli()
-        elif args.playbook:
-            agent._show_playbook_cli(args.playbook)
-        elif args.lynis:
-            agent._run_lynis_cli()
-        elif args.yara is not None:
-            agent._run_yara_cli(args.yara)
-        elif args.rootkits:
-            agent._run_rootkit_cli()
-        elif args.sentinel:
-            agent._run_sentinel_cli()
-        elif args.hunt:
-            agent._run_deep_audit()
-        elif args.secrets is not None:
-            agent._scan_secrets_cli(args.secrets)
-        elif args.plan:
-            agent._generate_remediation_plan()
-        elif args.html_report:
-            agent._export_html_report()
-        elif args.gemini_models:
-            agent.gemini_model_status()
-        elif args.gemini_threats:
-            agent.run_gemini_threat_scan(window_hours=48)
-        else:
-            # Default: interactive NLP chat mode
-            agent.interactive_mode()
-
-    except KeyboardInterrupt:
-        print("\n\n  مع السلامة! / Goodbye!\n")
-    except EOFError:
-        print("\n\n  مع السلامة! / Goodbye!\n")
-    except Exception as e:
-        from brain.self_heal import SelfHealEngine
-        healer = SelfHealEngine(ui=ui)
-        err = healer._analyze_error(e)
-        healer.display_error(err)
-        if args.verbose:
-            import traceback
-            traceback.print_exc()
-        return 1
-
+    agent.interactive_loop()
     return 0
 
 
+def run_direct_scan(no_color: bool = False) -> int:
+    ui = TerminalUI(no_color=no_color)
+    settings = Settings()
+    agent = AYFAMAgent(settings=settings, ui=ui)
+
+    ui.info("بدء الفحص الأمني الشامل للنظام...")
+    results = agent.run_full_audit()
+    ui.print_table(
+        headers=["الخطورة", "العنوان", "الفئة"],
+        rows=[[f.get("severity", "info"), f.get("title", ""), f.get("category", "")] for f in results],
+        title="نتائج الفحص الأمني"
+    )
+    ui.success(f"اكتمل الفحص: {len(results)} نتائج مسجلة.")
+    return 0
+
+
+def run_direct_hardening(no_color: bool = False) -> int:
+    ui = TerminalUI(no_color=no_color)
+    settings = Settings()
+    agent = AYFAMAgent(settings=settings, ui=ui)
+
+    if not is_root():
+        ui.error("يتطلب تطبيق التحصين الأمني صلاحيات root.")
+        return 1
+
+    ui.info("بدء تطبيق إجراءات التحصين الأمني...")
+    res = agent.run_hardening()
+    ui.success(f"تم تنفيذ إجراءات التحصين بنجاح: {res}")
+    return 0
+
+
+def run_cve_search(query: str, no_color: bool = False) -> int:
+    ui = TerminalUI(no_color=no_color)
+    settings = Settings()
+    agent = AYFAMAgent(settings=settings, ui=ui)
+
+    ui.info(f"البحث في قواعد ثغرات CVE عن: {query}...")
+    findings = agent.search_cve(query)
+    if findings:
+        for f in findings:
+            ui.print_finding(
+                severity=f.get("severity", "medium"),
+                title=f.get("title", query),
+                detail=f.get("detail", ""),
+                fix=f.get("fix", "")
+            )
+    else:
+        ui.warning(f"لم يتم العثور على نتائج لـ {query}")
+    return 0
+
+
+def main() -> int:
+    args = parse_args()
+
+    # Preflight check
+    if args.check:
+        results = check_requirements()
+        print("AI AYFAM Preflight Diagnostics:")
+        for k, v in results.items():
+            status = "OK" if v else "FAIL"
+            print(f"  [{status}] {k}")
+        return 0
+
+    if args.scan:
+        return run_direct_scan(no_color=args.no_color)
+
+    if args.harden:
+        return run_direct_hardening(no_color=args.no_color)
+
+    if args.cve:
+        return run_cve_search(args.cve, no_color=args.no_color)
+
+    if args.cli:
+        return run_cli(no_color=args.no_color)
+
+    if args.gui:
+        return run_gui()
+
+    # Default launch logic:
+    # If a display is available (Linux Mint desktop session), prefer GUI; otherwise CLI
+    has_display = bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
+    if has_display:
+        try:
+            import PyQt6
+            return run_gui()
+        except ImportError:
+            return run_cli(no_color=args.no_color)
+
+    return run_cli(no_color=args.no_color)
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except KeyboardInterrupt:
+        print("\n[!] Exiting AI AYFAM...", file=sys.stderr)
+        sys.exit(0)
+    except EOFError:
+        print("\n[!] Input closed. Exiting AI AYFAM...", file=sys.stderr)
+        sys.exit(0)

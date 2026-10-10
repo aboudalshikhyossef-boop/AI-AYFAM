@@ -20,7 +20,7 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
-import requests
+from utils import http_client as requests
 
 THREAT_SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -53,7 +53,7 @@ THREAT_SCHEMA: dict[str, Any] = {
 # Google Search grounding is available on the Gemini 2.5 Flash family in the
 # Gemini API Free tier. Gemini 3.x model inference can be free, but its Search
 # grounding requires the Paid tier.
-FREE_TIER_SEARCH_MODELS = ("gemini-2.5-flash", "gemini-2.5-flash-lite")
+FREE_TIER_SEARCH_MODELS = ("gemini-3.8-flash", "gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-flash-latest")
 
 SYSTEM_PROMPT = """You are a cyber threat-intelligence research assistant.
 Search authoritative public sources only: CISA, MITRE, NVD, CERT advisories,
@@ -248,12 +248,72 @@ class GeminiThreatClient:
     def __init__(self, api_key: str, timeout: float = 45.0):
         self.api_key = api_key.strip()
         self.timeout = timeout
-        self.base_url = "https://generativelanguage.googleapis.com/v1"
+        self.base_url = "https://generativelanguage.googleapis.com/v1beta"
         self._client = None
         self._model: ModelInfo | None = None
         self._models: list[ModelInfo] = []
         if not self.api_key:
             raise GeminiCTIError("Gemini API key is missing")
+
+    def close(self) -> None:
+        self._client = None
+
+    def ask_assistant(self, prompt: str, system_context: str = "") -> str:
+        """Query Gemini generative model directly for cyber assistance."""
+        sys_instruction = (
+            "You are AI AYFAM, a senior cybersecurity expert specialized in Linux Mint and Ubuntu defense. "
+            "Provide concise, actionable advice. If recommending commands, output clean bash snippets. "
+            "Support both Arabic and English naturally."
+        )
+        if system_context:
+            sys_instruction += f"\nHost/Telemetry Context: {system_context}"
+
+        models_to_try = ["gemini-3.8-flash", "gemini-2.5-flash", "gemini-flash-latest"]
+        last_error = ""
+
+        # Try google-genai SDK first if installed
+        try:
+            from google import genai
+            client = genai.Client(api_key=self.api_key)
+            resp = client.models.generateContent(
+                model="gemini-3.8-flash",
+                contents=prompt,
+                config={"systemInstruction": sys_instruction}
+            )
+            if resp and resp.text:
+                return resp.text.strip()
+        except Exception as exc:
+            last_error = str(exc)
+
+        # Fallback to direct REST API
+        for model in models_to_try:
+            url = f"{self.base_url}/models/{model}:generateContent"
+            payload = {
+                "contents": [{"parts": [{"text": prompt}]}],
+                "systemInstruction": {"parts": [{"text": sys_instruction}]},
+            }
+            try:
+                resp = requests.post(
+                    url,
+                    headers={"x-goog-api-key": self.api_key, "Content-Type": "application/json"},
+                    json_data=payload,
+                    timeout=self.timeout
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    candidates = data.get("candidates", [])
+                    if candidates and isinstance(candidates, list):
+                        parts = candidates[0].get("content", {}).get("parts", [])
+                        texts = [p.get("text", "") for p in parts if isinstance(p, dict) and p.get("text")]
+                        if texts:
+                            return "\n".join(texts).strip()
+                elif resp.status_code == 429:
+                    continue
+            except Exception as exc:
+                last_error = str(exc)
+                continue
+
+        raise GeminiCTIError(f"Could not generate assistant response: {last_error or 'All model requests failed'}")
 
     @classmethod
     def from_environment(cls) -> "GeminiThreatClient":

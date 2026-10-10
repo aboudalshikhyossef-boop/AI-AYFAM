@@ -136,8 +136,8 @@ class GeminiCTITests(unittest.TestCase):
         client = GeminiThreatClient("test-key")
         with patch("engine.gemini_cti.requests.get", return_value=Response()):
             models = client.discover_models()
-        self.assertEqual([model.short_name for model in models], ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-3.8-flash"])
-        self.assertEqual(client.selected_model.short_name, "gemini-2.5-flash")
+        self.assertEqual([model.short_name for model in models], ["gemini-3.8-flash", "gemini-2.5-flash", "gemini-2.5-flash-lite"])
+        self.assertEqual(client.selected_model.short_name, "gemini-3.8-flash")
 
     def test_invalid_listed_model_falls_back_to_next_model(self):
         class Response:

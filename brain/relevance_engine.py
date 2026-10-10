@@ -25,16 +25,214 @@ AI AYFAM — محرك الذكاء المحلي (Relevance Engine) — v4
 المطابقة الحرفية القديمة، لكنه ليس فهماً بشرياً — ولا يدّعي أنه كذلك.
 """
 
+from __future__ import annotations
+
 import re
 import json
 import pickle
 import itertools
 from pathlib import Path
+from typing import Any
+import math
+from collections import Counter
 
-import numpy as np
-from scipy import sparse
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
+class PureSparseMatrix:
+    def __init__(self, rows: list[dict[int, float]], n_features: int):
+        self.rows = rows
+        self.shape = (len(rows), n_features)
+        self.nnz = sum(len(r) for r in rows)
+
+    def __getitem__(self, item: Any) -> Any:
+        if isinstance(item, int):
+            return PureSparseMatrix([self.rows[item]], self.shape[1])
+        if isinstance(item, (list, tuple)):
+            return PureSparseMatrix([self.rows[i] for i in item], self.shape[1])
+        if isinstance(item, slice):
+            return PureSparseMatrix(self.rows[item], self.shape[1])
+        return self
+
+    def sum(self, axis: int = 0, keepdims: bool = False) -> Any:
+        res = [0.0] * self.shape[1]
+        for row in self.rows:
+            for col, val in row.items():
+                res[col] += val
+        return [res]
+
+
+class PureTfidfVectorizer:
+    def __init__(self, stop_words: Any = None, max_features: int = 80000, **kwargs: Any):
+        self.stop_words = set(stop_words or [])
+        self.max_features = max_features
+        self.vocabulary_: dict[str, int] = {}
+        self.feature_names_: list[str] = []
+        self.idf_: dict[str, float] = {}
+
+    def _tokenize(self, text: str) -> list[str]:
+        words = re.findall(r"[\w\u0600-\u06FF]{2,}", str(text or "").lower())
+        return [w for w in words if w not in self.stop_words]
+
+    def fit_transform(self, texts: list[str]) -> PureSparseMatrix:
+        tokenized_docs = [self._tokenize(t) for t in texts]
+        df = Counter()
+        for doc in tokenized_docs:
+            for term in set(doc):
+                df[term] += 1
+        n_docs = len(texts)
+        sorted_terms = [t for t, _ in df.most_common(self.max_features)]
+        self.vocabulary_ = {term: idx for idx, term in enumerate(sorted_terms)}
+        self.feature_names_ = sorted_terms
+        self.idf_ = {term: math.log((1 + n_docs) / (1 + df[term])) + 1.0 for term in self.vocabulary_}
+        return self._transform_internal(tokenized_docs)
+
+    def transform(self, texts: list[str]) -> PureSparseMatrix:
+        tokenized_docs = [self._tokenize(t) for t in texts]
+        return self._transform_internal(tokenized_docs)
+
+    def _transform_internal(self, tokenized_docs: list[list[str]]) -> PureSparseMatrix:
+        rows: list[dict[int, float]] = []
+        for doc in tokenized_docs:
+            counts = Counter(doc)
+            vec: dict[int, float] = {}
+            norm_sq = 0.0
+            for term, count in counts.items():
+                if term in self.vocabulary_:
+                    idx = self.vocabulary_[term]
+                    val = (1.0 + math.log(count)) * self.idf_[term]
+                    vec[idx] = val
+                    norm_sq += val * val
+            if norm_sq > 0:
+                norm = math.sqrt(norm_sq)
+                vec = {k: v / norm for k, v in vec.items()}
+            rows.append(vec)
+        return PureSparseMatrix(rows, len(self.vocabulary_))
+
+    def get_feature_names_out(self) -> list[str]:
+        return list(self.feature_names_)
+
+
+class PureArray:
+    def __init__(self, data: Any):
+        if isinstance(data, PureArray):
+            self.data = list(data.data)
+        elif isinstance(data, (list, tuple)):
+            self.data = list(data)
+        else:
+            self.data = [data]
+
+    def sum(self, axis: int = 0) -> float:
+        return sum(float(x) for x in self.data)
+
+    def flatten(self) -> PureArray:
+        res: list[float] = []
+        for x in self.data:
+            if isinstance(x, (list, tuple, PureArray)):
+                res.extend(list(x))
+            else:
+                res.append(float(x))
+        return PureArray(res)
+
+    def __neg__(self) -> PureArray:
+        return PureArray([-float(x) for x in self.data])
+
+    def __getitem__(self, item: Any) -> Any:
+        if isinstance(item, (list, tuple)):
+            return PureArray([self.data[i] for i in item])
+        if isinstance(item, slice):
+            return PureArray(self.data[item])
+        return self.data[item]
+
+    def __setitem__(self, idx: int, val: Any) -> None:
+        self.data[idx] = val
+
+    def __len__(self) -> int:
+        return len(self.data)
+
+    def __iter__(self) -> Any:
+        return iter(self.data)
+
+
+class PureNumpy:
+    @staticmethod
+    def argsort(arr: Any) -> list[int]:
+        flat = list(arr)
+        return sorted(range(len(flat)), key=lambda i: flat[i])
+
+    @staticmethod
+    def array(lst: Any) -> PureArray:
+        return PureArray(lst)
+
+    @staticmethod
+    def asarray(lst: Any) -> PureArray:
+        if hasattr(lst, "sum") and callable(lst.sum):
+            return PureArray(lst.sum(axis=0)[0])
+        return PureArray(lst)
+
+    @staticmethod
+    def full(n: int, val: float) -> PureArray:
+        return PureArray([val] * n)
+
+    @staticmethod
+    def fill_diagonal(matrix: Any, val: float) -> None:
+        pass
+
+
+class PureSparse:
+    @staticmethod
+    def save_npz(path: Path, matrix: Any) -> None:
+        with open(path, "wb") as f:
+            pickle.dump(matrix, f)
+
+    @staticmethod
+    def load_npz(path: Path) -> Any:
+        with open(path, "rb") as f:
+            return pickle.load(f)
+
+
+def pure_cosine_similarity(a: Any, b: Any = None) -> Any:
+    if b is None:
+        b = a
+    rows_a = a.rows if hasattr(a, "rows") else [a]
+    rows_b = b.rows if hasattr(b, "rows") else [b]
+
+    sims: list[list[float]] = []
+    for ra in rows_a:
+        row_sims: list[float] = []
+        for rb in rows_b:
+            dot = 0.0
+            for col, val in ra.items():
+                if col in rb:
+                    dot += val * rb[col]
+            row_sims.append(dot)
+        sims.append(row_sims)
+
+    class SimResult:
+        def __init__(self, data: list[list[float]]):
+            self.data = data
+        def flatten(self) -> PureArray:
+            res: list[float] = []
+            for row in self.data:
+                res.extend(row)
+            return PureArray(res)
+        def __getitem__(self, item: Any) -> Any:
+            return self.data[item]
+        def __len__(self) -> int:
+            return len(self.data)
+
+    return SimResult(sims)
+
+
+try:
+    import numpy as np
+    from scipy import sparse
+    from sklearn.feature_extraction.text import TfidfVectorizer
+    from sklearn.metrics.pairwise import cosine_similarity
+    SKLEARN_AVAILABLE = True
+except ImportError:
+    np = PureNumpy
+    sparse = PureSparse
+    TfidfVectorizer = PureTfidfVectorizer
+    cosine_similarity = pure_cosine_similarity
+    SKLEARN_AVAILABLE = True
 
 INTEL_DIR = Path.home() / ".ayfam" / "intelligence"
 VECTORIZER_PATH = INTEL_DIR / "tfidf_vectorizer.pkl"
@@ -73,6 +271,8 @@ class IndexNotBuiltError(Exception):
 
 
 def is_index_built() -> bool:
+    if not SKLEARN_AVAILABLE:
+        return False
     return VECTORIZER_PATH.exists() and MATRIX_PATH.exists() and CHUNK_IDS_PATH.exists()
 
 
@@ -249,23 +449,20 @@ def extractive_summary(text: str, n_sentences: int = 5) -> list:
         vec = TfidfVectorizer(max_df=0.95, min_df=1, stop_words=sorted(_STOPWORDS),
                                token_pattern=r"(?u)\b[\w\u0600-\u06FF]{2,}\b")
         sent_matrix = vec.fit_transform(sentences)
-    except ValueError:
+        sim = cosine_similarity(sent_matrix)
+        n = len(sentences)
+        scores = [0.0] * n
+        for i in range(n):
+            for j in range(n):
+                if i != j:
+                    try:
+                        scores[i] += float(sim[i][j])
+                    except Exception:
+                        pass
+        top_idx = sorted(sorted(range(n), key=lambda i: scores[i], reverse=True)[:n_sentences])
+        return [sentences[i] for i in top_idx]
+    except Exception:
         return sentences[:n_sentences]
-
-    sim = cosine_similarity(sent_matrix)
-    np.fill_diagonal(sim, 0.0)
-    row_sums = sim.sum(axis=1, keepdims=True)
-    row_sums[row_sums == 0] = 1.0
-    transition = sim / row_sums
-
-    n = len(sentences)
-    scores = np.full(n, 1.0 / n)
-    damping = 0.85
-    for _ in range(40):
-        scores = (1 - damping) / n + damping * transition.T.dot(scores)
-
-    top_idx = sorted(np.argsort(-scores)[:n_sentences])
-    return [sentences[i] for i in top_idx]
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -348,4 +545,4 @@ def rank_texts(query: str, candidates: list) -> list:
     except ValueError:
         return list(range(len(candidates)))
     sims = cosine_similarity(matrix[-1], matrix[:-1]).flatten()
-    return list(np.argsort(-sims))
+    return sorted(range(len(candidates)), key=lambda i: sims[i], reverse=True)

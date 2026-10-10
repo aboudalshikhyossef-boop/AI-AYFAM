@@ -3,7 +3,7 @@ AI AYFAM - Web Intelligence + Browser Integration
 ذكاء الإنترنت والمتصفح وفحص المواقع
 """
 
-import requests
+from utils import http_client as requests
 import re
 import json
 import csv

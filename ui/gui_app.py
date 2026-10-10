@@ -9,7 +9,7 @@ import json
 from pathlib import Path
 from typing import Callable, Any
 
-from PyQt6.QtCore import Qt, QTimer, QThread, QPropertyAnimation, pyqtSignal, QUrl
+from PyQt6.QtCore import Qt, QTimer, QThread, QPropertyAnimation, pyqtSignal, QUrl, QSize
 from PyQt6.QtGui import QColor, QDesktopServices, QFont, QIcon, QAction, QShortcut, QKeySequence
 from PyQt6.QtWidgets import (
     QApplication, QComboBox, QFileDialog, QFrame, QGraphicsOpacityEffect, QGridLayout, QGroupBox,
@@ -152,12 +152,17 @@ class UnifiedCockpitWindow(QMainWindow):
         sub.setStyleSheet(f"color: {TEXT_MUTED}; font-size: {FONT_SIZE_SMALL}px; padding: 0 6px 20px 6px;")
         sidebar_layout.addWidget(sub)
 
-        # Nav buttons
+        # Nav buttons with SVG icons
         self.nav_button_map: dict[str, QPushButton] = {}
+        icons_dir = ROOT_DIR / "resources" / "icons"
         for key, label in NAV_ITEMS:
-            btn = QPushButton(f"  [ {label} ]")
+            btn = QPushButton(f"  {label}")
             btn.setObjectName("navButton")
             btn.setCheckable(True)
+            icon_path = icons_dir / f"{key}.svg"
+            if icon_path.exists():
+                btn.setIcon(QIcon(str(icon_path)))
+                btn.setIconSize(QSize(18, 18))
             btn.clicked.connect(lambda checked=False, k=key: self.switch_page(k))
             sidebar_layout.addWidget(btn)
             self.nav_button_map[key] = btn
@@ -721,6 +726,29 @@ class UnifiedCockpitWindow(QMainWindow):
         row.addWidget(send)
         layout.addLayout(row)
 
+        # Quick action prompts
+        pills_layout = QHBoxLayout()
+        pills_layout.setSpacing(SP_SM)
+        quick_prompts = [
+            ("🛡️ فحص النظام", "فحص النظام"),
+            ("🌐 فحص الشبكة", "فحص الشبكة"),
+            ("🔒 تأمين SSH", "كيف أؤمن خدمة SSH؟"),
+            ("🔌 فحص أجهزة USB", "فحص أجهزة USB"),
+            ("🔥 جدار الحماية UFW", "فحص جدار الحماية"),
+            ("📡 ثغرات حديثة CTI", "ما هي أحدث ثغرات CTI؟"),
+        ]
+        for pill_label, prompt_text in quick_prompts:
+            pill_btn = QPushButton(pill_label)
+            pill_btn.setObjectName("pillButton")
+            pill_btn.clicked.connect(lambda checked=False, p=prompt_text: self._trigger_quick_chat(p))
+            pills_layout.addWidget(pill_btn)
+        pills_layout.addStretch()
+        layout.addLayout(pills_layout)
+
+    def _trigger_quick_chat(self, text: str) -> None:
+        self.chat_input.setText(text)
+        self.send_chat_message()
+
     # ═══════════════════════════════════════════════════════════════════════════
     #  PLAYBOOKS PAGE
     # ═══════════════════════════════════════════════════════════════════════════
@@ -906,18 +934,42 @@ class UnifiedCockpitWindow(QMainWindow):
     def test_gemini_settings(self) -> None:
         key = self.setting_gemini_key.text().strip() or self.settings.get("gemini_api_key", "")
         if not key:
-            self.settings_log.setPlainText("❌ لم يتم إدخال مفتاح Gemini.")
+            self.settings_log.setPlainText("❌ لم يتم إدخال مفتاح Gemini. يرجى إدخال مفتاحك أولاً.")
             return
-        self.settings_log.setPlainText("🛰️ جارٍ فحص نماذج Gemini المتاحة لهذا المفتاح...\n")
+        self.settings.set("gemini_api_key", key)
+        self.settings_log.setPlainText("🛰️ جارٍ فحص الاتصال واكتشاف نماذج Gemini المتاحة لهذا المفتاح...\n")
+
         def run_test():
-            return self.agent.gemini_model_status()
+            from engine.gemini_cti import GeminiThreatClient
+            client = GeminiThreatClient(key)
+            models = client.discover_models(force=True)
+            return models
+
+        def handle_gemini_result(result: Any):
+            if isinstance(result, Exception):
+                self.settings_log.setPlainText(
+                    f"❌ فشل اختبار الاتصال بـ Gemini API:\n\n{result}\n\n"
+                    "• تأكد من صحة المفتاح الصادر من Google AI Studio.\n"
+                    "• تأكد من اتصال الجهاز بشبكة الإنترنت.\n"
+                    "• سيعمل الوكيل تلقائياً في الوضع المحلي Offline لحين توفر المفتاح."
+                )
+            elif isinstance(result, list) and result:
+                primary = result[0].short_name
+                models_list = ", ".join(m.short_name for m in result[:8])
+                self.settings_log.setPlainText(
+                    f"✅ تم الاتصال بنجاح بـ Google Gemini API!\n\n"
+                    f"• النموذج الرئيسي المعتمد: {primary}\n"
+                    f"• النماذج النشطة المكتشفة ({len(result)}): {models_list}\n\n"
+                    "مساعد الذكاء الاصطناعي واستخبارات التهديدات CTI يعملان الآن بكامل الكفاءة."
+                )
+            else:
+                self.settings_log.setPlainText("⚠️ لم يتم العثور على نماذج متوافقة لهذا المفتاح.")
+
         self.run_background_task(
             run_test,
             "اختبار Gemini",
             preserve_findings=True,
-            result_handler=lambda models: self.settings_log.setPlainText(
-                f"✅ تم الاتصال بنجاح!\nالنماذج المكتشفة ({len(models)}): " + ", ".join(m.short_name for m in models)
-            ) if models else self.settings_log.setPlainText("❌ تعذر الاتصال أو لم يتم العثور على نماذج متوافقة.")
+            result_handler=handle_gemini_result,
         )
 
     def clear_history_settings(self) -> None:
@@ -1110,7 +1162,13 @@ class UnifiedCockpitWindow(QMainWindow):
                 self.switch_page("library")
                 self.chat_display.append("🤖 [الوكيل] اختر «إضافة كتب» من مكتبة المعرفة.")
             return
-        self.chat_display.append("🤖 [الوكيل] لم أنفذ هذا الطلب تلقائياً. استخدم التبويب المناسب.")
+        # If no specific system action command matched, query AI Assistant (Gemini / Local brain)
+        self.run_background_task(
+            lambda: self.agent.ask_ai_or_local(text),
+            "المساعد الذكي",
+            preserve_findings=True,
+            result_handler=lambda answer: self.chat_display.append(f"\n{answer}"),
+        )
 
     # ═══════════════════════════════════════════════════════════════════════════
     #  BACKGROUND TASK EXECUTION

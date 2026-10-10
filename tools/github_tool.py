@@ -3,7 +3,7 @@ AI AYFAM - GitHub Intelligence Tool
 تكامل GitHub الذكي — تحليل المستودعات والأدوات الأمنية الجديدة
 """
 
-import requests
+from utils import http_client as requests
 import json
 import base64
 import re

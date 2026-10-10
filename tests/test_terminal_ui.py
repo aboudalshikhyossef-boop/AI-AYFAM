@@ -88,8 +88,15 @@ ctx = FakeCtx()
 ctx.devices = dict(ctx.devices)
 ctx.devices["wifi_adapters"] = ["wlan0", "wlan1"]  # doesn't change row count, but kb_stats does
 buf = io.StringIO()
-with redirect_stdout(buf):
-    ui_rich.dashboard(context=ctx, kb_stats={"knowledge_entries": 99, "db_size_mb": 5})
+old_file = ui_rich.console.file if ui_rich.console else None
+if ui_rich.console:
+    ui_rich.console.file = buf
+try:
+    with redirect_stdout(buf):
+        ui_rich.dashboard(context=ctx, kb_stats={"knowledge_entries": 99, "db_size_mb": 5})
+finally:
+    if ui_rich.console and old_file:
+        ui_rich.console.file = old_file
 rendered = buf.getvalue()
 lines = [l for l in rendered.split("\n") if l.strip()]
 # Find the two panel-pair blocks and confirm both sides in each row have matching border chars

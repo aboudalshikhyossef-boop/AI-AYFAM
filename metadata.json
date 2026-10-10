@@ -1,0 +1,8 @@
+{
+  "name": "AI AYFAM — Security Operations Center",
+  "description": "Unified cybersecurity operations center, threat intelligence, vulnerability scanning, USB forensics, local intelligence, and incident response playbooks.",
+  "permissions": [],
+  "capabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

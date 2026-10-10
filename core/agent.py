@@ -161,6 +161,62 @@ class AYFAMAgent(AgentV5Mixin):
             if client:
                 client.close()
 
+    def ask_ai_or_local(self, prompt: str) -> str:
+        """استشارة المساعد الذكي مع التبديل التلقائي بين Gemini والذكاء المحلي."""
+        key = resolve_api_key(self.settings.get("gemini_api_key", ""))
+        if key:
+            try:
+                client = GeminiThreatClient(key, timeout=25.0)
+                sys_context = f"Hostname: {self._hostname}, Lang: {self.lang}"
+                ans = client.ask_assistant(prompt, system_context=sys_context)
+                if ans:
+                    return f"🧠 [Gemini AI Agent]\n\n{ans}"
+            except Exception as exc:
+                if self.verbose:
+                    self.ui.warning(f"Gemini API fallback to local brain: {exc}")
+
+        # Local Offline Brain Fallback
+        try:
+            explanation = self.nlp.explain(prompt)
+            if explanation and len(explanation.strip()) > 30:
+                return f"🛡️ [المحرك المحلي - بدون إنترنت]\n\n{explanation}"
+        except Exception:
+            pass
+
+        # Contextual playbook and concept recommendations
+        p = prompt.lower()
+        if "ssh" in p or "root" in p:
+            return (
+                "🛡️ [دليل الأمان المحلي - خدمة SSH]:\n\n"
+                "1. عطل دخول root المباشر: PermitRootLogin no في /etc/ssh/sshd_config\n"
+                "2. عطل توثيق كلمات المرور: PasswordAuthentication no\n"
+                "3. فعّل Fail2ban لحظر هجمات التخمين: sudo systemctl enable --now fail2ban\n\n"
+                "الأمر الموصى به:\n"
+                "sudo sed -i 's/^#*PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config && sudo systemctl reload sshd"
+            )
+        elif "usb" in p or "badusb" in p:
+            return (
+                "🛡️ [دليل الأمان المحلي - حماية USB]:\n\n"
+                "أجهزة BadUSB تحاكي لوحات المفاتيح لحقن أكواد سريعة. يوصى بتفعيل USBGuard:\n"
+                "sudo apt install -y usbguard\n"
+                "sudo usbguard generate-policy > /etc/usbguard/rules.conf\n"
+                "sudo systemctl restart usbguard"
+            )
+        elif "firewall" in p or "ufw" in p or "جدار" in p:
+            return (
+                "🛡️ [دليل الأمان المحلي - جدار الحماية UFW]:\n\n"
+                "sudo ufw default deny incoming\n"
+                "sudo ufw default allow outgoing\n"
+                "sudo ufw allow 22/tcp\n"
+                "sudo ufw enable"
+            )
+
+        return (
+            "🛡️ [الوكيل المحلي]: تم استيعاب سؤالك. للحصول على تحليل موسّع بالذكاء التوليدي السحابي، "
+            "تأكد من ضبط مفتاح Gemini في إعدادات النظام، أو شغّل أوامر الفحص والتدقيق: "
+            "'فحص النظام'، 'فحص الشبكة'، 'فحص المنافذ'."
+        )
+
     # ─────────────────────────────────────────────────────────────────────────
     #  TREND TRACKING — يقارن كل فحص بآخر فحص من نفس النوع، ثم يحفظه
     # ─────────────────────────────────────────────────────────────────────────

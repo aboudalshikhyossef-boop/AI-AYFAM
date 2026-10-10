@@ -6,41 +6,41 @@ AI AYFAM — Professional Design System
 
 # ─── Color Palette ────────────────────────────────────────────────────────────
 # Backgrounds (layered depth)
-BG_BASE      = "#0d1117"   # أعمق خلفية
-BG_SURFACE   = "#161b22"   # خلفية البطاقات والأسطح
-BG_ELEVATED = "#1c2128"   # العناصر المرفوعة (header, sidebar)
-BG_HOVER     = "#21262d"   # hover state
-BG_INPUT     = "#0d1117"   # حقول الإدخال
+BG_BASE      = "#070b14"   # أعمق خلفية (Cyber Abyss)
+BG_SURFACE   = "#0c1322"   # خلفية البطاقات والأسطح
+BG_ELEVATED = "#121b2d"   # العناصر المرفوعة (header, sidebar)
+BG_HOVER     = "#1a253c"   # hover state
+BG_INPUT     = "#060911"   # حقول الإدخال
 
 # Borders
-BORDER       = "#30363d"
-BORDER_LIGHT = "#21262d"
-BORDER_FOCUS = "#2f81f7"
+BORDER       = "#1e293b"
+BORDER_LIGHT = "#152033"
+BORDER_FOCUS = "#10b981"
 
 # Text
-TEXT_PRIMARY   = "#e6edf3"
-TEXT_SECONDARY = "#8b949e"
-TEXT_MUTED     = "#6e7681"
+TEXT_PRIMARY   = "#f8fafc"
+TEXT_SECONDARY = "#94a3b8"
+TEXT_MUTED     = "#64748b"
 
-# Accent (Primary brand color)
-ACCENT        = "#2f81f7"
-ACCENT_HOVER  = "#388bfd"
-ACCENT_PRESSED = "#1f6feb"
-ACCENT_SOFT   = "rgba(47, 129, 247, 0.12)"
+# Accent (Cyber Emerald & Telemetry Cyan)
+ACCENT        = "#10b981"
+ACCENT_HOVER  = "#059669"
+ACCENT_PRESSED = "#047857"
+ACCENT_SOFT   = "rgba(16, 185, 129, 0.15)"
 
 # Severity Colors (high contrast, clearly distinguishable)
-SEV_CRITICAL  = "#f85149"
-SEV_HIGH      = "#db6d28"
-SEV_MEDIUM    = "#d29922"
-SEV_LOW       = "#2f81f7"
-SEV_INFO      = "#8b949e"
-SEV_SAFE      = "#3fb950"
+SEV_CRITICAL  = "#f43f5e"
+SEV_HIGH      = "#f59e0b"
+SEV_MEDIUM    = "#eab308"
+SEV_LOW       = "#06b6d4"
+SEV_INFO      = "#64748b"
+SEV_SAFE      = "#10b981"
 
 # Status Colors
-STATUS_OK     = "#3fb950"
-STATUS_WARN   = "#d29922"
-STATUS_ERROR  = "#f85149"
-STATUS_IDLE   = "#8b949e"
+STATUS_OK     = "#10b981"
+STATUS_WARN   = "#f59e0b"
+STATUS_ERROR  = "#f43f5e"
+STATUS_IDLE   = "#64748b"
 
 # Card accent borders (top border per card type)
 CARD_ACCENTS = {
