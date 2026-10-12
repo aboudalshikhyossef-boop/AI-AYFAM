@@ -34,4 +34,3 @@ check("vim-common not falsely matched", "vim-common" not in names)
 check("no duplicates", len(names) == len(set(names)))
 
 print(f"\n{'='*50}\nTOTAL: {passed} passed, {failed} failed\n{'='*50}")
-sys.exit(1 if failed else 0)

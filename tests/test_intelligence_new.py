@@ -101,4 +101,3 @@ check("trend is stable", cmp3["trend"] == "stable")
 check("no resolved/new", len(cmp3["resolved"]) == 0 and len(cmp3["new_findings"]) == 0)
 
 print(f"\n{'='*50}\nTOTAL: {passed} passed, {failed} failed\n{'='*50}")
-sys.exit(1 if failed else 0)

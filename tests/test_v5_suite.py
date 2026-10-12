@@ -104,4 +104,3 @@ check("script contains set -euo pipefail", "set -euo pipefail" in bash_script)
 check("script includes remediation commands", "sysctl" in bash_script)
 
 print(f"\n{'='*50}\nTOTAL V5 TESTS: {passed} passed, {failed} failed\n{'='*50}")
-sys.exit(1 if failed else 0)

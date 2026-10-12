@@ -10,11 +10,13 @@ import {
   ChatMessage,
   Severity,
 } from '../models/security.model';
+import { AiAssistantService } from './ai-assistant.service';
 
 @Injectable({
   providedIn: 'root',
 })
 export class SecurityStateService {
+  private readonly assistant = new AiAssistantService();
   // Locale State: 'ar' | 'en'
   readonly locale = signal<'ar' | 'en'>('ar');
   readonly currentView = signal<string>('dashboard');
@@ -702,7 +704,7 @@ AI AYFAM Countermeasures:
   }
 
   // Send Chat Prompt to AI Security Assistant
-  sendChatMessage(query: string): void {
+  async sendChatMessage(query: string): Promise<void> {
     if (!query.trim()) return;
 
     const userMsg: ChatMessage = {
@@ -713,6 +715,19 @@ AI AYFAM Countermeasures:
       timestamp: new Date().toLocaleTimeString(),
     };
     this.chatMessages.update((msgs) => [...msgs, userMsg]);
+
+    const remoteReply = await this.assistant.ask(query);
+    if (remoteReply) {
+      const agentMsg: ChatMessage = {
+        id: `a-${Date.now()}`,
+        sender: 'agent',
+        text: remoteReply.answer,
+        textEn: remoteReply.answer,
+        timestamp: new Date().toLocaleTimeString(),
+      };
+      this.chatMessages.update((msgs) => [...msgs, agentMsg]);
+      return;
+    }
 
     // Generate intelligent contextual response
     setTimeout(() => {

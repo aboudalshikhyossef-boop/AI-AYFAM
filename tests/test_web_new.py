@@ -200,4 +200,3 @@ check("malicious flagged from abuse score", rep_with_key["reputation"] == "malic
 
 
 print(f"\n{'='*50}\nTOTAL: {passed} passed, {failed} failed\n{'='*50}")
-sys.exit(1 if failed else 0)

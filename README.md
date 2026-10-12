@@ -122,6 +122,29 @@ sudo ayfam --fix
 ayfam --set-github-token YOUR_GITHUB_TOKEN
 ```
 
+### مساعد OpenAI وGemini داخل واجهة Angular
+
+تستخدم واجهة Angular خادماً محلياً صغيراً (`api_server.py`) حتى لا تُكشف مفاتيح
+API داخل المتصفح أو ملفات JavaScript. يختار `auto` OpenAI أولاً ثم Gemini،
+ثم يعود إلى المحرك المحلي إذا لم يوجد مفتاح أو تعذر الاتصال.
+
+```bash
+export OPENAI_API_KEY="..."
+export GEMINI_API_KEY="..."
+export AI_PROVIDER=auto       # auto | openai | gemini | local
+export OPENAI_MODEL=gpt-4o-mini
+export GEMINI_MODEL=gemini-2.5-flash
+
+# طرفية منفصلة
+python3 api_server.py
+
+# تشغيل الواجهة
+npm run start
+```
+
+لا تُرسل الواجهة مفاتيح API أبداً؛ ترسل السؤال فقط إلى `/api/assistant` عبر
+Proxy التطوير. عند توقف الخادم تبقى المحادثة متاحة عبر المعرفة المحلية.
+
 ### الواجهة الرسومية ومكتبة المعرفة
 
 بعد تشغيل `./setup.sh` ابحث عن **مركز AI AYFAM الأمني** في قائمة التطبيقات، أو شغّل `ayfam-gui`. يحتاج التشغيل الرسومي إلى كلمة مرور النظام عبر نافذة التفويض. إذا لم تظهر النافذة، راجع سجل التشغيل في `~/.local/state/ayfam/gui.log`.

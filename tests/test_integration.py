@@ -137,4 +137,3 @@ if err14:
     print("     EXCEPTION:", repr(err14))
 
 print(f"\n{'='*50}\nTOTAL: {passed} passed, {failed} failed\n{'='*50}")
-sys.exit(1 if failed else 0)

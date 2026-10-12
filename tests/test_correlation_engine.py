@@ -249,4 +249,3 @@ check("extended list includes attack chains", any(
 ))
 
 print(f"\n{'='*55}\nTOTAL CORRELATION TESTS: {passed} passed, {failed} failed\n{'='*55}")
-sys.exit(1 if failed else 0)

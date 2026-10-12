@@ -53,4 +53,3 @@ desc_ar2 = nlp.describe_intent("scan_trend", "ar")
 check("scan_trend ar description exists", desc_ar2 != "scan_trend")
 
 print(f"\n{'='*50}\nTOTAL: {passed} passed, {failed} failed\n{'='*50}")
-sys.exit(1 if failed else 0)

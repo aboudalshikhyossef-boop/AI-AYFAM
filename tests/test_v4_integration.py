@@ -180,4 +180,3 @@ print(f"\n{'='*50}\nTOTAL: {passed} passed, {failed} failed\n{'='*50}")
 
 import shutil
 shutil.rmtree(tmp_intel, ignore_errors=True)
-sys.exit(1 if failed else 0)

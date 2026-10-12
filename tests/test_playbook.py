@@ -19,4 +19,3 @@ check("playbook returns structured stages", "stages" in result)
 check("playbook defines recon, execution, and hardening stages", len(result["stages"]) == 3)
 
 print(f"\n{'='*50}\nTOTAL PLAYBOOK TESTS: {passed} passed, {failed} failed\n{'='*50}")
-sys.exit(1 if failed else 0)

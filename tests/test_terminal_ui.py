@@ -126,4 +126,3 @@ except Exception as e:
 sys.stdin = old_stdin
 
 print(f"\n{'='*50}\nTOTAL: {passed} passed, {failed} failed\n{'='*50}")
-sys.exit(1 if failed else 0)

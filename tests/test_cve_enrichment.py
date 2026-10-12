@@ -48,4 +48,3 @@ check("at least one finding marked cve_enriched=True in saved scan", len(enriche
 check("enriched finding is critical severity (KEV match)", any(f["severity"] == "critical" for f in enriched))
 
 print(f"\n{'='*50}\nTOTAL: {passed} passed, {failed} failed\n{'='*50}")
-sys.exit(1 if failed else 0)

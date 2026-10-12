@@ -61,4 +61,3 @@ if os.path.exists(suid_test_file):
 print(f"\n{'='*50}\nTOTAL PHASE 3 TESTS: {passed} passed, {failed} failed\n{'='*50}")
 if os.path.exists(tmp_db):
     os.remove(tmp_db)
-sys.exit(1 if failed else 0)

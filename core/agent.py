@@ -5,6 +5,7 @@ AI AYFAM v3 — Smart Agent Brain
 
 from core.agent_v5 import AgentV5Mixin
 
+import json
 import os
 import socket
 import time
@@ -36,6 +37,7 @@ from brain import relevance_engine
 from engine.correlation import CorrelationEngine, SmartRemediationAdvisor
 from utils import safe_exec
 from engine.gemini_cti import GeminiCTIError, GeminiThreatClient, LocalThreatMatcher, ThreatHistory, markdown_report, resolve_api_key
+from engine.ai_assistant import AssistantConfig, AssistantError, build_provider
 
 
 def _run(cmd, timeout=30, sudo=False):
@@ -162,18 +164,24 @@ class AYFAMAgent(AgentV5Mixin):
                 client.close()
 
     def ask_ai_or_local(self, prompt: str) -> str:
-        """استشارة المساعد الذكي مع التبديل التلقائي بين Gemini والذكاء المحلي."""
-        key = resolve_api_key(self.settings.get("gemini_api_key", ""))
-        if key:
-            try:
-                client = GeminiThreatClient(key, timeout=25.0)
-                sys_context = f"Hostname: {self._hostname}, Lang: {self.lang}"
-                ans = client.ask_assistant(prompt, system_context=sys_context)
-                if ans:
-                    return f"🧠 [Gemini AI Agent]\n\n{ans}"
-            except Exception as exc:
-                if self.verbose:
-                    self.ui.warning(f"Gemini API fallback to local brain: {exc}")
+        """استشارة OpenAI أو Gemini بأمان، ثم التراجع إلى المحرك المحلي."""
+        config = AssistantConfig(
+            provider=self.settings.get("ai_provider", "auto"),
+            openai_api_key=self.settings.get("openai_api_key", ""),
+            openai_model=self.settings.get("openai_model", "gpt-4o-mini"),
+            gemini_api_key=self.settings.get("gemini_api_key", ""),
+            gemini_model=self.settings.get("gemini_model", "gemini-2.5-flash"),
+            timeout=25.0,
+        )
+        try:
+            provider = build_provider(config)
+            if provider:
+                answer = provider.ask(prompt, system_context=f"Hostname: {self._hostname}; language: {self.lang}")
+                if answer:
+                    return f"🧠 [{provider.name.title()} AI Agent]\n\n{answer}"
+        except AssistantError as exc:
+            if self.verbose:
+                self.ui.warning(f"AI provider fallback to local brain: {exc}")
 
         # Local Offline Brain Fallback
         try:
@@ -213,7 +221,7 @@ class AYFAMAgent(AgentV5Mixin):
 
         return (
             "🛡️ [الوكيل المحلي]: تم استيعاب سؤالك. للحصول على تحليل موسّع بالذكاء التوليدي السحابي، "
-            "تأكد من ضبط مفتاح Gemini في إعدادات النظام، أو شغّل أوامر الفحص والتدقيق: "
+            "تأكد من ضبط مفتاح OpenAI أو Gemini في إعدادات النظام، أو شغّل أوامر الفحص والتدقيق: "
             "'فحص النظام'، 'فحص الشبكة'، 'فحص المنافذ'."
         )
 
