@@ -496,16 +496,13 @@ if [[ "$GUI_DEST" == /tmp/* ]]; then
 fi
 
 # ==============================================================================
-# 3. إعداد سكريبت الإطلاق العالمي الإجباري بصلاحيات Root (ayfam-gui)
+# 3. إعداد سكريبت الإطلاق العالمي داخل جلسة المستخدم (ayfam-gui)
 # ==============================================================================
 APP_DIR="$(pwd)"
 sudo tee /usr/local/bin/ayfam-gui > /dev/null << LAUNCHER_EOF
 #!/usr/bin/env bash
-if [ "\$EUID" -ne 0 ]; then
-    exec sudo python3 "$APP_DIR/main.py" --gui "\$@"
-else
-    exec python3 "$APP_DIR/main.py" --gui "\$@"
-fi
+set -euo pipefail
+exec python3 "$APP_DIR/main.py" --gui "\$@"
 LAUNCHER_EOF
 sudo chmod +x /usr/local/bin/ayfam-gui
 
@@ -516,7 +513,7 @@ Version=1.0
 Type=Application
 Name=AI AYFAM Enterprise v7 — ABOUDA
 Comment=Autonomous Cybersecurity Cockpit & EDR Sentinel
-Exec=sudo python3 $APP_DIR/main.py --gui
+Exec=/usr/local/bin/ayfam-gui
 Icon=$APP_DIR/resources/icon.svg
 Terminal=false
 Categories=System;Security;

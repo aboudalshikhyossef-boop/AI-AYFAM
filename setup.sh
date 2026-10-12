@@ -164,45 +164,12 @@ info "إنشاء مشغّل الواجهة الرسومية وأيقونة قا�
 GUI_LAUNCHER="/usr/local/bin/ayfam-gui"
 sudo tee "$GUI_LAUNCHER" > /dev/null <<EOF
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 APP_DIR="$SCRIPT_DIR"
-umask 077
 LOG_DIR="\${XDG_STATE_HOME:-\$HOME/.local/state}/ayfam"
 mkdir -p "\$LOG_DIR"
 LOG_FILE="\$LOG_DIR/gui.log"
-XAUTHORITY_FILE="\${XAUTHORITY:-\$HOME/.Xauthority}"
-GUI_DISPLAY="\${DISPLAY:-}"
-GUI_WAYLAND_DISPLAY="\${WAYLAND_DISPLAY:-}"
-QT_PLATFORM="\${QT_QPA_PLATFORM:-}"
-if [[ "\$GUI_DISPLAY" == wayland-* ]]; then
-    GUI_WAYLAND_DISPLAY="\${GUI_WAYLAND_DISPLAY:-\$GUI_DISPLAY}"
-    GUI_DISPLAY=""
-fi
-if [[ "\$GUI_DISPLAY" =~ ^(:[0-9]+(\\.[0-9]+)?|[^:]+:[0-9]+(\\.[0-9]+)?)$ ]]; then
-    QT_PLATFORM="xcb"
-elif [[ -n "\$GUI_WAYLAND_DISPLAY" ]]; then
-    QT_PLATFORM="wayland"
-fi
-if [ "\$(id -u)" -ne 0 ]; then
-    if ! command -v pkexec >/dev/null 2>&1; then
-        echo "❌ pkexec غير مثبت؛ شغّل: sudo apt install policykit-1" >&2
-        exit 1
-    fi
-    printf '[%s] Starting GUI (DISPLAY=%s, WAYLAND_DISPLAY=%s, XAUTHORITY=%s, QT_QPA_PLATFORM=%s)\\n' "\$(date '+%F %T')" "\${GUI_DISPLAY:-unset}" "\${GUI_WAYLAND_DISPLAY:-unset}" "\$XAUTHORITY_FILE" "\${QT_PLATFORM:-auto}" >>"\$LOG_FILE"
-    if pkexec env DISPLAY="\$GUI_DISPLAY" WAYLAND_DISPLAY="\$GUI_WAYLAND_DISPLAY" XAUTHORITY="\$XAUTHORITY_FILE" XDG_RUNTIME_DIR="\${XDG_RUNTIME_DIR:-}" QT_QPA_PLATFORM="\$QT_PLATFORM" /usr/bin/python3 "\$APP_DIR/main.py" --gui "\$@" >>"\$LOG_FILE" 2>&1; then
-        exit 0
-    else
-        EXIT_CODE=\$?
-        printf '[%s] GUI exited with status %s. See %s\\n' "\$(date '+%F %T')" "\$EXIT_CODE" "\$LOG_FILE" >>"\$LOG_FILE"
-        if command -v zenity >/dev/null 2>&1; then
-            zenity --error --title="AI AYFAM لم يبدأ" --text="تعذر تشغيل الواجهة الرسومية بعد المصادقة. راجع السجل:\\n\$LOG_FILE" 2>/dev/null || true
-        elif command -v notify-send >/dev/null 2>&1; then
-            notify-send "AI AYFAM لم يبدأ" "تعذر تشغيل الواجهة. راجع: \$LOG_FILE" 2>/dev/null || true
-        fi
-        exit "\$EXIT_CODE"
-    fi
-fi
-export QT_QPA_PLATFORM="\$QT_PLATFORM"
+printf '[%s] Starting GUI as %s (DISPLAY=%s, WAYLAND_DISPLAY=%s)\\n' "\$(date '+%F %T')" "\$(id -un)" "\${DISPLAY:-unset}" "\${WAYLAND_DISPLAY:-unset}" >>"\$LOG_FILE"
 exec /usr/bin/python3 "\$APP_DIR/main.py" --gui "\$@" >>"\$LOG_FILE" 2>&1
 EOF
 sudo chmod +x "$GUI_LAUNCHER"

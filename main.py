@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+import traceback
 from pathlib import Path
 
 # Add project root to sys.path
@@ -42,25 +43,36 @@ def parse_args() -> argparse.Namespace:
 
 
 def run_gui() -> int:
+    log_dir = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state")) / "ayfam"
+    log_file = log_dir / "gui.log"
+    def log_failure(exc: BaseException) -> None:
+        try:
+            log_dir.mkdir(parents=True, exist_ok=True)
+            with log_file.open("a", encoding="utf-8") as stream:
+                stream.write(f"\n--- GUI startup failure ---\n{traceback.format_exc()}\n")
+        except OSError:
+            pass
     try:
         from PyQt6.QtWidgets import QApplication
-        from PyQt6.QtCore import Qt
         from ui.gui_app import UnifiedCockpitWindow
     except ImportError as exc:
         print(f"[!] PyQt6 is not installed or GUI libraries are missing: {exc}", file=sys.stderr)
         print("[*] Falling back to Terminal UI...\n", file=sys.stderr)
         return run_cli()
 
-    app = QApplication.instance()
-    if not app:
-        # High DPI scaling enabled by default in Qt6
-        app = QApplication(sys.argv)
-        app.setApplicationName("AI AYFAM")
-        app.setDesktopFileName("ai-ayfam")
-
-    window = UnifiedCockpitWindow()
-    window.show()
-    return app.exec()
+    try:
+        app = QApplication.instance()
+        if not app:
+            app = QApplication(sys.argv)
+            app.setApplicationName("AI AYFAM")
+            app.setDesktopFileName("ai-ayfam")
+        window = UnifiedCockpitWindow()
+        window.show()
+        return app.exec()
+    except Exception as exc:
+        log_failure(exc)
+        print(f"[!] فشل تشغيل الواجهة الرسومية. راجع: {log_file}", file=sys.stderr)
+        return 1
 
 
 def run_cli(no_color: bool = False) -> int:

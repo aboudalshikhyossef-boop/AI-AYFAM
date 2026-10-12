@@ -1647,9 +1647,6 @@ class UnifiedCockpitWindow(QMainWindow):
 
 
 def launch_gui() -> None:
-    if not is_root():
-        print(f"❌ {root_error()}", file=sys.stderr)
-        raise SystemExit(1)
     preflight = check_requirements({"gui"})
     if not preflight.ok:
         print(preflight.text(), file=sys.stderr)

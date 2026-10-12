@@ -4,7 +4,7 @@
 # AI AYFAM GUI Smart Launcher
 #
 
-set -e
+set -euo pipefail
 
 # ── البحث عن مجلد المشروع ──
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -21,20 +21,15 @@ fi
 
 # ── البيئة الافتراضية المطلوبة ──
 export PYTHONUNBUFFERED=1
-export QT_QPA_PLATFORM_PLUGIN_PATH=""
 export PYTHONPATH="$SCRIPT_DIR:${PYTHONPATH}"
 
-# ── محاولة إعادة تثبيت PyQt6 إذا كانت هناك مشكلة ──
+# ── لا تثبّت حزمًا أثناء التشغيل؛ اعرض خطأ واضحًا بدل تغيير البيئة ──
 if ! "$PYTHON_BIN" -c "from PyQt6.QtWidgets import QApplication" 2>/dev/null; then
-    echo "⚠️  PyQt6 غير متوفر، جاري المحاولة لتثبيته..."
-    "$PYTHON_BIN" -m pip install --quiet PyQt6 2>/dev/null || true
+    echo "❌ PyQt6 غير متوفر في: $PYTHON_BIN" >&2
+    echo "ثبّت المتطلبات مرة واحدة عبر setup.sh أو: $PYTHON_BIN -m pip install PyQt6" >&2
+    exit 2
 fi
 
-# ── إذا كنت بدون root، جرّب sudo ──
-if [ "$EUID" -ne 0 ]; then
-    exec sudo env PYTHONPATH="$PYTHONPATH" \
-                  PYTHONUNBUFFERED=1 \
-                  "$PYTHON_BIN" "$SCRIPT_DIR/main.py" --gui "$@"
-else
-    exec "$PYTHON_BIN" "$SCRIPT_DIR/main.py" --gui "$@"
-fi
+# تعمل الواجهة بحساب المستخدم كي ترث DISPLAY/Wayland وDBus وXAuthority.
+# العمليات التي تحتاج امتيازًا تستخدم طبقة safe_exec/pkexec عند الحاجة.
+exec "$PYTHON_BIN" "$SCRIPT_DIR/main.py" --gui "$@"
