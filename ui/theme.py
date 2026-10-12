@@ -178,6 +178,19 @@ QPushButton#danger:hover {{
     background: #f8514918;
     border-color: {SEV_CRITICAL};
 }}
+QPushButton#pillButton {{
+    background: {BG_SURFACE};
+    color: {TEXT_SECONDARY};
+    border: 1px solid {BORDER};
+    border-radius: 14px;
+    padding: 5px 12px;
+    font-size: {FONT_SIZE_SMALL}px;
+}}
+QPushButton#pillButton:hover {{
+    background: {BG_HOVER};
+    color: {TEXT_PRIMARY};
+    border-color: {BORDER_FOCUS};
+}}
 QPushButton:disabled {{
     color: {TEXT_MUTED};
     background: {BG_SURFACE};

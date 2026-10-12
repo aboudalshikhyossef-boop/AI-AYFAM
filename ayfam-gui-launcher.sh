@@ -25,9 +25,13 @@ export PYTHONPATH="$SCRIPT_DIR:${PYTHONPATH}"
 
 # ── لا تثبّت حزمًا أثناء التشغيل؛ اعرض خطأ واضحًا بدل تغيير البيئة ──
 if ! "$PYTHON_BIN" -c "from PyQt6.QtWidgets import QApplication" 2>/dev/null; then
-    echo "❌ PyQt6 غير متوفر في: $PYTHON_BIN" >&2
-    echo "ثبّت المتطلبات مرة واحدة عبر setup.sh أو: $PYTHON_BIN -m pip install PyQt6" >&2
-    exit 2
+    if [ -x "/usr/bin/python3" ] && /usr/bin/python3 -c "from PyQt6.QtWidgets import QApplication" 2>/dev/null; then
+        PYTHON_BIN="/usr/bin/python3"
+    else
+        echo "❌ PyQt6 غير متوفر في: $PYTHON_BIN" >&2
+        echo "ثبّت المتطلبات مرة واحدة عبر setup.sh أو: $PYTHON_BIN -m pip install PyQt6" >&2
+        exit 2
+    fi
 fi
 
 # تعمل الواجهة بحساب المستخدم كي ترث DISPLAY/Wayland وDBus وXAuthority.
