@@ -42,7 +42,63 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def prepare_gui_environment() -> None:
+    """Ensure GUI display variables and Python path resolution for PyQt6 work under sudo."""
+    sudo_user = os.environ.get("SUDO_USER")
+    sudo_uid = os.environ.get("SUDO_UID")
+
+    if sudo_user:
+        user_home = Path(f"/home/{sudo_user}")
+
+        # 1. Resolve PyQt6 if installed in user site-packages or virtual environment
+        try:
+            import PyQt6
+        except ImportError:
+            candidates = [
+                ROOT_DIR / ".venv/lib" / f"python{sys.version_info.major}.{sys.version_info.minor}" / "site-packages",
+                ROOT_DIR / "venv/lib" / f"python{sys.version_info.major}.{sys.version_info.minor}" / "site-packages",
+                user_home / ".local/lib" / f"python{sys.version_info.major}.{sys.version_info.minor}" / "site-packages",
+            ]
+            user_py_dir = user_home / ".local/lib"
+            if user_py_dir.exists():
+                for p in user_py_dir.glob("python3.*/site-packages"):
+                    candidates.append(p)
+
+            for cand in candidates:
+                if cand.exists() and str(cand) not in sys.path:
+                    sys.path.insert(0, str(cand))
+                    try:
+                        import PyQt6
+                        break
+                    except ImportError:
+                        pass
+
+        # 2. Preserve DISPLAY for GUI
+        if not os.environ.get("DISPLAY") and not os.environ.get("WAYLAND_DISPLAY"):
+            os.environ["DISPLAY"] = ":0"
+
+        # 3. Preserve XAUTHORITY for GUI
+        if not os.environ.get("XAUTHORITY"):
+            xauth_candidates = [user_home / ".Xauthority"]
+            if sudo_uid:
+                xauth_candidates.append(Path(f"/run/user/{sudo_uid}/gdm/Xauthority"))
+                run_user_dir = Path(f"/run/user/{sudo_uid}")
+                if run_user_dir.exists():
+                    xauth_candidates.extend(list(run_user_dir.glob(".Xauthority*")))
+                    xauth_candidates.extend(list(run_user_dir.glob("xauth*")))
+
+            for xauth in xauth_candidates:
+                if xauth.exists():
+                    os.environ["XAUTHORITY"] = str(xauth)
+                    break
+
+        # 4. Preserve XDG_RUNTIME_DIR
+        if not os.environ.get("XDG_RUNTIME_DIR") and sudo_uid:
+            os.environ["XDG_RUNTIME_DIR"] = f"/run/user/{sudo_uid}"
+
+
 def run_gui() -> int:
+    prepare_gui_environment()
     log_dir = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state")) / "ayfam"
     log_file = log_dir / "gui.log"
     def log_failure(exc: BaseException) -> None:

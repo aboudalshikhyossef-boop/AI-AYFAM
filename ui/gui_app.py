@@ -693,13 +693,13 @@ class UnifiedCockpitWindow(QMainWindow):
         layout.addWidget(out_box, 1)
 
     def _run_tool_and_display(self, fn: Callable[[], Any], title: str) -> None:
-        self.tool_output.setPlainText(f"⚙️ جارٍ تشغيل {title}...\n")
+        self.tool_output.setPlainText(f"[تشغيل] جارٍ تشغيل {title}...\n")
         def handler(res: Any):
             if isinstance(res, (dict, list)):
                 rendered = json.dumps(res, ensure_ascii=False, indent=2, default=str)
             else:
                 rendered = str(res)
-            self.tool_output.setPlainText(f"✅ اكتمل تشغيل {title}:\n\n{rendered}")
+            self.tool_output.setPlainText(f"[نجاح] اكتمل تشغيل {title}:\n\n{rendered}")
         self.run_background_task(fn, title, preserve_findings=False, result_handler=handler)
 
     # ═══════════════════════════════════════════════════════════════════════════
@@ -735,12 +735,12 @@ class UnifiedCockpitWindow(QMainWindow):
         pills_layout = QHBoxLayout()
         pills_layout.setSpacing(SP_SM)
         quick_prompts = [
-            ("🛡️ فحص النظام", "فحص النظام"),
-            ("🌐 فحص الشبكة", "فحص الشبكة"),
-            ("🔒 تأمين SSH", "كيف أؤمن خدمة SSH؟"),
-            ("🔌 فحص أجهزة USB", "فحص أجهزة USB"),
-            ("🔥 جدار الحماية UFW", "فحص جدار الحماية"),
-            ("📡 ثغرات حديثة CTI", "ما هي أحدث ثغرات CTI؟"),
+            ("فحص النظام", "فحص النظام"),
+            ("فحص الشبكة", "فحص الشبكة"),
+            ("تأمين SSH", "كيف أؤمن خدمة SSH؟"),
+            ("فحص أجهزة USB", "فحص أجهزة USB"),
+            ("جدار الحماية UFW", "فحص جدار الحماية"),
+            ("ثغرات CTI الحديثة", "ما هي أحدث ثغرات CTI؟"),
         ]
         for pill_label, prompt_text in quick_prompts:
             pill_btn = QPushButton(pill_label)
@@ -839,7 +839,7 @@ class UnifiedCockpitWindow(QMainWindow):
         if filepath.exists() and filepath.is_file():
             try:
                 content = filepath.read_text(encoding="utf-8", errors="replace")
-                self.report_preview.setPlainText(f"📄 [{filepath.name}]\n\n" + content[:50000])
+                self.report_preview.setPlainText(f"[تقرير] [{filepath.name}]\n\n" + content[:50000])
             except Exception as exc:
                 self.report_preview.setPlainText(f"تعذر قراءة التقرير: {exc}")
 
@@ -933,16 +933,16 @@ class UnifiedCockpitWindow(QMainWindow):
         self.settings.set("language", lang)
         self.agent.lang = lang
         self.agent.intel.language = lang
-        self.settings_log.setPlainText("✅ تم حفظ الإعدادات بنجاح!")
+        self.settings_log.setPlainText("[نجاح] تم حفظ الإعدادات بنجاح!")
         QMessageBox.information(self, "حفظ الإعدادات", "تم حفظ جميع الإعدادات والمفاتيح آمنة محلياً.")
 
     def test_gemini_settings(self) -> None:
         key = self.setting_gemini_key.text().strip() or self.settings.get("gemini_api_key", "")
         if not key:
-            self.settings_log.setPlainText("❌ لم يتم إدخال مفتاح Gemini. يرجى إدخال مفتاحك أولاً.")
+            self.settings_log.setPlainText("[خطأ] لم يتم إدخال مفتاح Gemini. يرجى إدخال مفتاحك أولاً.")
             return
         self.settings.set("gemini_api_key", key)
-        self.settings_log.setPlainText("🛰️ جارٍ فحص الاتصال واكتشاف نماذج Gemini المتاحة لهذا المفتاح...\n")
+        self.settings_log.setPlainText("[فحص] جارٍ فحص الاتصال واكتشاف نماذج Gemini المتاحة لهذا المفتاح...\n")
 
         def run_test():
             from engine.gemini_cti import GeminiThreatClient
@@ -953,7 +953,7 @@ class UnifiedCockpitWindow(QMainWindow):
         def handle_gemini_result(result: Any):
             if isinstance(result, Exception):
                 self.settings_log.setPlainText(
-                    f"❌ فشل اختبار الاتصال بـ Gemini API:\n\n{result}\n\n"
+                    f"[خطأ] فشل اختبار الاتصال بـ Gemini API:\n\n{result}\n\n"
                     "• تأكد من صحة المفتاح الصادر من Google AI Studio.\n"
                     "• تأكد من اتصال الجهاز بشبكة الإنترنت.\n"
                     "• سيعمل الوكيل تلقائياً في الوضع المحلي Offline لحين توفر المفتاح."
@@ -962,13 +962,13 @@ class UnifiedCockpitWindow(QMainWindow):
                 primary = result[0].short_name
                 models_list = ", ".join(m.short_name for m in result[:8])
                 self.settings_log.setPlainText(
-                    f"✅ تم الاتصال بنجاح بـ Google Gemini API!\n\n"
+                    f"[نجاح] تم الاتصال بنجاح بـ Google Gemini API!\n\n"
                     f"• النموذج الرئيسي المعتمد: {primary}\n"
                     f"• النماذج النشطة المكتشفة ({len(result)}): {models_list}\n\n"
                     "مساعد الذكاء الاصطناعي واستخبارات التهديدات CTI يعملان الآن بكامل الكفاءة."
                 )
             else:
-                self.settings_log.setPlainText("⚠️ لم يتم العثور على نماذج متوافقة لهذا المفتاح.")
+                self.settings_log.setPlainText("[تنبيه] لم يتم العثور على نماذج متوافقة لهذا المفتاح.")
 
         self.run_background_task(
             run_test,
@@ -986,7 +986,7 @@ class UnifiedCockpitWindow(QMainWindow):
         if answer == QMessageBox.StandardButton.Yes:
             self.agent.kb.clear_history()
             self.chat_display.clear()
-            self.settings_log.setPlainText("🗑️ تم مسح تاريخ المحادثات.")
+            self.settings_log.setPlainText("[تم] تم مسح تاريخ المحادثات.")
 
     # ═══════════════════════════════════════════════════════════════════════════
     #  LIBRARY PAGE
@@ -1101,16 +1101,16 @@ class UnifiedCockpitWindow(QMainWindow):
         if not text:
             return
         self.chat_input.clear()
-        self.chat_display.append(f"\n👤 [أنت] {text}")
+        self.chat_display.append(f"\n[أنت] {text}")
         cmd = self.agent.nlp.parse(text)
-        self.chat_display.append(f"🤖 [الوكيل] فهمت: {self.agent.nlp.describe_intent(cmd.intent, 'ar')}")
+        self.chat_display.append(f"[الوكيل] فهمت: {self.agent.nlp.describe_intent(cmd.intent, 'ar')}")
         if cmd.intent == "explain":
             target = cmd.explain_target or text
             self.run_background_task(
                 lambda: self.agent.nlp.explain(target),
                 "شرح السؤال",
                 preserve_findings=True,
-                result_handler=lambda answer: self.chat_display.append(f"🤖 [الوكيل]\n{answer}"),
+                result_handler=lambda answer: self.chat_display.append(f"[الوكيل]\n{answer}"),
             )
             return
 
@@ -1165,7 +1165,7 @@ class UnifiedCockpitWindow(QMainWindow):
                 )
             else:
                 self.switch_page("library")
-                self.chat_display.append("🤖 [الوكيل] اختر «إضافة كتب» من مكتبة المعرفة.")
+                self.chat_display.append("[الوكيل] اختر «إضافة كتب» من مكتبة المعرفة.")
             return
         # If no specific system action command matched, query AI Assistant (Gemini / Local brain)
         self.run_background_task(
@@ -1316,7 +1316,7 @@ class UnifiedCockpitWindow(QMainWindow):
                         item.setData(Qt.ItemDataRole.UserRole, partition_data)
                     self.usb_drives_table.setItem(row, column, item)
 
-        self.usb_status.setText(f"📱 {len(devices)} جهاز  |  💾 {len(drives)} وحدة تخزين  |  محدث")
+        self.usb_status.setText(f"[أجهزة] {len(devices)} جهاز  |  [تخزين] {len(drives)} وحدة تخزين  |  [حالة] محدث")
         if not devices and not drives:
             self.usb_detail.setPlainText("لا توجد أجهزة USB أو وحدات تخزين متصلة حالياً.")
 
@@ -1506,7 +1506,7 @@ class UnifiedCockpitWindow(QMainWindow):
             return
         from brain.playbook_engine import PlaybookEngine
         pb = PlaybookEngine(kb=self.agent.kb).generate_playbook(topic)
-        lines = [f"📋 خطة العمل: {topic}", f"عدد الأوامر: {pb.get('total_commands', 0)}", ""]
+        lines = [f"[خطة العمل] {topic}", f"عدد الأوامر: {pb.get('total_commands', 0)}", ""]
         for stage, steps in pb.get("stages", {}).items():
             if steps:
                 lines.append(f"── {stage} ──")
@@ -1602,11 +1602,11 @@ class UnifiedCockpitWindow(QMainWindow):
 
         if relevance_engine.is_index_current(self.agent.kb):
             meta = relevance_engine.get_index_meta()
-            status = f"📚 {len(documents)} كتاب | الفهرس مبني: {meta.get('chunks_indexed', 0)} مقطع"
+            status = f"[المكتبة] {len(documents)} كتاب | الفهرس مبني: {meta.get('chunks_indexed', 0)} مقطع"
         elif relevance_engine.is_index_built():
-            status = f"📚 {len(documents)} كتاب | الفهرس قديم — أعد بناءه"
+            status = f"[المكتبة] {len(documents)} كتاب | الفهرس قديم — أعد بناءه"
         else:
-            status = f"📚 {len(documents)} كتاب | البحث النصي متاح"
+            status = f"[المكتبة] {len(documents)} كتاب | البحث النصي متاح"
         self.library_status.setText(status)
 
     def show_library_document(self, row: int, _column: int) -> None:
