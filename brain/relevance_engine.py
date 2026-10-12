@@ -227,7 +227,7 @@ try:
     from sklearn.feature_extraction.text import TfidfVectorizer
     from sklearn.metrics.pairwise import cosine_similarity
     SKLEARN_AVAILABLE = True
-except ImportError:
+except (ImportError, ValueError, Exception):
     np = PureNumpy
     sparse = PureSparse
     TfidfVectorizer = PureTfidfVectorizer
