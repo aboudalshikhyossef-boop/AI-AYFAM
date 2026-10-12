@@ -33,10 +33,10 @@ class ResponseWrapper:
         return json.loads(self.text)
 
 
-def get(url: str, headers: dict | None = None, params: dict | None = None, timeout: float = 15.0) -> Any:
+def get(url: str, headers: dict | None = None, params: dict | None = None, timeout: float = 15.0, stream: bool = False, **kwargs: Any) -> Any:
     """تنفيذ طلب GET مع دعم requests أو urllib التلقائي."""
     if REQUESTS_AVAILABLE:
-        return requests.get(url, headers=headers, params=params, timeout=timeout)
+        return requests.get(url, headers=headers, params=params, timeout=timeout, stream=stream, **kwargs)
 
     # Fallback to urllib.request
     if params:
@@ -88,14 +88,16 @@ def post(url: str, headers: dict | None = None, json_data: Any = None, data: Any
         raise RuntimeError(f"HTTP POST Error ({url}): {exc}") from exc
 
 
-def put(url: str, headers: dict | None = None, json_data: Any = None, timeout: float = 15.0) -> Any:
+def put(url: str, headers: dict | None = None, json_data: Any = None, timeout: float = 15.0, json: Any = None, data: Any = None, **kwargs: Any) -> Any:
     """تنفيذ طلب PUT مع دعم requests أو urllib التلقائي."""
+    target_json = json_data if json_data is not None else json
     if REQUESTS_AVAILABLE:
-        return requests.put(url, headers=headers, json=json_data, timeout=timeout)
+        return requests.put(url, headers=headers, json=target_json, data=data, timeout=timeout, **kwargs)
 
     hdrs = dict(headers or {})
-    payload = json.dumps(json_data).encode("utf-8") if json_data is not None else b""
-    hdrs["Content-Type"] = "application/json"
+    payload = json.dumps(target_json).encode("utf-8") if target_json is not None else (data or b"")
+    if target_json is not None:
+        hdrs["Content-Type"] = "application/json"
     req = urllib.request.Request(url, data=payload, headers=hdrs, method="PUT")
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:

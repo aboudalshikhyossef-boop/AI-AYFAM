@@ -46,28 +46,20 @@ class RemediationPlanner:
             '    local title="$2"',
             '    echo -e "\\n[*] معالجة: $title"',
             '    echo "    الأمر: $cmd"',
-            '    if [ "$DRY_RUN" = false ]; then',
-            '        eval "$cmd"',
-            '        echo "    ✓ تم التطبيق بنجاح."',
-            '    fi',
+            '    # آمن عمداً: لا يوجد تنفيذ ديناميكي ولا تنفيذ تلقائي لأوامر findings.',
+            '    echo "    [REVIEW ONLY] راجع الأمر يدوياً ونفذه عبر إصلاح مسجل ومتحقق."',
             '}',
             "",
-            '# إنشاء نقطة نسخ احتياطي لإعدادات النظام',
-            'BACKUP_DIR="/var/backups/ayfam_$(date +%Y%m%d_%H%M%S)"',
-            'if [ "$DRY_RUN" = false ]; then',
-            '    mkdir -p "$BACKUP_DIR"',
-            '    echo "[*] تم إنشاء مجلد النسخ الاحتياطي في: $BACKUP_DIR"',
-            '    [ -f /etc/ssh/sshd_config ] && cp -a /etc/ssh/sshd_config "$BACKUP_DIR/" || true',
-            '    [ -f /etc/sysctl.conf ] && cp -a /etc/sysctl.conf "$BACKUP_DIR/" || true',
-            'fi',
+            '# هذه الخطة غير تنفيذية عمداً: لا تنشئ نسخاً ولا تغيّر النظام.',
             "",
         ]
 
         for cmd, title in unique_fixes:
             safe_title = title.replace('"', '\\"')
             safe_cmd = cmd.replace('"', '\\"')
-            script_lines.append(f'execute "{safe_cmd}" "{safe_title}"')
+            script_lines.append(f'# [REVIEW ONLY] {safe_title}')
+            script_lines.append(f'# {safe_cmd}')
 
         script_lines.append("")
-        script_lines.append('echo -e "\\n[✓] اكتملت جميع خطوات المعالجة بنجاح!"')
+        script_lines.append('echo -e "\\n[INFO] اكتملت قائمة المراجعة؛ لم تُنفذ أي تغييرات."')
         return "\n".join(script_lines)

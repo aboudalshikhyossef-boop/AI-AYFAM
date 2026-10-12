@@ -520,13 +520,18 @@ class UnifiedCockpitWindow(QMainWindow):
             return
 
         def run_fix():
-            from tools.fix import apply_fix
-            import subprocess
-            if fix_cmd.startswith("sudo ") or fix_cmd.startswith("apt"):
-                res = subprocess.run(fix_cmd, shell=True, capture_output=True, text=True, timeout=60)
-                return {"success": res.returncode == 0, "stdout": res.stdout, "stderr": res.stderr}
-            else:
-                return apply_fix(fix_cmd)
+            from tools.fix import apply_fix, list_available_fixes
+            fix_id = finding.get("fix_id", "")
+            if fix_id not in list_available_fixes():
+                return {
+                    "success": False,
+                    "error": "هذا الإصلاح نص إرشادي فقط؛ لا يوجد fix_id مسجل وآمن لتنفيذه من الواجهة.",
+                    "manual_review": fix_cmd,
+                }
+            kwargs = finding.get("fix_args", {})
+            if not isinstance(kwargs, dict):
+                return {"success": False, "error": "معاملات الإصلاح غير صالحة."}
+            return apply_fix(fix_id, **kwargs)
 
         self.run_background_task(
             run_fix,

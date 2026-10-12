@@ -18,6 +18,10 @@ from engine.ai_assistant import AssistantConfig, AssistantError, build_provider
 class ApiHandler(BaseHTTPRequestHandler):
     server_version = "AI-AYFAM-API/1.0"
 
+    def setup(self) -> None:
+        super().setup()
+        self.connection.settimeout(30.0)
+
     def _send(self, status: int, payload: dict[str, Any]) -> None:
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
@@ -46,10 +50,15 @@ class ApiHandler(BaseHTTPRequestHandler):
             self._send(404, {"error": "not_found"})
             return
         try:
-            length = int(self.headers.get("Content-Length", "0"))
-            if length > 32_768:
+            raw_length = self.headers.get("Content-Length")
+            if raw_length is None or not raw_length.isdigit():
+                raise ValueError("content_length_required")
+            length = int(raw_length)
+            if length <= 0 or length > 32_768:
                 raise ValueError("request_too_large")
             data = json.loads(self.rfile.read(length) or b"{}")
+            if not isinstance(data, dict):
+                raise ValueError("json_object_required")
             prompt = str(data.get("prompt", "")).strip()
             if not prompt or len(prompt) > 8_000:
                 self._send(400, {"error": "prompt_required_or_too_long"})
@@ -83,7 +92,11 @@ class ApiHandler(BaseHTTPRequestHandler):
 def main() -> None:
     host = os.getenv("AYFAM_API_HOST", "127.0.0.1")
     port = int(os.getenv("AYFAM_API_PORT", "8787"))
-    server = ThreadingHTTPServer((host, port), ApiHandler)
+    class BoundedServer(ThreadingHTTPServer):
+        daemon_threads = True
+        request_queue_size = 32
+
+    server = BoundedServer((host, port), ApiHandler)
     print(f"AI AYFAM API listening on http://{host}:{port}")
     try:
         server.serve_forever()

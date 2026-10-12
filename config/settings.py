@@ -9,6 +9,7 @@ AI AYFAM - Settings & Configuration Manager
 import os
 import json
 import stat
+import tempfile
 from pathlib import Path
 
 
@@ -52,6 +53,9 @@ class Settings:
         """يفرض 0700 على مجلد الإعدادات و0600 على ملف الإعدادات، ويصلح أي
         صلاحيات مفتوحة كانت موجودة من إصدار سابق (defense in depth)."""
         try:
+            if CONFIG_DIR.exists() and CONFIG_DIR.is_symlink():
+                raise OSError("configuration directory must not be a symlink")
+            CONFIG_DIR.mkdir(parents=True, exist_ok=True)
             os.chmod(CONFIG_DIR, stat.S_IRWXU)  # 0700 — المالك فقط
         except OSError:
             pass
@@ -62,10 +66,14 @@ class Settings:
                 pass
 
     def _load(self):
+        if CONFIG_FILE.exists() and CONFIG_FILE.is_symlink():
+            raise OSError("configuration file must not be a symlink")
         if CONFIG_FILE.exists():
             try:
                 with open(CONFIG_FILE, "r", encoding="utf-8") as f:
                     saved = json.load(f)
+                    if not isinstance(saved, dict):
+                        raise ValueError("configuration root must be an object")
                     self._data.update(saved)
             except (json.JSONDecodeError, OSError) as e:
                 # Don't silently lose user config (including github_token).
@@ -85,10 +93,24 @@ class Settings:
         # افتح بصلاحيات 0600 منذ اللحظة الأولى (os.open) بدلاً من إنشاء
         # الملف بصلاحيات افتراضية ثم تقييدها لاحقاً — يمنع نافذة زمنية
         # قصيرة يكون فيها الملف قابلاً للقراءة من الجميع.
-        flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
-        fd = os.open(CONFIG_FILE, flags, 0o600)
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            json.dump(self._data, f, ensure_ascii=False, indent=2)
+        if CONFIG_FILE.is_symlink():
+            raise OSError("configuration file must not be a symlink")
+        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        fd, temp_name = tempfile.mkstemp(prefix=".config.", dir=CONFIG_DIR, text=True)
+        try:
+            os.fchmod(fd, 0o600)
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                json.dump(self._data, f, ensure_ascii=False, indent=2)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(temp_name, CONFIG_FILE)
+            os.chmod(CONFIG_FILE, 0o600)
+        except Exception:
+            try:
+                os.unlink(temp_name)
+            except OSError:
+                pass
+            raise
 
     def get(self, key, default=None):
         return self._data.get(key, default)

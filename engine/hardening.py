@@ -69,8 +69,10 @@ class HardeningEngine:
             st = self.sys.stat(path)
             if st:
                 mode = stat.S_IMODE(st.st_mode)
-                # فحص إن كانت الصلاحيات تمنح الكتابة للآخرين أو القراءة غير المصرح بها
-                if (mode & 0o002) != 0 or (path.endswith("shadow") and (mode & 0o004) != 0):
+                # لا تسمح بالكتابة الجماعية/العالمية، ولا بقراءة ملفات shadow.
+                unsafe_write = mode & 0o022
+                unsafe_shadow_read = path.endswith("shadow") and (mode & 0o004) != 0
+                if unsafe_write or unsafe_shadow_read:
                     findings.append(Finding(
                         severity=sev,
                         title=desc,

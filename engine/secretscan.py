@@ -61,7 +61,9 @@ class SecretScanner:
                 # استبعاد مجلدات الكاش والبيئات الافتراضية
                 dirs[:] = [d for d in dirs if d not in (".git", ".venv", "venv", "node_modules", "__pycache__")]
                 for fname in files:
-                    if fname.endswith((".py", ".env", ".json", ".yaml", ".yml", ".sh", ".conf", ".txt", ".history")):
+                    lower_name = fname.lower()
+                    key_named = lower_name in {"id_rsa", "id_ed25519", "id_ecdsa", "id_dsa", "authorized_keys"}
+                    if key_named or lower_name.endswith((".py", ".env", ".json", ".yaml", ".yml", ".sh", ".conf", ".txt", ".history", ".pem", ".key", ".crt")):
                         files_to_check.append(os.path.join(root, fname))
                     if len(files_to_check) >= max_files:
                         break

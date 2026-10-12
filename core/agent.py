@@ -1870,6 +1870,23 @@ You can type any of these or anything similar in plain language:
     #  PUBLIC API (for non-interactive use)
     # ─────────────────────────────────────────────────────────────────────────
 
+    def interactive_loop(self):
+        """Compatibility entry point for the documented CLI."""
+        return self.interactive_mode()
+
+    def run_full_audit(self):
+        """Run and return the full audit findings."""
+        return self._full_scan()
+
+    def run_hardening(self):
+        """Run the deep hardening audit and return findings."""
+        return self._run_deep_audit()
+
+    def search_cve(self, query: str):
+        """Search CVE intelligence and return the resulting findings."""
+        result = self._cve_search(query)
+        return result if isinstance(result, list) else self._last_findings
+
     def run_scan(self, target, value=None, output_file=None):
         if target == "network": self._scan_network()
         elif target == "ports": self._scan_ports(value or "127.0.0.1")

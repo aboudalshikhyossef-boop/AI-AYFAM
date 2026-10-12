@@ -97,7 +97,10 @@ def root_error() -> str:
 
 def _available(requirement: Requirement) -> bool:
     if requirement.kind == "Python":
-        return importlib.util.find_spec(requirement.name) is not None
+        try:
+            return importlib.util.find_spec(requirement.name) is not None
+        except (ImportError, ModuleNotFoundError, ValueError):
+            return False
     if requirement.kind == "package":
         try:
             result = subprocess.run(

@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "ng": "ng",
-    "start": "ng serve --host 0.0.0.0 --port 3000",
-    "dev": "ng serve --host 0.0.0.0 --port 3000",
+    "start": "ng serve --host 127.0.0.1 --port 3000",
+    "dev": "ng serve --host 127.0.0.1 --port 3000",
     "build": "ng build",
     "lint": "tsc --noEmit",
     "watch": "ng build --watch --configuration development"

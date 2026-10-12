@@ -133,10 +133,8 @@ def main() -> int:
     if args.check:
         results = check_requirements()
         print("AI AYFAM Preflight Diagnostics:")
-        for k, v in results.items():
-            status = "OK" if v else "FAIL"
-            print(f"  [{status}] {k}")
-        return 0
+        print(results.text())
+        return 0 if results.ok else 1
 
     if args.scan:
         return run_direct_scan(no_color=args.no_color)
