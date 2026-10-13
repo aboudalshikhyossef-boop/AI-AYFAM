@@ -138,18 +138,26 @@ class UnifiedCockpitWindow(QMainWindow):
 
         # ── Sidebar ──
         sidebar = QFrame(objectName="sidebar")
-        sidebar.setFixedWidth(200)
+        sidebar.setFixedWidth(244)
         sidebar_layout = QVBoxLayout(sidebar)
         sidebar_layout.setContentsMargins(SP_MD, SP_LG, SP_MD, SP_MD)
         sidebar_layout.setSpacing(SP_XS)
 
         # Logo / Brand
+        brand_row = QHBoxLayout()
+        brand_row.setSpacing(SP_SM)
+        brand_mark = QLabel("◈")
+        brand_mark.setObjectName("brandMark")
+        brand_row.addWidget(brand_mark, 0, Qt.AlignmentFlag.AlignLeft)
         brand = QLabel("AI AYFAM")
-        brand.setStyleSheet(f"color: {TEXT_PRIMARY}; font-size: {FONT_SIZE_TITLE}px; font-weight: 800; padding: 8px 6px 4px 6px;")
-        sidebar_layout.addWidget(brand)
+        brand.setStyleSheet(f"color: {TEXT_PRIMARY}; font-size: {FONT_SIZE_TITLE}px; font-weight: 900; padding: 4px 0;")
+        brand_row.addWidget(brand)
+        brand_row.addStretch()
+        sidebar_layout.addLayout(brand_row)
 
-        sub = QLabel("Security Operations Center")
-        sub.setStyleSheet(f"color: {TEXT_MUTED}; font-size: {FONT_SIZE_SMALL}px; padding: 0 6px 20px 6px;")
+        sub = QLabel("SECURITY OPERATIONS CENTER")
+        sub.setObjectName("eyebrow")
+        sub.setStyleSheet(f"color: {ACCENT}; font-size: 10px; font-weight: 700; padding: 0 6px 20px 6px;")
         sidebar_layout.addWidget(sub)
 
         # Nav buttons with SVG icons
@@ -179,20 +187,27 @@ class UnifiedCockpitWindow(QMainWindow):
 
         # ── Main content area ──
         main_area = QWidget()
+        main_area.setObjectName("mainArea")
         main_layout = QVBoxLayout(main_area)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
         # ── Header bar ──
         header = QFrame(objectName="headerBar")
-        header.setFixedHeight(64)
+        header.setFixedHeight(78)
         header_layout = QHBoxLayout(header)
         header_layout.setContentsMargins(SP_XL, SP_MD, SP_XL, SP_MD)
         header_layout.setSpacing(SP_LG)
 
+        title_box = QVBoxLayout()
+        title_box.setSpacing(1)
+        page_eyebrow = QLabel("AI AYFAM  /  CONTROL ROOM")
+        page_eyebrow.setObjectName("eyebrow")
+        title_box.addWidget(page_eyebrow)
         self.page_title = QLabel("غرفة العمليات")
         self.page_title.setObjectName("sectionTitle")
-        header_layout.addWidget(self.page_title)
+        title_box.addWidget(self.page_title)
+        header_layout.addLayout(title_box)
         header_layout.addStretch()
 
         # Activity lamp
