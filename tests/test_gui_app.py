@@ -2,6 +2,7 @@ import os
 import sys
 import unittest
 from types import SimpleNamespace
+import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -11,8 +12,7 @@ try:
     from PyQt6.QtWidgets import QApplication
     from ui.gui_app import GuiTerminalUI, UnifiedCockpitWindow, WorkerThread
 except (ImportError, OSError) as exc:
-    print(f"Qt runtime is unavailable ({exc}) - skipping GUI tests.")
-    sys.exit(0)
+    pytest.skip(f"Qt runtime is unavailable ({exc})", allow_module_level=True)
 
 
 passed = failed = 0
