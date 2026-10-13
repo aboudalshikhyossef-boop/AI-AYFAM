@@ -10,8 +10,8 @@ import math
 from pathlib import Path
 from typing import Callable, Any
 
-from PyQt6.QtCore import Qt, QTimer, QThread, QPropertyAnimation, pyqtSignal, QUrl, QSize, QRect
-from PyQt6.QtGui import QColor, QDesktopServices, QFont, QIcon, QAction, QShortcut, QKeySequence, QPainter, QPixmap, QPen
+from PyQt6.QtCore import Qt, QTimer, QThread, QPropertyAnimation, pyqtSignal, QUrl, QSize, QRect, QEasingCurve, QRectF
+from PyQt6.QtGui import QColor, QDesktopServices, QFont, QIcon, QAction, QShortcut, QKeySequence, QPainter, QPixmap, QPen, QLinearGradient, QRadialGradient
 from PyQt6.QtWidgets import (
     QApplication, QComboBox, QFileDialog, QFrame, QGraphicsOpacityEffect, QGridLayout, QGroupBox,
     QHBoxLayout, QHeaderView, QLabel, QLineEdit, QMainWindow, QMessageBox,
@@ -28,6 +28,8 @@ from engine.risk import RiskEngine
 from tools.usb import analyze_mounted_filesystem, list_usb_devices, scan_mounted_drives
 from tools.usb_control import authorize_device, deauthorize_device
 from ui.terminal import TerminalUI
+from ui.icons import framed_icon, glyph_icon
+from ui.widgets import AccentLine, AmbientSurface, ChatView, HoverController, NavIndicator
 from ui.theme import (
     QSS, get_qss, ACCENT, ACCENT_SOFT, ACCENT_HUES, BG_BASE, BG_SURFACE, BG_ELEVATED, BG_HOVER,
     BORDER, BORDER_FOCUS, TEXT_PRIMARY, TEXT_SECONDARY, TEXT_MUTED,
@@ -35,7 +37,7 @@ from ui.theme import (
     STATUS_OK, STATUS_ERROR, STATUS_IDLE,
     FONT_FAMILY, FONT_SIZE_BASE, FONT_SIZE_SMALL, FONT_SIZE_TITLE, FONT_SIZE_HERO, FONT_SIZE_METRIC,
     SP_XS, SP_SM, SP_MD, SP_LG, SP_XL, SP_2XL,
-    severity_color, severity_bg,
+    CARD_ACCENTS, alpha, severity_color, severity_bg,
 )
 from utils.preflight import check_requirements, root_error, is_root
 
@@ -99,55 +101,6 @@ def _sev_brush(severity: str) -> QColor:
     return QColor(severity_color(severity))
 
 
-class AuroraBackground(QWidget):
-    """A QWidget that renders the animated aurora background (orbs + grid).
-
-    Being a real widget in the layout, this paints behind cards and tables that
-    sit on top of it, unlike painting on the QMainWindow itself.
-    """
-
-    _t = 0
-
-    def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, False)
-        self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)
-        self._anim = QTimer(self)
-        self._anim.timeout.connect(self._tick)
-        self._anim.start(33)
-
-    def _tick(self) -> None:
-        self._t += 1
-        self.update()
-
-    def paintEvent(self, e) -> None:
-        p = QPainter(self)
-        p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        w, h = self.width(), self.height()
-        p.fillRect(0, 0, w, h, QColor(BG_BASE))
-
-        # Three drifting orbs (soft aurora)
-        t = self._t / 60
-        for i, hue in enumerate(["#22d3ee", "#a78bfa", "#f75f8a"]):
-            # Smooth, non-repeating size via sin/cos (no % 1 jump)
-            phase = t * 0.6 + i * 2.1
-            r = 280 + 60 * math.sin(phase)
-            x = w * 0.5 + (w * 0.3) * math.sin(t * 0.5 + i * 1.8)
-            y = h * 0.45 + (h * 0.25) * math.cos(t * 0.35 + i * 1.2)
-            col = QColor(hue)
-            col.setAlpha(14)
-            p.setBrush(col)
-            p.setPen(Qt.PenStyle.NoPen)
-            p.drawEllipse(int(x - r / 2), int(y - r / 2), int(r), int(r))
-
-        # Faint grid overlay
-        p.setPen(QPen(QColor(255, 255, 255, 5)))
-        for gx in range(0, w, 56):
-            p.drawLine(gx, 0, gx, h)
-        for gy in range(0, h, 56):
-            p.drawLine(0, gy, w, gy)
-
-
 class UnifiedCockpitWindow(QMainWindow):
 
     def __init__(self) -> None:
@@ -177,14 +130,16 @@ class UnifiedCockpitWindow(QMainWindow):
         self.event_timer = QTimer(self)
         self.event_timer.timeout.connect(self.update_agent_events)
         self.event_timer.start(300)
-        self.accent_timer = QTimer(self)
-        self.accent_timer.timeout.connect(self.cycle_accent_hue)
-        self.accent_timer.start(15000)
+        # Ambient light and hover rims animate smoothly; semantic colors stay stable.
+        # Avoid restyling the entire window every 15 seconds (flicker/layout churn).
+        self.hover_controller = HoverController(self)
+        self.chat_display.hover_controller = self.hover_controller
+        self._busy_cursor_owned = False
 
         self.update_live_telemetry()
 
     def _tick_aurora(self) -> None:
-        # Kept for backwards compatibility — the AuroraBackground widget animates itself
+        # Kept for backwards compatibility — AmbientSurface animates itself
         pass
 
     # ═══════════════════════════════════════════════════════════════════════════
@@ -206,7 +161,8 @@ class UnifiedCockpitWindow(QMainWindow):
         # Logo / Brand
         brand_row = QHBoxLayout()
         brand_row.setSpacing(SP_SM)
-        brand_mark = QLabel("◈")
+        brand_mark = QLabel()
+        brand_mark.setPixmap(QIcon(str(ROOT_DIR / "resources" / "icon.svg")).pixmap(28, 28))
         brand_mark.setObjectName("brandMark")
         brand_row.addWidget(brand_mark, 0, Qt.AlignmentFlag.AlignLeft)
         brand = QLabel("AI AYFAM")
@@ -215,7 +171,7 @@ class UnifiedCockpitWindow(QMainWindow):
         brand_row.addStretch()
         sidebar_layout.addLayout(brand_row)
 
-        sub = QLabel("SECURITY OPERATIONS CENTER")
+        sub = QLabel("مركز العمليات الأمنية")
         sub.setObjectName("eyebrow")
         sub.setStyleSheet(f"color: {ACCENT}; font-size: 10px; font-weight: 700; padding: 0 6px 20px 6px;")
         sidebar_layout.addWidget(sub)
@@ -238,10 +194,8 @@ class UnifiedCockpitWindow(QMainWindow):
                 btn = QPushButton(f"  {labels[key]}")
                 btn.setObjectName("navButton")
                 btn.setCheckable(True)
-                icon_path = icons_dir / f"{key}.svg"
-                if icon_path.exists():
-                    btn.setIcon(QIcon(str(icon_path)))
-                    btn.setIconSize(QSize(18, 18))
+                btn.setIcon(framed_icon(key))
+                btn.setIconSize(QSize(30, 30))
                 btn.clicked.connect(lambda checked=False, k=key: self.switch_page(k))
                 sidebar_layout.addWidget(btn)
                 self.nav_button_map[key] = btn
@@ -249,7 +203,8 @@ class UnifiedCockpitWindow(QMainWindow):
 
         assistant_btn = QPushButton("  افتح المساعد الذكي")
         assistant_btn.setObjectName("assistantNavButton")
-        assistant_btn.setIcon(QIcon(str(icons_dir / "chat.svg")))
+        assistant_btn.setIcon(glyph_icon("chat", "#34d399", 20))
+        assistant_btn.setIconSize(QSize(20, 20))
         assistant_btn.clicked.connect(lambda: self.switch_page("chat"))
         sidebar_layout.addWidget(assistant_btn)
 
@@ -260,10 +215,12 @@ class UnifiedCockpitWindow(QMainWindow):
         self.sidebar_status.setStyleSheet(f"color: {STATUS_OK}; font-size: {FONT_SIZE_SMALL}px; padding: 8px 6px;")
         sidebar_layout.addWidget(self.sidebar_status)
 
+        self.nav_indicator = NavIndicator(sidebar)
         root.addWidget(sidebar)
 
         # ── Main content area ──
-        main_area = QWidget()
+        main_area = AmbientSurface()
+        self.aurora_bg = main_area  # compatibility: background IS the content container
         main_area.setObjectName("mainArea")
         main_layout = QVBoxLayout(main_area)
         main_layout.setContentsMargins(0, 0, 0, 0)
@@ -278,7 +235,7 @@ class UnifiedCockpitWindow(QMainWindow):
 
         title_box = QVBoxLayout()
         title_box.setSpacing(1)
-        page_eyebrow = QLabel("AI AYFAM  /  CONTROL ROOM")
+        page_eyebrow = self.page_eyebrow = QLabel("AI AYFAM  /  DASHBOARD")
         page_eyebrow.setObjectName("eyebrow")
         title_box.addWidget(page_eyebrow)
         self.page_title = QLabel("غرفة العمليات")
@@ -330,6 +287,7 @@ class UnifiedCockpitWindow(QMainWindow):
         header_layout.addWidget(self.score_badge)
 
         main_layout.addWidget(header)
+        main_layout.addWidget(AccentLine())
 
         # ── Stacked content ──
         self.stack = QStackedWidget()
@@ -371,13 +329,9 @@ class UnifiedCockpitWindow(QMainWindow):
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        # ── Aurora animated background (behind everything in main area) ──
-        self.aurora_bg = AuroraBackground()
-        self.aurora_bg.setGeometry(0, 0, main_area.width(), main_area.height())
-        main_layout.addWidget(self.aurora_bg, 1)
-
-        # Put scroll (main content) on top of the aurora background
-        self.aurora_bg.stackUnder(scroll)
+        # AmbientSurface paints behind the layout, never occupies a layout slot.
+        scroll.viewport().setAutoFillBackground(False)
+        self.content_scroll = scroll
 
         main_layout.addWidget(scroll, 1)
 
@@ -385,7 +339,7 @@ class UnifiedCockpitWindow(QMainWindow):
         footer = QLabel(f"  {os.uname().nodename}  |  AI AYFAM v8  |  التنفيذ محلي")
         footer.setObjectName("footer")
         footer.setFixedHeight(26)
-        footer.setStyleSheet(f"background: {BG_ELEVATED}; border-top: 1px solid {BORDER}; padding: 4px 12px;")
+        footer.setStyleSheet("background: #90122333; border-top: 1px solid #5538bdf8; padding: 3px 12px;")
         main_layout.addWidget(footer)
 
         root.addWidget(main_area)
@@ -393,6 +347,15 @@ class UnifiedCockpitWindow(QMainWindow):
 
         # Default page
         self.switch_page("dashboard")
+
+    def _place_nav_indicator(self) -> None:
+        button = self.nav_button_map.get(getattr(self, "_current_nav", "dashboard"))
+        if button is not None and button.height() > 0:
+            self.nav_indicator.move_to(button)
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        QTimer.singleShot(60, self._place_nav_indicator)
 
     def switch_page(self, key: str) -> None:
         page_map = {
@@ -411,10 +374,33 @@ class UnifiedCockpitWindow(QMainWindow):
         }
         widget = page_map.get(key)
         if widget:
+            changed = self.stack.currentWidget() is not widget
             self.stack.setCurrentWidget(widget)
+            if changed:
+                if hasattr(self, "page_animation"):
+                    self.page_animation.stop()
+                effect = QGraphicsOpacityEffect(self.stack)
+                self.stack.setGraphicsEffect(effect)
+                animation = QPropertyAnimation(effect, b"opacity", self)
+                animation.setDuration(240)
+                animation.setStartValue(0.35)
+                animation.setEndValue(1.0)
+                animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+                # Remove the effect afterwards so normal text rendering and hover stay crisp.
+                animation.finished.connect(lambda: self.stack.setGraphicsEffect(None))
+                self.page_animation = animation
+                animation.start()
+                self.content_scroll.verticalScrollBar().setValue(0)
             self.page_title.setText(title_map.get(key, ""))
+            self.page_eyebrow.setText(f"AI AYFAM  /  {key.upper()}")
+            for name, page in page_map.items():
+                page.setSizePolicy(QSizePolicy.Policy.Preferred if name == key else QSizePolicy.Policy.Ignored,
+                                   QSizePolicy.Policy.Preferred if name == key else QSizePolicy.Policy.Ignored)
+            self.stack.updateGeometry()
             for k, btn in self.nav_button_map.items():
                 btn.setChecked(k == key)
+            self._current_nav = key
+            QTimer.singleShot(0, self._place_nav_indicator)
             if key == "usb" and not self.usb_inventory_loaded:
                 self.refresh_usb_inventory()
 
@@ -463,14 +449,14 @@ class UnifiedCockpitWindow(QMainWindow):
         self.metric_labels: dict[str, QLabel] = {}
         metric_data = [
             ("connections", "اتصالات نشطة", "مقابس الشبكة النشطة", SEV_LOW),
-            ("processes", "عمليات مراقبة", "أعلى العمليات استهلاكاً", "#a371f7"),
+            ("processes", "عمليات مراقبة", "أعلى العمليات استهلاكاً", CARD_ACCENTS["processes"]),
             ("findings", "نتائج الفحص", "في آخر فحص مكتمل", SEV_MEDIUM),
             ("score", "الدرجة الأمنية", "مؤشر المخاطر العام", SEV_SAFE),
         ]
         for col, (key, label, note, accent) in enumerate(metric_data):
             card = QFrame(objectName="card")
             card.setMinimumHeight(110)
-            card.setStyleSheet(f"QFrame#card {{ border-top: 3px solid {accent}; }}")
+            card.setStyleSheet(f"QFrame#card {{ border: 1px solid {alpha(accent, 150)}; }}")
             box = QVBoxLayout(card)
             box.setContentsMargins(SP_LG, SP_MD, SP_LG, SP_MD)
             box.setSpacing(SP_XS)
@@ -481,6 +467,7 @@ class UnifiedCockpitWindow(QMainWindow):
 
             val = QLabel("—")
             val.setObjectName("metricValue")
+            val.setStyleSheet(f"color: {accent};")
             box.addWidget(val)
 
             nt = QLabel(note)
@@ -586,14 +573,25 @@ class UnifiedCockpitWindow(QMainWindow):
             ("فحص موقع", "", self.start_website_scan),
             ("سمعة IP", "", self.start_ip_reputation),
         ]
+        button_grid = QGridLayout()
+        button_grid.setHorizontalSpacing(SP_MD)
+        button_grid.setVerticalSpacing(SP_MD)
+        for column in range(4):
+            button_grid.setColumnStretch(column, 1)
+        grid.addLayout(button_grid, 4, 0, 1, 4)
+        grid.setColumnMinimumWidth(0, 96)
+        grid.setColumnMinimumWidth(2, 96)
+        grid.setColumnStretch(1, 1)
+        grid.setColumnStretch(3, 1)
         for i, (text, btn_style, callback) in enumerate(buttons):
             btn = QPushButton(text)
+            btn.setMinimumHeight(40)
             if btn_style:
                 btn.setObjectName(btn_style)
             btn.setToolTip(f"تشغيل: {text}")
             btn.clicked.connect(callback)
             self.task_buttons.append(btn)
-            grid.addWidget(btn, 4 + i // 4, i % 4)
+            button_grid.addWidget(btn, i // 4, i % 4)
         layout.addWidget(form)
 
         # Progress
@@ -873,22 +871,29 @@ class UnifiedCockpitWindow(QMainWindow):
         intro.setStyleSheet(f"color: {TEXT_SECONDARY}; font-size: {FONT_SIZE_SMALL}px;")
         layout.addWidget(intro)
 
-        self.chat_display = QTextEdit(readOnly=True)
+        self.chat_display = ChatView()
         self.chat_display.setPlaceholderText("ستظهر هنا حالة المهام والنتائج...")
         self.chat_display.append("[النظام] مرحباً. اختر فحصاً من تبويب الفحوصات أو اكتب أمراً هنا.")
-        layout.addWidget(self.chat_display)
+        layout.addWidget(self.chat_display, 1)
 
-        row = QHBoxLayout()
+        composer = QFrame(objectName="chatComposer")
+        row = QHBoxLayout(composer)
+        row.setContentsMargins(10, 8, 10, 8)
         row.setSpacing(SP_SM)
         self.chat_input = QLineEdit()
-        self.chat_input.setPlaceholderText("اكتب أمراً أو سؤالاً...")
+        self.chat_input.setPlaceholderText("اكتب رسالتك هنا… اضغط Enter للإرسال")
+        self.chat_input.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
+        self.chat_input.setMinimumHeight(30)
+        self.chat_input.setStyleSheet("QLineEdit { background: transparent; border: none; }")
+        self.chat_input.setClearButtonEnabled(True)
         self.chat_input.returnPressed.connect(self.send_chat_message)
         send = QPushButton("إرسال")
         send.setObjectName("primary")
         send.clicked.connect(self.send_chat_message)
-        row.addWidget(self.chat_input)
+        send.setIcon(glyph_icon("send", "#edf5fb", 16))
+        row.addWidget(self.chat_input, 1)
         row.addWidget(send)
-        layout.addLayout(row)
+        layout.addWidget(composer)
 
         # Quick action prompts
         pills_layout = QHBoxLayout()
@@ -1224,9 +1229,8 @@ class UnifiedCockpitWindow(QMainWindow):
     #  ACCENT HUE CYCLER (pulsing colors across the UI)
     # ═══════════════════════════════════════════════════════════════════════════
     def cycle_accent_hue(self) -> None:
-        import random
-        a, b = random.choice(ACCENT_HUES)
-        self.setStyleSheet(get_qss(a, b))
+        """Compatibility hook: color motion is painted smoothly, not by restyling."""
+        return
 
     # ═══════════════════════════════════════════════════════════════════════════
     #  LIVE TELEMETRY
@@ -1376,6 +1380,8 @@ class UnifiedCockpitWindow(QMainWindow):
             QMessageBox.information(self, "مهمة قيد التنفيذ", "انتظر انتهاء المهمة الحالية قبل تشغيل مهمة أخرى.")
             return
         self.set_activity_state("running", f"يعمل — {title}")
+        QApplication.setOverrideCursor(Qt.CursorShape.BusyCursor)
+        self._busy_cursor_owned = True
         self.chat_display.append(f"\n⚙️ [بدء] {title}")
         self.scan_progress.show()
         self.scan_hint.setText(f"جارٍ التنفيذ: {title}")
@@ -1626,6 +1632,9 @@ class UnifiedCockpitWindow(QMainWindow):
         self.finding_detail.setPlainText("\n".join(lines))
 
     def task_done(self, result: Any, title: str) -> None:
+        if getattr(self, "_busy_cursor_owned", False):
+            QApplication.restoreOverrideCursor()
+            self._busy_cursor_owned = False
         self.scan_progress.hide()
         for button in self.task_buttons:
             button.setEnabled(True)
@@ -1681,7 +1690,7 @@ class UnifiedCockpitWindow(QMainWindow):
         score_color = SEV_SAFE if score >= 85 else SEV_MEDIUM if score >= 70 else SEV_HIGH if score >= 50 else SEV_CRITICAL
         self.score_badge.setStyleSheet(
             f"color: {score_color}; font-weight: 700; padding: 8px 14px; "
-            f"background: {BG_SURFACE}; border: 1px solid {score_color}44; border-radius: 6px;"
+            f"background: {alpha(score_color, 24)}; border: 1px solid {alpha(score_color, 140)}; border-radius: 15px;"
         )
 
     # ═══════════════════════════════════════════════════════════════════════════
@@ -1834,16 +1843,17 @@ class UnifiedCockpitWindow(QMainWindow):
 
 
 class AuroraSplash(QSplashScreen):
-    """Animated welcome screen shown while the app boots."""
+    """Welcome screen: transparent rounded glass panel, blue/green light, no opaque blocks."""
 
     def __init__(self) -> None:
-        pix = QPixmap(560, 340)
-        pix.fill(QColor(BG_BASE))
+        pix = QPixmap(600, 360)
+        pix.fill(Qt.GlobalColor.transparent)
         super().__init__(pix)
         self.setWindowFlag(Qt.WindowType.FramelessWindowHint)
         self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self._t = 0
+        self._logo = QIcon(str(ROOT_DIR / "resources" / "icon.svg")).pixmap(88, 88)
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._tick)
         self._timer.start(16)
@@ -1856,55 +1866,57 @@ class AuroraSplash(QSplashScreen):
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         w, h = self.width(), self.height()
-        p.fillRect(0, 0, w, h, QColor(BG_BASE))
-
-        # Pulsing orbs (aurora)
         t = self._t / 60
-        for i, hue in enumerate(["#22d3ee", "#a78bfa", "#f75f8a"]):
-            r = 90 + 30 * ((t + i) % 1)
-            x = w / 2 + (w / 4) * math.sin(t * 1.6 + i * 2.1)
-            y = h / 2 + (h / 4) * math.cos(t * 1.2 + i * 1.3)
-            col = QColor(hue)
-            col.setAlpha(30)
-            p.setBrush(col)
-            p.setPen(Qt.PenStyle.NoPen)
-            p.drawEllipse(int(x - r / 2), int(y - r / 2), int(r), int(r))
-
-        # Title
-        p.setPen(QColor(TEXT_PRIMARY))
-        f = QFont(FONT_FAMILY)
-        f.setPointSize(28)
-        f.setWeight(QFont.Weight.Black)
-        p.setFont(f)
-        p.drawText(self.rect(), Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop,
-                  "AI AYFAM")
-
-        # Subtitle
-        f2 = QFont(FONT_FAMILY)
-        f2.setPointSize(10)
-        f2.setWeight(QFont.Weight.Bold)
-        p.setFont(f2)
-        p.setPen(QColor(ACCENT))
-        p.drawText(QRect(0, int(h * 0.42), w, 30),
-                   Qt.AlignmentFlag.AlignHCenter, "SECURITY OPERATIONS CENTER")
-
-        # Loading bar
-        bw = int(w * 0.5)
-        bx = (w - bw) // 2
-        by = int(h * 0.65)
+        panel = QRectF(14, 14, w - 28, h - 28)
+        base = QLinearGradient(0, 0, w, h)
+        base.setColorAt(0, QColor(12, 30, 48, 238))
+        base.setColorAt(1, QColor(7, 18, 29, 238))
         p.setPen(Qt.PenStyle.NoPen)
-        p.setBrush(QColor("#1e293b"))
-        p.drawRoundedRect(bx, by, bw, 5, 2, 2)
-        prog = (self._t % 240) / 240
-        p.setBrush(QColor(ACCENT))
-        p.drawRoundedRect(bx, by, int(bw * prog), 5, 2, 2)
-
-        # Loading dots
-        for i in range(3):
-            on = (int(self._t / 20) % 3) == i
-            col = QColor(ACCENT if on else "#475569")
-            p.setBrush(col)
-            p.drawEllipse(int(w / 2 - 30 + i * 24), int(h * 0.78), 8, 8)
+        p.setBrush(base)
+        p.drawRoundedRect(panel, 28, 28)
+        # Moving light gives life without hiding text.
+        for i, color in enumerate(("#38bdf8", "#34d399", "#f59e0b")):
+            cx = w * (0.25 + 0.25 * i) + 40 * math.sin(t * 0.9 + i * 2)
+            glow = QRadialGradient(cx, h * 0.28, 150)
+            c = QColor(color)
+            c.setAlpha(34 if i < 2 else 18)
+            glow.setColorAt(0, c)
+            c.setAlpha(0)
+            glow.setColorAt(1, c)
+            p.setBrush(glow)
+            p.drawRoundedRect(panel, 28, 28)
+        rim = QLinearGradient(0, 0, w, h)
+        rim.setColorAt(0, QColor(125, 211, 252, 230))
+        rim.setColorAt(0.5 + 0.15 * math.sin(t), QColor(220, 245, 255, 235))
+        rim.setColorAt(1, QColor(52, 211, 153, 220))
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        p.setPen(QPen(rim, 1.6))
+        p.drawRoundedRect(panel, 28, 28)
+        p.drawPixmap(int(w / 2 - 44), 48 + int(3 * math.sin(t * 2)), self._logo)
+        p.setPen(QColor(TEXT_PRIMARY))
+        title = QFont(FONT_FAMILY.split(",")[0].strip('" '))
+        title.setPointSize(25)
+        title.setWeight(QFont.Weight.Bold)
+        p.setFont(title)
+        p.drawText(QRect(0, 150, w, 44), Qt.AlignmentFlag.AlignHCenter, "AI AYFAM")
+        sub = QFont(title)
+        sub.setPointSize(11)
+        sub.setWeight(QFont.Weight.Medium)
+        p.setFont(sub)
+        p.setPen(QColor(TEXT_SECONDARY))
+        p.drawText(QRect(0, 198, w, 28), Qt.AlignmentFlag.AlignHCenter, "مركز العمليات الأمنية الذكي")
+        bw, bx, by = 300, (w - 300) // 2, 262
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QColor(56, 189, 248, 45))
+        p.drawRoundedRect(QRectF(bx, by, bw, 7), 3.5, 3.5)
+        prog = (self._t % 180) / 180
+        bar = QLinearGradient(bx, 0, bx + bw, 0)
+        bar.setColorAt(0, QColor("#38bdf8"))
+        bar.setColorAt(1, QColor("#34d399"))
+        p.setBrush(bar)
+        p.drawRoundedRect(QRectF(bx, by, max(8, bw * prog), 7), 3.5, 3.5)
+        p.setPen(QColor(TEXT_MUTED))
+        p.drawText(QRect(0, 282, w, 28), Qt.AlignmentFlag.AlignHCenter, "جارٍ تجهيز الواجهة…")
 
     def mousePressEvent(self, e) -> None:
         self.close()
