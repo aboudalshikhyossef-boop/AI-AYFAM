@@ -9,7 +9,6 @@ import { CommonModule } from '@angular/common';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { MatIconModule } from '@angular/material/icon';
 import { SecurityStateService } from './services/security-state.service';
-import { Splash } from './live-ui';
 import {
   Finding,
   UsbDevice,
@@ -20,42 +19,12 @@ import {
 
 @Component({
   selector: 'app-root',
-  imports: [CommonModule, ReactiveFormsModule, MatIconModule, Splash],
+  imports: [CommonModule, ReactiveFormsModule, MatIconModule],
   templateUrl: './app.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class App {
   readonly state = inject(SecurityStateService);
-
-  // Live clock (updated per second)
-  readonly clockTime = signal('');
-  readonly clockDate = signal('');
-  private clockTimer: ReturnType<typeof setInterval> | undefined;
-
-  // Mobile nav drawer state
-  readonly mobileNavOpen = signal(false);
-
-  // Mobile navigation config (small screens)
-  readonly mobileNav = () => [
-    { id: 'dashboard', icon: 'dashboard', ar: 'العمليات', en: 'Ops' },
-    { id: 'scans', icon: 'security', ar: 'الفحوصات', en: 'Scans' },
-    { id: 'usb', icon: 'usb', ar: 'الأجهزة', en: 'Devices' },
-    { id: 'tools', icon: 'terminal', ar: 'الترسانة', en: 'Arsenal' },
-    { id: 'chat', icon: 'forum', ar: 'المحادثة', en: 'Chat' },
-    { id: 'playbooks', icon: 'alt_route', ar: 'الخطط', en: 'Playbooks' },
-    { id: 'library', icon: 'menu_book', ar: 'المكتبة', en: 'Library' },
-    { id: 'reports', icon: 'assessment', ar: 'التقارير', en: 'Reports' },
-    { id: 'settings', icon: 'tune', ar: 'الإعدادات', en: 'Settings' },
-  ];
-
-  refreshClock(): void {
-    const now = new Date();
-    const loc = this.state.locale() === 'ar' ? 'ar-SY' : 'en-US';
-    const time = new Intl.DateTimeFormat(loc, { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).format(now);
-    const date = new Intl.DateTimeFormat(loc, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(now);
-    this.clockTime.set(time);
-    this.clockDate.set(date);
-  }
 
   // Search & Filter controls
   readonly findingFilter = signal<'all' | 'critical' | 'high' | 'medium' | 'low'>('all');
@@ -103,10 +72,6 @@ export class App {
   readonly activePlaybook = signal<Playbook | null>(null);
 
   constructor() {
-    // Initialize live clock (1s interval)
-    this.refreshClock();
-    this.clockTimer = setInterval(() => this.refreshClock(), 1000);
-
     // Set default selected items
     const docs = this.state.knowledgeBase();
     if (docs.length > 0) {
