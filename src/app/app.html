@@ -1,17 +1,29 @@
-<div class="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-emerald-500 selection:text-slate-950">
+<app-splash></app-splash>
+
+<!-- Animated aurora background -->
+<div class="ayfam-bg" aria-hidden="true">
+  <div class="ayfam-bg__grid"></div>
+  <div class="ayfam-bg__orb ayfam-bg__orb--1"></div>
+  <div class="ayfam-bg__orb ayfam-bg__orb--2"></div>
+  <div class="ayfam-bg__orb ayfam-bg__orb--3"></div>
+  <div class="ayfam-bg__vignette"></div>
+</div>
+
+<div class="min-h-screen bg-transparent text-slate-100 flex flex-col font-sans selection:bg-cyan-500 selection:text-slate-950">
   <!-- Top Navigation / Cockpit Header -->
-  <header class="h-16 border-b border-slate-800/80 bg-slate-900/70 backdrop-blur px-4 md:px-6 flex items-center justify-between sticky top-0 z-40">
+  <header class="h-16 border-b border-white/5 bg-[#05070f]/80 backdrop-blur-xl px-4 md:px-6 flex items-center justify-between sticky top-0 z-40">
     <div class="flex items-center gap-3">
       <!-- Shield Logo -->
-      <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-600 via-teal-500 to-cyan-500 p-0.5 flex items-center justify-center shadow-lg shadow-emerald-500/10">
-        <div class="w-full h-full bg-slate-950 rounded-[10px] flex items-center justify-center">
-          <mat-icon class="text-emerald-400">shield</mat-icon>
+      <div class="w-10 h-10 rounded-xl p-0.5 flex items-center justify-center shadow-lg"
+           style="background: linear-gradient(135deg, hsl(var(--accent-hue) 90% 55%), hsl(var(--accent2-hue) 75% 62%)); box-shadow: 0 0 22px hsl(var(--accent-hue) 90% 55% / 0.28);">
+        <div class="w-full h-full bg-[#05070f] rounded-[10px] flex items-center justify-center">
+          <mat-icon class="text-accent">shield</mat-icon>
         </div>
       </div>
       <div>
         <div class="flex items-center gap-2">
           <span class="font-extrabold text-base tracking-wider text-slate-100">AI AYFAM</span>
-          <span class="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">v6 SOC</span>
+          <span class="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded text-accent border border-white/10" style="background: hsl(var(--accent-hue) 90% 55% / 0.1);">v8 SOC</span>
         </div>
         <p class="text-xs text-slate-400">
           @if (state.locale() === 'ar') {
@@ -23,8 +35,17 @@
       </div>
     </div>
 
-    <!-- Center: Telemetry Badges & Scan Progress Indicator -->
+    <!-- Center: Live clock + telemetry badges -->
     <div class="hidden lg:flex items-center gap-4 text-xs font-mono">
+      <!-- Live Clock & Date -->
+      <div class="flex items-center gap-3 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 backdrop-blur-sm">
+        <mat-icon class="text-accent">schedule</mat-icon>
+        <div class="flex flex-col items-end leading-tight">
+          <span class="text-slate-100 font-bold tabular-nums">{{ clockTime() }}</span>
+          <span class="text-slate-400 text-[10px]">{{ clockDate() }}</span>
+        </div>
+      </div>
+
       <!-- Host & Kernel -->
       <div class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-800/40 border border-slate-800 text-slate-300">
         <mat-icon class="text-slate-400 text-sm">dns</mat-icon>
@@ -35,10 +56,10 @@
 
       <!-- Live Posture Score -->
       <div class="flex items-center gap-2 px-3 py-1.5 rounded-lg border"
-           [class.bg-emerald-950_30]="state.postureScore() >= 80"
-           [class.border-emerald-500_30]="state.postureScore() >= 80"
-           [class.text-emerald-400]="state.postureScore() >= 80"
-           [class.bg-amber-950_30]="state.postureScore() < 80 && state.postureScore() >= 50"
+           [class.bg-white_5]="state.postureScore() >= 80"
+           [class.border-accent]="state.postureScore() >= 80"
+           [class.text-accent]="state.postureScore() >= 80"
+           [class.bg-amber-500_10]="state.postureScore() < 80 && state.postureScore() >= 50"
            [class.border-amber-500_30]="state.postureScore() < 80 && state.postureScore() >= 50"
            [class.text-amber-400]="state.postureScore() < 80 && state.postureScore() >= 50"
            [class.bg-rose-950_30]="state.postureScore() < 50"
@@ -67,12 +88,22 @@
       </div>
     </div>
 
-    <!-- Right Controls: Quick Auto-Fix, Full Scan, Language Switcher -->
+    <!-- Right Controls: Mobile hamburger, Quick Auto-Fix, Full Scan, Language Switcher -->
     <div class="flex items-center gap-2">
+      <!-- Mobile hamburger -->
+      <button (click)="mobileNavOpen.set(true)"
+              class="md:hidden p-2 rounded-lg bg-white/5 border border-white/10 text-slate-300 hover:text-white transition-colors cursor-pointer"
+              aria-label="Open menu">
+        <mat-icon>menu</mat-icon>
+      </button>
+
       <!-- Auto Reactor Button -->
       <button
         (click)="state.remediateAll()"
-        class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-semibold text-xs transition-all shadow-md shadow-emerald-600/20 active:scale-95 cursor-pointer"
+        class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-semibold text-xs transition-all active:scale-95 cursor-pointer text-slate-50"
+        style="background: hsl(var(--accent-hue) 80% 25%); border: 1px solid hsl(var(--accent-hue) 80% 55% / 0.35); box-shadow: 0 0 18px hsl(var(--accent-hue) 90% 60% / 0.15);"
+        onmouseover="this.style.background='hsl(var(--accent-hue) 85% 32%)'"
+        onmouseout="this.style.background='hsl(var(--accent-hue) 80% 25%)'"
         title="Auto-Reactor: Apply All Security Fixes">
         <mat-icon>auto_fix_high</mat-icon>
         <span>
@@ -84,7 +115,8 @@
       <button
         (click)="state.runSecurityScan('تدقيق شامل')"
         [disabled]="state.isScanning()"
-        class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-slate-950 font-semibold text-xs transition-all shadow-md shadow-cyan-600/20 active:scale-95 cursor-pointer">
+        class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg disabled:opacity-50 text-slate-50 font-semibold text-xs transition-all active:scale-95 cursor-pointer"
+        style="background: linear-gradient(135deg, hsl(var(--accent-hue) 90% 55%), hsl(var(--accent2-hue) 75% 55%)); box-shadow: 0 0 18px hsl(var(--accent-hue) 90% 60% / 0.25);">
         <mat-icon>radar</mat-icon>
         <span>
           @if (state.locale() === 'ar') { فحص جديد } @else { Run Audit }
@@ -96,7 +128,7 @@
         <button
           (click)="state.setLocale('ar')"
           [class.bg-slate-900]="state.locale() === 'ar'"
-          [class.text-emerald-400]="state.locale() === 'ar'"
+          [class.text-accent]="state.locale() === 'ar'"
           [class.text-slate-400]="state.locale() !== 'ar'"
           class="px-2.5 py-1 rounded font-bold transition-colors cursor-pointer">
           عربي
@@ -104,7 +136,7 @@
         <button
           (click)="state.setLocale('en')"
           [class.bg-slate-900]="state.locale() === 'en'"
-          [class.text-emerald-400]="state.locale() === 'en'"
+          [class.text-accent]="state.locale() === 'en'"
           [class.text-slate-400]="state.locale() !== 'en'"
           class="px-2.5 py-1 rounded font-bold transition-colors cursor-pointer">
           EN
@@ -131,18 +163,18 @@
 
   <!-- Main Cockpit Layout: Sidebar + Main Stage -->
   <div class="flex-1 flex overflow-hidden">
-    <!-- Sidebar Navigation -->
-    <aside class="w-64 border-e border-slate-800/80 bg-slate-900/40 flex flex-col justify-between p-3 select-none shrink-0">
+    <!-- Sidebar Navigation (hidden on mobile; horizontal nav shown instead) -->
+    <aside class="hidden md:flex w-64 border-e border-white/5 bg-[#05070f]/60 backdrop-blur-xl flex-col justify-between p-3 select-none shrink-0">
       <nav class="space-y-1">
         <!-- Dashboard -->
         <button
           (click)="state.setView('dashboard')"
-          [class.bg-emerald-500_10]="state.currentView() === 'dashboard'"
-          [class.text-emerald-400]="state.currentView() === 'dashboard'"
-          [class.border-emerald-500_30]="state.currentView() === 'dashboard'"
+          [class.bg-white_5]="state.currentView() === 'dashboard'"
+          [class.text-accent]="state.currentView() === 'dashboard'"
+          [class.border-accent]="state.currentView() === 'dashboard'"
           [class.text-slate-300]="state.currentView() !== 'dashboard'"
           [class.border-transparent]="state.currentView() !== 'dashboard'"
-          class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl border text-sm font-medium hover:bg-slate-800/60 hover:text-slate-100 transition-all text-start cursor-pointer">
+          class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl border text-sm font-medium hover:bg-white/5 hover:text-slate-100 transition-all text-start cursor-pointer shine-hover">
           <mat-icon>dashboard</mat-icon>
           <span>
             @if (state.locale() === 'ar') { غرفة العمليات } @else { Operations Room }
@@ -152,12 +184,12 @@
         <!-- Scans & Findings -->
         <button
           (click)="state.setView('scans')"
-          [class.bg-emerald-500_10]="state.currentView() === 'scans'"
-          [class.text-emerald-400]="state.currentView() === 'scans'"
-          [class.border-emerald-500_30]="state.currentView() === 'scans'"
+          [class.bg-white_5]="state.currentView() === 'scans'"
+          [class.text-accent]="state.currentView() === 'scans'"
+          [class.border-accent]="state.currentView() === 'scans'"
           [class.text-slate-300]="state.currentView() !== 'scans'"
           [class.border-transparent]="state.currentView() !== 'scans'"
-          class="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl border text-sm font-medium hover:bg-slate-800/60 hover:text-slate-100 transition-all text-start cursor-pointer">
+          class="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl border text-sm font-medium hover:bg-white/5 hover:text-slate-100 transition-all text-start cursor-pointer shine-hover">
           <div class="flex items-center gap-3">
             <mat-icon>security</mat-icon>
             <span>
@@ -174,12 +206,12 @@
         <!-- USB Devices -->
         <button
           (click)="state.setView('usb')"
-          [class.bg-emerald-500_10]="state.currentView() === 'usb'"
-          [class.text-emerald-400]="state.currentView() === 'usb'"
-          [class.border-emerald-500_30]="state.currentView() === 'usb'"
+          [class.bg-white_5]="state.currentView() === 'usb'"
+          [class.text-accent]="state.currentView() === 'usb'"
+          [class.border-accent]="state.currentView() === 'usb'"
           [class.text-slate-300]="state.currentView() !== 'usb'"
           [class.border-transparent]="state.currentView() !== 'usb'"
-          class="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl border text-sm font-medium hover:bg-slate-800/60 hover:text-slate-100 transition-all text-start cursor-pointer">
+          class="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl border text-sm font-medium hover:bg-white/5 hover:text-slate-100 transition-all text-start cursor-pointer shine-hover">
           <div class="flex items-center gap-3">
             <mat-icon>usb</mat-icon>
             <span>
@@ -194,12 +226,12 @@
         <!-- Threat Arsenal -->
         <button
           (click)="state.setView('tools')"
-          [class.bg-emerald-500_10]="state.currentView() === 'tools'"
-          [class.text-emerald-400]="state.currentView() === 'tools'"
-          [class.border-emerald-500_30]="state.currentView() === 'tools'"
+          [class.bg-white_5]="state.currentView() === 'tools'"
+          [class.text-accent]="state.currentView() === 'tools'"
+          [class.border-accent]="state.currentView() === 'tools'"
           [class.text-slate-300]="state.currentView() !== 'tools'"
           [class.border-transparent]="state.currentView() !== 'tools'"
-          class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl border text-sm font-medium hover:bg-slate-800/60 hover:text-slate-100 transition-all text-start cursor-pointer">
+          class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl border text-sm font-medium hover:bg-white/5 hover:text-slate-100 transition-all text-start cursor-pointer shine-hover">
           <mat-icon>terminal</mat-icon>
           <span>
             @if (state.locale() === 'ar') { ترسانة التهديدات } @else { Threat Arsenal }
@@ -209,12 +241,12 @@
         <!-- Security Chat -->
         <button
           (click)="state.setView('chat')"
-          [class.bg-emerald-500_10]="state.currentView() === 'chat'"
-          [class.text-emerald-400]="state.currentView() === 'chat'"
-          [class.border-emerald-500_30]="state.currentView() === 'chat'"
+          [class.bg-white_5]="state.currentView() === 'chat'"
+          [class.text-accent]="state.currentView() === 'chat'"
+          [class.border-accent]="state.currentView() === 'chat'"
           [class.text-slate-300]="state.currentView() !== 'chat'"
           [class.border-transparent]="state.currentView() !== 'chat'"
-          class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl border text-sm font-medium hover:bg-slate-800/60 hover:text-slate-100 transition-all text-start cursor-pointer">
+          class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl border text-sm font-medium hover:bg-white/5 hover:text-slate-100 transition-all text-start cursor-pointer shine-hover">
           <mat-icon>forum</mat-icon>
           <span>
             @if (state.locale() === 'ar') { المحادثة الأمنية } @else { Security AI Chat }
@@ -224,12 +256,12 @@
         <!-- Playbooks -->
         <button
           (click)="state.setView('playbooks')"
-          [class.bg-emerald-500_10]="state.currentView() === 'playbooks'"
-          [class.text-emerald-400]="state.currentView() === 'playbooks'"
-          [class.border-emerald-500_30]="state.currentView() === 'playbooks'"
+          [class.bg-white_5]="state.currentView() === 'playbooks'"
+          [class.text-accent]="state.currentView() === 'playbooks'"
+          [class.border-accent]="state.currentView() === 'playbooks'"
           [class.text-slate-300]="state.currentView() !== 'playbooks'"
           [class.border-transparent]="state.currentView() !== 'playbooks'"
-          class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl border text-sm font-medium hover:bg-slate-800/60 hover:text-slate-100 transition-all text-start cursor-pointer">
+          class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl border text-sm font-medium hover:bg-white/5 hover:text-slate-100 transition-all text-start cursor-pointer shine-hover">
           <mat-icon>alt_route</mat-icon>
           <span>
             @if (state.locale() === 'ar') { خطط العمل } @else { Playbooks }
@@ -239,12 +271,12 @@
         <!-- Knowledge Library -->
         <button
           (click)="state.setView('library')"
-          [class.bg-emerald-500_10]="state.currentView() === 'library'"
-          [class.text-emerald-400]="state.currentView() === 'library'"
-          [class.border-emerald-500_30]="state.currentView() === 'library'"
+          [class.bg-white_5]="state.currentView() === 'library'"
+          [class.text-accent]="state.currentView() === 'library'"
+          [class.border-accent]="state.currentView() === 'library'"
           [class.text-slate-300]="state.currentView() !== 'library'"
           [class.border-transparent]="state.currentView() !== 'library'"
-          class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl border text-sm font-medium hover:bg-slate-800/60 hover:text-slate-100 transition-all text-start cursor-pointer">
+          class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl border text-sm font-medium hover:bg-white/5 hover:text-slate-100 transition-all text-start cursor-pointer shine-hover">
           <mat-icon>menu_book</mat-icon>
           <span>
             @if (state.locale() === 'ar') { المكتبة المعرفية } @else { Cyber Library }
@@ -254,12 +286,12 @@
         <!-- Reports -->
         <button
           (click)="state.setView('reports')"
-          [class.bg-emerald-500_10]="state.currentView() === 'reports'"
-          [class.text-emerald-400]="state.currentView() === 'reports'"
-          [class.border-emerald-500_30]="state.currentView() === 'reports'"
+          [class.bg-white_5]="state.currentView() === 'reports'"
+          [class.text-accent]="state.currentView() === 'reports'"
+          [class.border-accent]="state.currentView() === 'reports'"
           [class.text-slate-300]="state.currentView() !== 'reports'"
           [class.border-transparent]="state.currentView() !== 'reports'"
-          class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl border text-sm font-medium hover:bg-slate-800/60 hover:text-slate-100 transition-all text-start cursor-pointer">
+          class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl border text-sm font-medium hover:bg-white/5 hover:text-slate-100 transition-all text-start cursor-pointer shine-hover">
           <mat-icon>assessment</mat-icon>
           <span>
             @if (state.locale() === 'ar') { تقارير التدقيق } @else { Audit Reports }
@@ -269,12 +301,12 @@
         <!-- Settings -->
         <button
           (click)="state.setView('settings')"
-          [class.bg-emerald-500_10]="state.currentView() === 'settings'"
-          [class.text-emerald-400]="state.currentView() === 'settings'"
-          [class.border-emerald-500_30]="state.currentView() === 'settings'"
+          [class.bg-white_5]="state.currentView() === 'settings'"
+          [class.text-accent]="state.currentView() === 'settings'"
+          [class.border-accent]="state.currentView() === 'settings'"
           [class.text-slate-300]="state.currentView() !== 'settings'"
           [class.border-transparent]="state.currentView() !== 'settings'"
-          class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl border text-sm font-medium hover:bg-slate-800/60 hover:text-slate-100 transition-all text-start cursor-pointer">
+          class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl border text-sm font-medium hover:bg-white/5 hover:text-slate-100 transition-all text-start cursor-pointer shine-hover">
           <mat-icon>tune</mat-icon>
           <span>
             @if (state.locale() === 'ar') { إعدادات النظام } @else { Settings }
@@ -298,6 +330,29 @@
       </div>
     </aside>
 
+    <!-- Mobile Horizontal Nav (replaces sidebar on small screens) -->
+    <div class="md:hidden absolute inset-y-0 right-0 w-64 z-30 overflow-y-auto bg-[#05070f]/95 backdrop-blur-xl px-3 py-3 border-e border-white/5"
+         [class.translate-x-full]="!mobileNavOpen()"
+         [class.opacity-0]="!mobileNavOpen()"
+         [class.pointer-events-none]="!mobileNavOpen()"
+         style="transition: transform 280ms cubic-bezier(0.4,0,0.2,1), opacity 280ms ease;">
+      <div class="flex flex-col gap-1">
+        @for (item of mobileNav(); track item.id) {
+          <button
+            (click)="state.setView(item.id); mobileNavOpen.set(false)"
+            [class.bg-white_5]="state.currentView() === item.id"
+            [class.text-accent]="state.currentView() === item.id"
+            [class.text-slate-400]="state.currentView() !== item.id"
+            class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl border border-transparent hover:bg-white/5 hover:text-slate-100 transition-all text-sm font-medium cursor-pointer text-start">
+            <mat-icon>{{ item.icon }}</mat-icon>
+            <span>
+              @if (state.locale() === 'ar') { {{ item.ar }} } @else { {{ item.en }} }
+            </span>
+          </button>
+        }
+      </div>
+    </div>
+
     <!-- Center Stage (View Switcher) -->
     <main class="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8 space-y-6">
 
@@ -318,7 +373,7 @@
                 </h1>
                 <p class="text-slate-400 text-sm mt-1 max-w-2xl">
                   @if (state.locale() === 'ar') {
-                    منظومة التدقيق السيبراني الشامل: كشف الثغرات، حظر أجهزة BadUSB، تحليل التهديدات ومطابقة معايير CIS Benchmarks.
+                    <span style="display:inline-block; direction:rtl;">منظومة التدقيق السيبراني الشامل: كشف الثغرات، حظر أجهزة <span dir="ltr">BadUSB</span>، تحليل التهديدات ومطابقة معايير <span dir="ltr">CIS Benchmarks</span>.</span>
                   } @else {
                     Automated cybersecurity orchestration: vulnerability detection, BadUSB heuristics, MITRE ATT&CK mapping, and CIS hardening.
                   }
@@ -350,13 +405,13 @@
           <!-- Top Metric Cards Grid -->
           <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <!-- Metric 1: Security Posture Score -->
-            <div class="p-5 rounded-2xl bg-slate-900/60 border border-slate-800 hover:border-slate-700 transition-colors">
+            <div class="p-5 rounded-2xl bg-white/[0.03] border border-white/[0.06] hover:border-white/20 backdrop-blur-md transition-all shine-hover shadow-accent-glow">
               <div class="flex items-center justify-between text-slate-400 text-xs mb-2">
                 <span>@if (state.locale() === 'ar') { درجة الوضع الأمني } @else { Security Posture }</span>
                 <mat-icon class="text-emerald-400">verified_user</mat-icon>
               </div>
               <div class="flex items-baseline gap-2">
-                <span class="text-3xl font-extrabold font-mono text-emerald-400">{{ state.postureScore() }}%</span>
+                <span class="text-3xl font-extrabold font-mono text-accent">{{ state.postureScore() }}%</span>
                 <span class="text-xs text-slate-400">
                   @if (state.postureScore() >= 80) {
                     (@if (state.locale() === 'ar') { آمن } @else { Secure })
@@ -366,12 +421,12 @@
                 </span>
               </div>
               <div class="w-full bg-slate-800 h-1.5 rounded-full mt-3 overflow-hidden">
-                <div class="bg-emerald-400 h-full rounded-full transition-all" [style.width.%]="state.postureScore()"></div>
+                <div class="h-full rounded-full transition-all" style="background: linear-gradient(90deg, hsl(var(--accent-hue) 90% 55%), hsl(var(--accent2-hue) 75% 60%));" [style.width.%]="state.postureScore()"></div>
               </div>
             </div>
 
             <!-- Metric 2: Critical & High Findings -->
-            <div class="p-5 rounded-2xl bg-slate-900/60 border border-slate-800 hover:border-slate-700 transition-colors">
+            <div class="p-5 rounded-2xl bg-white/[0.03] border border-white/[0.06] hover:border-white/20 backdrop-blur-md transition-all shine-hover shadow-accent-glow">
               <div class="flex items-center justify-between text-slate-400 text-xs mb-2">
                 <span>@if (state.locale() === 'ar') { الثغرات الحرجة } @else { Critical & High }</span>
                 <mat-icon class="text-rose-400">warning</mat-icon>
@@ -390,13 +445,13 @@
             </div>
 
             <!-- Metric 3: Monitored Peripherals & USB -->
-            <div class="p-5 rounded-2xl bg-slate-900/60 border border-slate-800 hover:border-slate-700 transition-colors">
+            <div class="p-5 rounded-2xl bg-white/[0.03] border border-white/[0.06] hover:border-white/20 backdrop-blur-md transition-all shine-hover shadow-accent-glow">
               <div class="flex items-center justify-between text-slate-400 text-xs mb-2">
                 <span>@if (state.locale() === 'ar') { الأجهزة المتصلة } @else { USB Peripherals }</span>
                 <mat-icon class="text-cyan-400">usb</mat-icon>
               </div>
               <div class="flex items-baseline gap-2">
-                <span class="text-3xl font-extrabold font-mono text-cyan-400">{{ state.usbDevices().length }}</span>
+                <span class="text-3xl font-extrabold font-mono text-accent">{{ state.usbDevices().length }}</span>
                 <span class="text-xs text-slate-400">
                   (@if (state.locale() === 'ar') { 1 مشبوه } @else { 1 Flagged })
                 </span>
@@ -407,7 +462,7 @@
             </div>
 
             <!-- Metric 4: Open Ports & Sockets -->
-            <div class="p-5 rounded-2xl bg-slate-900/60 border border-slate-800 hover:border-slate-700 transition-colors">
+            <div class="p-5 rounded-2xl bg-white/[0.03] border border-white/[0.06] hover:border-white/20 backdrop-blur-md transition-all shine-hover shadow-accent-glow">
               <div class="flex items-center justify-between text-slate-400 text-xs mb-2">
                 <span>@if (state.locale() === 'ar') { المنافذ النشطة } @else { Open Ports }</span>
                 <mat-icon class="text-amber-400">lan</mat-icon>
@@ -519,8 +574,8 @@
                             [class.text-amber-400]="ev.level === 'WARN'"
                             [class.border-amber-500_30]="ev.level === 'WARN'"
                             [class.bg-emerald-500_20]="ev.level === 'FIX' || ev.level === 'ACTION'"
-                            [class.text-emerald-400]="ev.level === 'FIX' || ev.level === 'ACTION'"
-                            [class.border-emerald-500_30]="ev.level === 'FIX' || ev.level === 'ACTION'"
+                            [class.text-accent]="ev.level === 'FIX' || ev.level === 'ACTION'"
+                            [class.border-accent]="ev.level === 'FIX' || ev.level === 'ACTION'"
                             [class.bg-slate-800]="ev.level === 'INFO'"
                             [class.text-slate-300]="ev.level === 'INFO'"
                             [class.border-slate-700]="ev.level === 'INFO'">
@@ -747,7 +802,7 @@
                   <div class="flex items-center gap-3">
                     <div class="w-10 h-10 rounded-xl flex items-center justify-center"
                          [class.bg-emerald-500_20]="dev.authorized"
-                         [class.text-emerald-400]="dev.authorized"
+                         [class.text-accent]="dev.authorized"
                          [class.bg-rose-500_20]="!dev.authorized"
                          [class.text-rose-400]="!dev.authorized">
                       <mat-icon>{{ dev.deviceType === 'Storage' ? 'storage' : dev.deviceType === 'Phone' ? 'smartphone' : 'keyboard' }}</mat-icon>
@@ -763,7 +818,7 @@
                   <!-- Status -->
                   <span class="px-2.5 py-0.5 rounded text-xs font-bold font-mono"
                         [class.bg-emerald-500_20]="dev.authorized"
-                        [class.text-emerald-400]="dev.authorized"
+                        [class.text-accent]="dev.authorized"
                         [class.bg-rose-500_20]="!dev.authorized"
                         [class.text-rose-400]="!dev.authorized">
                     @if (dev.authorized) {
@@ -781,7 +836,7 @@
                     <span class="font-mono text-[11px]"
                           [class.text-rose-400]="dev.badUsbRisk === 'high'"
                           [class.text-amber-400]="dev.badUsbRisk === 'medium'"
-                          [class.text-emerald-400]="dev.badUsbRisk === 'low'">
+                          [class.text-accent]="dev.badUsbRisk === 'low'">
                       Risk: {{ dev.badUsbRisk | uppercase }}
                     </span>
                   </div>
@@ -1049,7 +1104,7 @@
                          [class.bg-slate-950]="!st.completed"
                          [class.bg-emerald-950_20]="st.completed"
                          [class.border-slate-800]="!st.completed"
-                         [class.border-emerald-500_30]="st.completed">
+                         [class.border-accent]="st.completed">
                       <div class="space-y-1 flex-1">
                         <div class="flex items-center gap-2">
                           <button
@@ -1131,8 +1186,8 @@
                 <button
                   (click)="selectedDoc.set(doc)"
                   [class.bg-emerald-500_10]="selectedDoc()?.id === doc.id"
-                  [class.border-emerald-500_30]="selectedDoc()?.id === doc.id"
-                  [class.text-emerald-400]="selectedDoc()?.id === doc.id"
+                  [class.border-accent]="selectedDoc()?.id === doc.id"
+                  [class.text-accent]="selectedDoc()?.id === doc.id"
                   [class.bg-slate-900_40]="selectedDoc()?.id !== doc.id"
                   [class.border-slate-800]="selectedDoc()?.id !== doc.id"
                   [class.text-slate-300]="selectedDoc()?.id !== doc.id"
@@ -1270,7 +1325,7 @@
                         <td class="p-3 font-mono">
                           <span class="px-2 py-0.5 rounded text-[10px]"
                                 [class.bg-emerald-500_20]="f.fixed"
-                                [class.text-emerald-400]="f.fixed"
+                                [class.text-accent]="f.fixed"
                                 [class.bg-rose-500_20]="!f.fixed"
                                 [class.text-rose-400]="!f.fixed">
                             {{ f.fixed ? 'FIXED' : 'OPEN' }}

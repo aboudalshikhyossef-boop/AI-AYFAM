@@ -6,16 +6,18 @@ import os
 import sys
 import ipaddress
 import json
+import math
 from pathlib import Path
 from typing import Callable, Any
 
-from PyQt6.QtCore import Qt, QTimer, QThread, QPropertyAnimation, pyqtSignal, QUrl, QSize
-from PyQt6.QtGui import QColor, QDesktopServices, QFont, QIcon, QAction, QShortcut, QKeySequence
+from PyQt6.QtCore import Qt, QTimer, QThread, QPropertyAnimation, pyqtSignal, QUrl, QSize, QRect
+from PyQt6.QtGui import QColor, QDesktopServices, QFont, QIcon, QAction, QShortcut, QKeySequence, QPainter, QPixmap, QPen
 from PyQt6.QtWidgets import (
     QApplication, QComboBox, QFileDialog, QFrame, QGraphicsOpacityEffect, QGridLayout, QGroupBox,
     QHBoxLayout, QHeaderView, QLabel, QLineEdit, QMainWindow, QMessageBox,
     QPlainTextEdit, QProgressBar, QPushButton, QSplitter, QStackedWidget,
     QTableWidget, QTableWidgetItem, QTextEdit, QVBoxLayout, QWidget, QScrollArea, QSizePolicy,
+    QSplashScreen,
 )
 
 from config.settings import Settings
@@ -27,7 +29,7 @@ from tools.usb import analyze_mounted_filesystem, list_usb_devices, scan_mounted
 from tools.usb_control import authorize_device, deauthorize_device
 from ui.terminal import TerminalUI
 from ui.theme import (
-    QSS, ACCENT, ACCENT_SOFT, BG_BASE, BG_SURFACE, BG_ELEVATED, BG_HOVER,
+    QSS, get_qss, ACCENT, ACCENT_SOFT, ACCENT_HUES, BG_BASE, BG_SURFACE, BG_ELEVATED, BG_HOVER,
     BORDER, BORDER_FOCUS, TEXT_PRIMARY, TEXT_SECONDARY, TEXT_MUTED,
     SEV_CRITICAL, SEV_HIGH, SEV_MEDIUM, SEV_LOW, SEV_INFO, SEV_SAFE,
     STATUS_OK, STATUS_ERROR, STATUS_IDLE,
@@ -98,6 +100,34 @@ def _sev_brush(severity: str) -> QColor:
 
 
 class UnifiedCockpitWindow(QMainWindow):
+
+    _aurora_t = 0
+
+    def paintEvent(self, e) -> None:
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        w, h = self.width(), self.height()
+        p.fillRect(0, 0, w, h, QColor(BG_BASE))
+
+        # Three drifting orbs (soft aurora)
+        t = self._aurora_t / 60
+        for i, hue in enumerate(["#22d3ee", "#a78bfa", "#f75f8a"]):
+            r = 300 + 100 * ((t + i) % 1)
+            x = w * 0.3 + (w * 0.2) * math.sin(t * 0.6 + i * 2.1)
+            y = h * 0.4 + (h * 0.2) * math.cos(t * 0.4 + i * 1.3)
+            col = QColor(hue)
+            col.setAlpha(12)
+            p.setBrush(col)
+            p.setPen(Qt.PenStyle.NoPen)
+            p.drawEllipse(int(x - r / 2), int(y - r / 2), int(r), int(r))
+
+        # Faint grid overlay
+        p.setPen(QPen(QColor(255, 255, 255, 6)))
+        for gx in range(0, w, 56):
+            p.drawLine(gx, 0, gx, h)
+        for gy in range(0, h, 56):
+            p.drawLine(0, gy, w, gy)
+
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("AI AYFAM — Security Operations Center")
@@ -125,7 +155,20 @@ class UnifiedCockpitWindow(QMainWindow):
         self.event_timer = QTimer(self)
         self.event_timer.timeout.connect(self.update_agent_events)
         self.event_timer.start(300)
+        self.accent_timer = QTimer(self)
+        self.accent_timer.timeout.connect(self.cycle_accent_hue)
+        self.accent_timer.start(15000)
+
+        # Aurora background animation timer
+        self.aurora_timer = QTimer(self)
+        self.aurora_timer.timeout.connect(self._tick_aurora)
+        self.aurora_timer.start(33)
+
         self.update_live_telemetry()
+
+    def _tick_aurora(self) -> None:
+        self._aurora_t += 1
+        self.update()
 
     # ═══════════════════════════════════════════════════════════════════════════
     #  LAYOUT: Sidebar + Header + Stacked Content
@@ -240,6 +283,25 @@ class UnifiedCockpitWindow(QMainWindow):
         self.activity_animation.setLoopCount(-1)
         self.activity_animation.start()
         header_layout.addWidget(self.activity_lamp)
+
+        # ── Live clock & date ──
+        self.clock_box = QVBoxLayout()
+        self.clock_box.setSpacing(0)
+        self.clock_time_label = QLabel("--:--:--")
+        self.clock_time_label.setObjectName("clockTime")
+        self.clock_time_label.setAlignment(Qt.AlignmentFlag.AlignRight)
+        self.clock_date_label = QLabel("")
+        self.clock_date_label.setObjectName("clockDate")
+        self.clock_date_label.setAlignment(Qt.AlignmentFlag.AlignRight)
+        self.clock_box.addWidget(self.clock_time_label)
+        self.clock_box.addWidget(self.clock_date_label)
+        header_layout.addLayout(self.clock_box)
+
+        # Update clock every second
+        self.clock_timer = QTimer(self)
+        self.clock_timer.timeout.connect(self.update_clock)
+        self.clock_timer.start(1000)
+        self.update_clock()
 
         self.status_badge = QLabel("جاهز")
         self.status_badge.setObjectName("statusBadge")
@@ -421,6 +483,10 @@ class UnifiedCockpitWindow(QMainWindow):
         self.table_conns.setHorizontalHeaderLabels(["البروتوكول", "الحالة", "النطاق", "المحلي", "البعيد", "العملية", "PID"])
         self.table_conns.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
         self.table_conns.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
+        self.table_conns.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)
+        self.table_conns.horizontalHeader().setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)
+        self.table_conns.setWordWrap(False)
+        self.table_conns.setTextElideMode(Qt.TextElideMode.ElideRight)
         self.table_conns.setAlternatingRowColors(True)
         self.table_conns.setShowGrid(False)
         self.table_conns.verticalHeader().setVisible(False)
@@ -433,7 +499,13 @@ class UnifiedCockpitWindow(QMainWindow):
         proc_layout = QVBoxLayout(proc_group)
         self.table_procs = QTableWidget(0, 5)
         self.table_procs.setHorizontalHeaderLabels(["المستخدم", "PID", "CPU", "RAM", "الأمر"])
+        # Command column: fixed relative width so long commands get ellipsized by Qt
         self.table_procs.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
+        self.table_procs.horizontalHeader().setStretchLastSection(True)
+        self.table_procs.setWordWrap(False)
+        self.table_procs.setTextElideMode(Qt.TextElideMode.ElideMiddle)
+        self.table_procs.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        self.table_procs.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         self.table_procs.setAlternatingRowColors(True)
         self.table_procs.setShowGrid(False)
         self.table_procs.verticalHeader().setVisible(False)
@@ -1110,6 +1182,28 @@ class UnifiedCockpitWindow(QMainWindow):
         self.refresh_library()
 
     # ═══════════════════════════════════════════════════════════════════════════
+    #  LIVE CLOCK
+    # ═══════════════════════════════════════════════════════════════════════════
+    AR_DAYS = {"Monday": "الاثنين", "Tuesday": "الثلاثاء", "Wednesday": "الأربعاء", "Thursday": "الخميس", "Friday": "الجمعة", "Saturday": "السبت", "Sunday": "الأحد"}
+    AR_MONTHS = {1: "يناير", 2: "فبراير", 3: "مارس", 4: "أبريل", 5: "مايو", 6: "يونيو", 7: "يوليو", 8: "أغسطس", 9: "سبتمبر", 10: "أكتوبر", 11: "نوفمبر", 12: "ديسمبر"}
+
+    def update_clock(self) -> None:
+        from datetime import datetime
+        now = datetime.now()
+        self.clock_time_label.setText(now.strftime("%H:%M:%S"))
+        day = self.AR_DAYS.get(now.strftime("%A"), now.strftime("%A"))
+        month = self.AR_MONTHS.get(now.month, now.strftime("%B"))
+        self.clock_date_label.setText(f"{day}، {now.day} {month} {now.year}")
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    #  ACCENT HUE CYCLER (pulsing colors across the UI)
+    # ═══════════════════════════════════════════════════════════════════════════
+    def cycle_accent_hue(self) -> None:
+        import random
+        a, b = random.choice(ACCENT_HUES)
+        self.setStyleSheet(get_qss(a, b))
+
+    # ═══════════════════════════════════════════════════════════════════════════
     #  LIVE TELEMETRY
     # ═══════════════════════════════════════════════════════════════════════════
     def update_live_telemetry(self) -> None:
@@ -1133,10 +1227,16 @@ class UnifiedCockpitWindow(QMainWindow):
             for p in procs:
                 row = self.table_procs.rowCount()
                 self.table_procs.insertRow(row)
+                cmd_raw = str(p.get("command", ""))
+                cmd_item = QTableWidgetItem(cmd_raw)
+                cmd_item.setToolTip(cmd_raw)
                 values = [p.get("user", ""), p.get("pid", ""),
-                          f"{p.get('cpu', 0)}%", f"{p.get('mem', 0)}%", p.get("command", "")]
+                          f"{p.get('cpu', 0)}%", f"{p.get('mem', 0)}%", cmd_item]
                 for col, value in enumerate(values):
-                    self.table_procs.setItem(row, col, QTableWidgetItem(str(value)))
+                    if isinstance(value, QTableWidgetItem):
+                        self.table_procs.setItem(row, col, value)
+                    else:
+                        self.table_procs.setItem(row, col, QTableWidgetItem(str(value)))
             self.metric_labels["connections"].setText(str(len(conns)))
             self.metric_labels["processes"].setText(str(len(procs)))
             external = sum(1 for c in conns if c.get("is_foreign"))
@@ -1708,14 +1808,108 @@ class UnifiedCockpitWindow(QMainWindow):
         self.library_results.setPlainText("\n".join(output))
 
 
+class AuroraSplash(QSplashScreen):
+    """Animated welcome screen shown while the app boots."""
+
+    def __init__(self) -> None:
+        pix = QPixmap(560, 340)
+        pix.fill(QColor(BG_BASE))
+        super().__init__(pix)
+        self.setWindowFlag(Qt.WindowType.FramelessWindowHint)
+        self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self._t = 0
+        self._timer = QTimer(self)
+        self._timer.timeout.connect(self._tick)
+        self._timer.start(16)
+
+    def _tick(self) -> None:
+        self._t += 1
+        self.update()
+
+    def paintEvent(self, e) -> None:
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        w, h = self.width(), self.height()
+        p.fillRect(0, 0, w, h, QColor(BG_BASE))
+
+        # Pulsing orbs (aurora)
+        t = self._t / 60
+        for i, hue in enumerate(["#22d3ee", "#a78bfa", "#f75f8a"]):
+            r = 90 + 30 * ((t + i) % 1)
+            x = w / 2 + (w / 4) * math.sin(t * 1.6 + i * 2.1)
+            y = h / 2 + (h / 4) * math.cos(t * 1.2 + i * 1.3)
+            col = QColor(hue)
+            col.setAlpha(30)
+            p.setBrush(col)
+            p.setPen(Qt.PenStyle.NoPen)
+            p.drawEllipse(int(x - r / 2), int(y - r / 2), int(r), int(r))
+
+        # Title
+        p.setPen(QColor(TEXT_PRIMARY))
+        f = QFont(FONT_FAMILY)
+        f.setPointSize(28)
+        f.setWeight(QFont.Weight.Black)
+        p.setFont(f)
+        p.drawText(self.rect(), Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop,
+                  "AI AYFAM")
+
+        # Subtitle
+        f2 = QFont(FONT_FAMILY)
+        f2.setPointSize(10)
+        f2.setWeight(QFont.Weight.Bold)
+        p.setFont(f2)
+        p.setPen(QColor(ACCENT))
+        p.drawText(QRect(0, int(h * 0.42), w, 30),
+                   Qt.AlignmentFlag.AlignHCenter, "SECURITY OPERATIONS CENTER")
+
+        # Loading bar
+        bw = int(w * 0.5)
+        bx = (w - bw) // 2
+        by = int(h * 0.65)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QColor("#1e293b"))
+        p.drawRoundedRect(bx, by, bw, 5, 2, 2)
+        prog = (self._t % 240) / 240
+        p.setBrush(QColor(ACCENT))
+        p.drawRoundedRect(bx, by, int(bw * prog), 5, 2, 2)
+
+        # Loading dots
+        for i in range(3):
+            on = (int(self._t / 20) % 3) == i
+            col = QColor(ACCENT if on else "#475569")
+            p.setBrush(col)
+            p.drawEllipse(int(w / 2 - 30 + i * 24), int(h * 0.78), 8, 8)
+
+    def mousePressEvent(self, e) -> None:
+        self.close()
+
+
 def launch_gui() -> None:
     preflight = check_requirements({"gui"})
     if not preflight.ok:
         print(preflight.text(), file=sys.stderr)
         raise SystemExit(2)
     app = QApplication.instance() or QApplication(sys.argv)
+    splash = AuroraSplash()
+    splash.show()
+    app.processEvents()
+
+    # Let splash animate for ~2s while window builds
+    import time
+    t0 = time.time()
+
+    def finish_splash() -> None:
+        if time.time() - t0 >= 2.0:
+            splash.close()
+        else:
+            QTimer.singleShot(80, finish_splash)
+
+    QTimer.singleShot(80, finish_splash)
+
     window = UnifiedCockpitWindow()
     window.show()
+    splash.finish(window)
     sys.exit(app.exec())
 
 
