@@ -99,9 +99,26 @@ def _sev_brush(severity: str) -> QColor:
     return QColor(severity_color(severity))
 
 
-class UnifiedCockpitWindow(QMainWindow):
+class AuroraBackground(QWidget):
+    """A QWidget that renders the animated aurora background (orbs + grid).
 
-    _aurora_t = 0
+    Being a real widget in the layout, this paints behind cards and tables that
+    sit on top of it, unlike painting on the QMainWindow itself.
+    """
+
+    _t = 0
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, False)
+        self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)
+        self._anim = QTimer(self)
+        self._anim.timeout.connect(self._tick)
+        self._anim.start(33)
+
+    def _tick(self) -> None:
+        self._t += 1
+        self.update()
 
     def paintEvent(self, e) -> None:
         p = QPainter(self)
@@ -110,23 +127,28 @@ class UnifiedCockpitWindow(QMainWindow):
         p.fillRect(0, 0, w, h, QColor(BG_BASE))
 
         # Three drifting orbs (soft aurora)
-        t = self._aurora_t / 60
+        t = self._t / 60
         for i, hue in enumerate(["#22d3ee", "#a78bfa", "#f75f8a"]):
-            r = 300 + 100 * ((t + i) % 1)
-            x = w * 0.3 + (w * 0.2) * math.sin(t * 0.6 + i * 2.1)
-            y = h * 0.4 + (h * 0.2) * math.cos(t * 0.4 + i * 1.3)
+            # Smooth, non-repeating size via sin/cos (no % 1 jump)
+            phase = t * 0.6 + i * 2.1
+            r = 280 + 60 * math.sin(phase)
+            x = w * 0.5 + (w * 0.3) * math.sin(t * 0.5 + i * 1.8)
+            y = h * 0.45 + (h * 0.25) * math.cos(t * 0.35 + i * 1.2)
             col = QColor(hue)
-            col.setAlpha(12)
+            col.setAlpha(14)
             p.setBrush(col)
             p.setPen(Qt.PenStyle.NoPen)
             p.drawEllipse(int(x - r / 2), int(y - r / 2), int(r), int(r))
 
         # Faint grid overlay
-        p.setPen(QPen(QColor(255, 255, 255, 6)))
+        p.setPen(QPen(QColor(255, 255, 255, 5)))
         for gx in range(0, w, 56):
             p.drawLine(gx, 0, gx, h)
         for gy in range(0, h, 56):
             p.drawLine(0, gy, w, gy)
+
+
+class UnifiedCockpitWindow(QMainWindow):
 
     def __init__(self) -> None:
         super().__init__()
@@ -159,16 +181,11 @@ class UnifiedCockpitWindow(QMainWindow):
         self.accent_timer.timeout.connect(self.cycle_accent_hue)
         self.accent_timer.start(15000)
 
-        # Aurora background animation timer
-        self.aurora_timer = QTimer(self)
-        self.aurora_timer.timeout.connect(self._tick_aurora)
-        self.aurora_timer.start(33)
-
         self.update_live_telemetry()
 
     def _tick_aurora(self) -> None:
-        self._aurora_t += 1
-        self.update()
+        # Kept for backwards compatibility — the AuroraBackground widget animates itself
+        pass
 
     # ═══════════════════════════════════════════════════════════════════════════
     #  LAYOUT: Sidebar + Header + Stacked Content
@@ -354,13 +371,21 @@ class UnifiedCockpitWindow(QMainWindow):
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        # ── Aurora animated background (behind everything in main area) ──
+        self.aurora_bg = AuroraBackground()
+        self.aurora_bg.setGeometry(0, 0, main_area.width(), main_area.height())
+        main_layout.addWidget(self.aurora_bg, 1)
+
+        # Put scroll (main content) on top of the aurora background
+        self.aurora_bg.stackUnder(scroll)
+
         main_layout.addWidget(scroll, 1)
 
         # ── Footer ──
         footer = QLabel(f"  {os.uname().nodename}  |  AI AYFAM v8  |  التنفيذ محلي")
         footer.setObjectName("footer")
-        footer.setFixedHeight(24)
-        footer.setStyleSheet(f"background: {BG_ELEVATED}; border-top: 1px solid {BORDER}; padding: 2px 12px;")
+        footer.setFixedHeight(26)
+        footer.setStyleSheet(f"background: {BG_ELEVATED}; border-top: 1px solid {BORDER}; padding: 4px 12px;")
         main_layout.addWidget(footer)
 
         root.addWidget(main_area)

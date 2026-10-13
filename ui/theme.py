@@ -23,9 +23,9 @@ TEXT_MUTED = "#64748b"
 ACCENT = "#22d3ee"
 ACCENT_HOVER = "#67e8f9"
 ACCENT_PRESSED = "#0ea5b7"
-ACCENT_SOFT = "#22d3ee22"
+ACCENT_SOFT = "#2222d3ee"
 ACCENT_SECONDARY = "#a78bfa"
-ACCENT_SECONDARY_SOFT = "#a78bfa22"
+ACCENT_SECONDARY_SOFT = "#22a78bfa"
 
 SEV_CRITICAL = "#ff647c"
 SEV_HIGH = "#ffb454"
@@ -72,7 +72,9 @@ def get_qss(accent: str = ACCENT, accent2: str = ACCENT_SECONDARY) -> str:
     qss = qss.replace(ACCENT, accent)
     qss = qss.replace(ACCENT_HOVER, _shift_hue(accent, 0.15))
     qss = qss.replace(ACCENT_PRESSED, _shift_hue(accent, -0.15))
-    qss = qss.replace(ACCENT_SOFT, f"{accent}22")
+    # ACCENT_SOFT is stored in Qt #AARRGGBB order after the alpha fix;
+    # build the replacement in the same order.
+    qss = qss.replace(ACCENT_SOFT, f"22{accent.lstrip('#').lower()}")
     qss = qss.replace(ACCENT_SECONDARY, accent2)
     return qss
 
@@ -126,13 +128,13 @@ QPushButton#navButton:checked {{
     border-color: {ACCENT_SOFT};
     font-weight: 700;
 }}
-QPushButton#navButton:checked:hover {{ background: #22d3ee2d; }}
+QPushButton#navButton:checked:hover {{ background: #2d22d3ee; }}
 QLabel#navGroupLabel {{ color: {TEXT_MUTED}; font-size: 9px; font-weight: 800; padding: 14px 8px 4px; letter-spacing: 1px; }}
 QPushButton#assistantNavButton {{
-    background: #22d3ee12; color: {ACCENT}; border: 1px solid #22d3ee55;
+    background: #1222d3ee; color: {ACCENT}; border: 1px solid #5522d3ee;
     border-radius: 9px; padding: 10px 12px; font-weight: 700; margin-top: 12px;
 }}
-QPushButton#assistantNavButton:hover {{ background: #22d3ee24; border-color: {ACCENT}; }}
+QPushButton#assistantNavButton:hover {{ background: #2422d3ee; border-color: {ACCENT}; }}
 
 /* ── App bar ───────────────────────────────────────────────────────── */
 QFrame#headerBar {{
@@ -161,8 +163,8 @@ QFrame#missionBanner {{
     border: 1px solid #2e5365; border-radius: 14px;
 }}
 QLabel#missionTitle {{ color: {TEXT_PRIMARY}; font-size: 23px; font-weight: 900; padding-top: 1px; }}
-QPushButton#quietAction {{ background: #ffffff0b; border-color: #ffffff20; color: {TEXT_PRIMARY}; }}
-QPushButton#quietAction:hover {{ background: #ffffff18; border-color: #ffffff45; }}
+QPushButton#quietAction {{ background: #0bffffff; border-color: #20ffffff; color: {TEXT_PRIMARY}; }}
+QPushButton#quietAction:hover {{ background: #18ffffff; border-color: #45ffffff; }}
 
 /* ── Surfaces (glass cards) ───────────────────────────────────────── */
 QFrame#card {{
@@ -203,8 +205,8 @@ QPushButton#primary:hover {{
 QPushButton#primary:pressed {{
     background: qlineargradient(x1:0,y1:0,x2:1,y2:0,stop:0 {ACCENT_PRESSED},stop:1 {ACCENT_SECONDARY});
 }}
-QPushButton#danger {{ background: #ff647c12; color: {SEV_CRITICAL}; border-color: #ff647c55; }}
-QPushButton#danger:hover {{ background: #ff647c24; border-color: {SEV_CRITICAL}; }}
+QPushButton#danger {{ background: #12ff647c; color: {SEV_CRITICAL}; border-color: #55ff647c; }}
+QPushButton#danger:hover {{ background: #24ff647c; border-color: {SEV_CRITICAL}; }}
 QPushButton#pillButton {{ background: {BG_INPUT}; color: {TEXT_SECONDARY}; border-radius: 16px; padding: 7px 13px; }}
 QPushButton#pillButton:hover {{ color: {ACCENT}; border-color: {ACCENT}; }}
 QPushButton:disabled {{ color: {TEXT_MUTED}; background: {BG_SURFACE}; border-color: {BORDER_LIGHT}; }}
@@ -226,10 +228,10 @@ QTableWidget {{
     background: {BG_SURFACE}; color: {TEXT_PRIMARY};
     alternate-background-color: #0a0d18; gridline-color: transparent;
     border: 1px solid {BORDER}; border-radius: 9px;
-    selection-background-color: #22d3ee2b; selection-color: {TEXT_PRIMARY}; outline: none;
+    selection-background-color: #2b22d3ee; selection-color: {TEXT_PRIMARY}; outline: none;
 }}
 QTableWidget::item {{ padding: 8px 10px; border-bottom: 1px solid {BORDER_LIGHT}; }}
-QTableWidget::item:selected {{ background: #22d3ee2b; }}
+QTableWidget::item:selected {{ background: #2b22d3ee; }}
 QHeaderView::section {{
     background: #111524; color: {TEXT_SECONDARY}; padding: 11px 10px;
     border: none; border-bottom: 1px solid {BORDER}; font-weight: 700; font-size: {FONT_SIZE_SMALL}px;
@@ -249,9 +251,9 @@ QScrollBar::handle:horizontal {{ background: #243044; min-width: 32px; border-ra
 QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{ width: 0; }}
 
 QLabel#statusBadge {{ color: {STATUS_IDLE}; font-weight: 700; padding: 7px 13px; background: {BG_INPUT}; border: 1px solid {BORDER}; border-radius: 16px; }}
-QLabel#statusBadge[state="running"] {{ color: {STATUS_WARN}; border-color: #ffb45466; }}
-QLabel#statusBadge[state="error"] {{ color: {STATUS_ERROR}; border-color: #ff647c66; }}
-QLabel#scoreBadge {{ color: {SEV_MEDIUM}; font-weight: 800; padding: 7px 13px; background: #f2cf6314; border: 1px solid #f2cf6355; border-radius: 16px; }}
+QLabel#statusBadge[state="running"] {{ color: {STATUS_WARN}; border-color: #66ffb454; }}
+QLabel#statusBadge[state="error"] {{ color: {STATUS_ERROR}; border-color: #66ff647c; }}
+QLabel#scoreBadge {{ color: {SEV_MEDIUM}; font-weight: 800; padding: 7px 13px; background: #14f2cf63; border: 1px solid #55f2cf63; border-radius: 16px; }}
 QLabel#sectionTitle {{ color: {TEXT_PRIMARY}; font-size: {FONT_SIZE_TITLE}px; font-weight: 800; }}
 QLabel#sectionSubtitle {{ color: {TEXT_SECONDARY}; font-size: {FONT_SIZE_SMALL}px; }}
 QLabel#metricValue {{ color: {TEXT_PRIMARY}; font-size: {FONT_SIZE_METRIC}px; font-weight: 900; }}
