@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import html
 import os
 import sys
 import ipaddress
@@ -101,6 +102,116 @@ def _sev_brush(severity: str) -> QColor:
     return QColor(severity_color(severity))
 
 
+
+SEV_ORDER = ["critical", "high", "medium", "low", "info"]
+SEV_AR = {"critical": "حرجة", "high": "عالية", "medium": "متوسطة", "low": "منخفضة", "info": "معلومة"}
+SEV_WHY = {
+    "critical": "قد يسمح باختراق مباشر أو فقدان بيانات. عالجه فوراً قبل أي شيء آخر.",
+    "high": "ثغرة يمكن استغلالها بسهولة نسبية. يُنصح بإصلاحها اليوم.",
+    "medium": "يضعف الحماية أو يتيح معلومات للمهاجم. خطط لإصلاحه قريباً.",
+    "low": "أثره محدود لكنه يقلل من إحكام الإعداد. أصلحه عند الفرصة.",
+    "info": "معلومة للإحاطة ولا تتطلب إجراءً عاجلاً.",
+}
+CONN_STATE_COLORS = {
+    "LISTEN": SEV_SAFE, "ESTAB": ACCENT, "ESTABLISHED": ACCENT, "TIME_WAIT": SEV_HIGH, "TIME-WAIT": SEV_HIGH,
+    "CLOSE_WAIT": SEV_HIGH, "SYN_SENT": SEV_MEDIUM, "SYN-SENT": SEV_MEDIUM, "UNCONN": SEV_INFO,
+}
+
+
+def _sev_key(finding: dict) -> str:
+    key = str(finding.get("severity", "info")).lower()
+    return key if key in SEV_ORDER else "info"
+
+
+def sort_findings(findings: list) -> list:
+    return sorted(findings, key=lambda f: (SEV_ORDER.index(_sev_key(f)), -(f.get("confidence") or 0)))
+
+
+def summarize_findings(findings: list, title: str) -> str:
+    """ملخص عربي موجز بعد كل فحص: العدد حسب الخطورة، الأهم، والخطوة التالية."""
+    if not findings:
+        return (f"ملخص {title}: لم يرصد الفحص مشاكل أمنية. أعد الفحص بعد أي تغيير كبير في النظام أو الشبكة، "
+                "وأبقِ التحديثات مفعّلة.")
+    ordered = sort_findings(findings)
+    counts = {key: sum(1 for f in findings if _sev_key(f) == key) for key in SEV_ORDER}
+    parts = "، ".join(f"{counts[k]} {SEV_AR[k]}" for k in SEV_ORDER if counts[k])
+    lines = [f"ملخص {title}: {len(findings)} نتيجة ({parts})."]
+    lines.append("الأهم:")
+    for i, f in enumerate(ordered[:3], 1):
+        fix_lines = [ln.strip() for ln in str(f.get("fix") or "").splitlines() if ln.strip()]
+        lines.append(f"{i}. [{SEV_AR[_sev_key(f)]}] {str(f.get('title', 'بلا عنوان'))[:110]}")
+        if fix_lines:
+            lines.append(f"    الإصلاح: {fix_lines[0][:110]}")
+    urgent = counts["critical"] + counts["high"]
+    lines.append("الخطوة التالية: " + (
+        "ابدأ بالنتائج الحرجة والعالية في تبويب الفحوصات؛ حدد النتيجة لترى سببها وطريقة إصلاحها، ثم أعد الفحص للتأكد."
+        if urgent else "راجع النتائج في تبويب الفحوصات وأصلح ما يناسبك، لا توجد مشاكل عاجلة."))
+    return "\n".join(lines)
+
+
+def finding_html(finding: dict) -> str:
+    """تفاصيل منظمة: ما المشكلة / لماذا تهم / كيف أصلحها / الدليل."""
+    esc = lambda v: html.escape(str(v)).replace("\n", "<br>")
+    key = _sev_key(finding)
+    color = severity_color(key)
+    confidence = finding.get("confidence")
+    conf = f"{float(confidence):.0%}" if isinstance(confidence, (int, float)) else "غير محددة"
+
+    def section(heading: str, body: str, tint: str = ACCENT) -> str:
+        return (f"<p style='margin:10px 0 2px 0'><span style='color:{tint};font-weight:700'>{heading}</span><br>"
+                f"<span style='color:{TEXT_PRIMARY}'>{body}</span></p>")
+
+    out = [f"<p style='margin:0'><span style='font-size:15px;font-weight:800;color:{TEXT_PRIMARY}'>{esc(finding.get('title', 'بلا عنوان'))}</span><br>"
+           f"<span style='color:{color};font-weight:700'>الخطورة: {SEV_AR[key]}</span>"
+           f"<span style='color:{TEXT_MUTED}'>  |  الثقة: {conf}  |  الفئة: {esc(finding.get('category', 'غير مصنفة'))}</span></p>"]
+    out.append(section("ما المشكلة", esc(finding.get("detail") or "لم يوفر الفاحص تفاصيل إضافية.")))
+    out.append(section("لماذا يهم", esc(finding.get("why") or finding.get("impact") or SEV_WHY[key]), color))
+    out.append(section("كيف أصلحها", esc(finding.get("fix") or "لا توجد توصية آلية مسجلة؛ راجع التفاصيل أعلاه."), SEV_SAFE))
+    evidence = finding.get("evidence") or {}
+    if evidence:
+        out.append(section("الدليل المسجل", "<pre style='margin:0'>" + html.escape(json.dumps(evidence, ensure_ascii=False, indent=2, default=str)) + "</pre>", TEXT_SECONDARY))
+    extras = []
+    if finding.get("tags"):
+        extras.append("الوسوم: " + ", ".join(str(t) for t in finding["tags"]))
+    if finding.get("attack_ids"):
+        extras.append("ATT&CK: " + ", ".join(str(t) for t in finding["attack_ids"]))
+    if extras:
+        out.append(f"<p style='color:{TEXT_MUTED};margin:10px 0 0 0'>{esc(' | '.join(extras))}</p>")
+    return "".join(out)
+
+
+def prepare_table(table: QTableWidget, row_height: int = 38) -> None:
+    """Common readable-table setup: tall rows, no grid, elide, row selection."""
+    table.setAlternatingRowColors(True)
+    table.setShowGrid(False)
+    table.setWordWrap(False)
+    table.setTextElideMode(Qt.TextElideMode.ElideRight)
+    table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+    table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
+    table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+    table.setVerticalScrollMode(QTableWidget.ScrollMode.ScrollPerPixel)
+    table.verticalHeader().setVisible(False)
+    table.verticalHeader().setDefaultSectionSize(row_height)
+    table.horizontalHeader().setMinimumSectionSize(64)
+    table.horizontalHeader().setHighlightSections(False)
+
+
+def table_cell(text, color: str | None = None, center: bool = False, bold: bool = False, tip: str | None = None) -> QTableWidgetItem:
+    item = QTableWidgetItem(str(text))
+    if color:
+        item.setForeground(QColor(color))
+    if bold:
+        font = item.font()
+        font.setBold(True)
+        item.setFont(font)
+    if center:
+        item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+    else:
+        item.setTextAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
+    item.setToolTip(tip if tip is not None else str(text))
+    return item
+
+
 class UnifiedCockpitWindow(QMainWindow):
 
     def __init__(self) -> None:
@@ -120,6 +231,8 @@ class UnifiedCockpitWindow(QMainWindow):
         self.active_result_handler: Callable[[Any], None] | None = None
         self.visible_events: list[tuple[str, str, str]] = []
         self.current_findings: list[dict] = []
+        self.all_findings: list[dict] = []
+        self.chat_history: list[tuple[str, str]] = []
         self.task_buttons: list[QPushButton] = []
         self.usb_inventory_loaded = False
         self.nav_buttons: list[QPushButton] = []
@@ -132,6 +245,9 @@ class UnifiedCockpitWindow(QMainWindow):
         self.event_timer.start(300)
         # Ambient light and hover rims animate smoothly; semantic colors stay stable.
         # Avoid restyling the entire window every 15 seconds (flicker/layout churn).
+        for table in self.findChildren(QTableWidget):      # كل الجداول بنفس معيار القراءة
+            if table.verticalHeader().defaultSectionSize() < 38:
+                prepare_table(table)
         self.hover_controller = HoverController(self)
         self.chat_display.hover_controller = self.hover_controller
         self._busy_cursor_owned = False
@@ -415,7 +531,7 @@ class UnifiedCockpitWindow(QMainWindow):
         # Mission brief: orient the operator before showing telemetry.
         mission = QFrame(objectName="missionBanner")
         mission_layout = QHBoxLayout(mission)
-        mission_layout.setContentsMargins(SP_XL, SP_LG, SP_XL, SP_LG)
+        mission_layout.setContentsMargins(SP_XL, SP_MD, SP_XL, SP_MD)
         mission_layout.setSpacing(SP_LG)
         mission_copy = QVBoxLayout()
         mission_copy.setSpacing(SP_XS)
@@ -425,11 +541,8 @@ class UnifiedCockpitWindow(QMainWindow):
         mission_title = QLabel("اعرف ما يحدث قبل أن تتصرف")
         mission_title.setObjectName("missionTitle")
         mission_copy.addWidget(mission_title)
-        mission_note = QLabel("مراقبة حية، فحوصات قابلة للتنفيذ، وقرارات موثقة في مكان واحد.")
-        mission_note.setObjectName("sectionSubtitle")
-        mission_copy.addWidget(mission_note)
         mission_layout.addLayout(mission_copy, 1)
-        mission_actions = QVBoxLayout()
+        mission_actions = QHBoxLayout()
         mission_actions.setSpacing(SP_SM)
         quick_scan = QPushButton("بدء فحص شامل")
         quick_scan.setObjectName("primary")
@@ -455,7 +568,7 @@ class UnifiedCockpitWindow(QMainWindow):
         ]
         for col, (key, label, note, accent) in enumerate(metric_data):
             card = QFrame(objectName="card")
-            card.setMinimumHeight(110)
+            card.setMinimumHeight(96)
             card.setStyleSheet(f"QFrame#card {{ border: 1px solid {alpha(accent, 150)}; }}")
             box = QVBoxLayout(card)
             box.setContentsMargins(SP_LG, SP_MD, SP_LG, SP_MD)
@@ -497,12 +610,9 @@ class UnifiedCockpitWindow(QMainWindow):
         self.table_conns.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
         self.table_conns.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)
         self.table_conns.horizontalHeader().setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)
-        self.table_conns.setWordWrap(False)
-        self.table_conns.setTextElideMode(Qt.TextElideMode.ElideRight)
-        self.table_conns.setAlternatingRowColors(True)
-        self.table_conns.setShowGrid(False)
-        self.table_conns.verticalHeader().setVisible(False)
-        self.table_conns.verticalHeader().setDefaultSectionSize(32)
+        prepare_table(self.table_conns)
+        for col in (0, 1, 2):
+            self.table_conns.horizontalHeader().setSectionResizeMode(col, QHeaderView.ResizeMode.ResizeToContents)
         conn_layout.addWidget(self.table_conns)
         self.dashboard_splitter.addWidget(conn_group)
 
@@ -514,20 +624,19 @@ class UnifiedCockpitWindow(QMainWindow):
         # Command column: fixed relative width so long commands get ellipsized by Qt
         self.table_procs.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
         self.table_procs.horizontalHeader().setStretchLastSection(True)
-        self.table_procs.setWordWrap(False)
+        prepare_table(self.table_procs)
         self.table_procs.setTextElideMode(Qt.TextElideMode.ElideMiddle)
         self.table_procs.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         self.table_procs.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        self.table_procs.setAlternatingRowColors(True)
-        self.table_procs.setShowGrid(False)
-        self.table_procs.verticalHeader().setVisible(False)
-        self.table_procs.verticalHeader().setDefaultSectionSize(32)
+        for col in (2, 3):
+            self.table_procs.horizontalHeader().setSectionResizeMode(col, QHeaderView.ResizeMode.ResizeToContents)
         proc_layout.addWidget(self.table_procs)
         self.dashboard_splitter.addWidget(proc_group)
 
         self.dashboard_splitter.setStretchFactor(0, 3)
         self.dashboard_splitter.setStretchFactor(1, 2)
-        self.dashboard_splitter.setSizes([420, 260])
+        self.dashboard_splitter.setSizes([400, 260])
+        self.dashboard_splitter.setMinimumHeight(660)
         layout.addWidget(self.dashboard_splitter, 1)
 
     # ═══════════════════════════════════════════════════════════════════════════
@@ -613,23 +722,54 @@ class UnifiedCockpitWindow(QMainWindow):
         box = QVBoxLayout(group)
         box.setSpacing(SP_SM)
 
+        top = QHBoxLayout()
+        top.setSpacing(SP_SM)
+        self.findings_chips = QLabel("لم يُجرَ فحص بعد.")
+        self.findings_chips.setTextFormat(Qt.TextFormat.RichText)
+        self.findings_chips.setStyleSheet(f"color: {TEXT_SECONDARY}; font-size: {FONT_SIZE_SMALL}px;")
+        top.addWidget(self.findings_chips, 1)
+        filter_label = QLabel("عرض:")
+        filter_label.setStyleSheet(f"color: {TEXT_SECONDARY}; font-size: {FONT_SIZE_SMALL}px;")
+        self.sev_filter = QComboBox()
+        self.sev_filter.addItem("كل النتائج", "all")
+        for key in SEV_ORDER:
+            self.sev_filter.addItem(SEV_AR[key], key)
+        self.sev_filter.setToolTip("تصفية النتائج حسب الخطورة")
+        self.sev_filter.currentIndexChanged.connect(lambda _i: self._apply_findings_filter())
+        top.addWidget(filter_label)
+        top.addWidget(self.sev_filter)
+        box.addLayout(top)
+
         self.table_findings = QTableWidget(0, 4)
         self.table_findings.setHorizontalHeaderLabels(["الخطورة", "النتيجة", "الفئة", "الثقة"])
-        self.table_findings.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        self.table_findings.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        self.table_findings.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        self.table_findings.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-        self.table_findings.setAlternatingRowColors(True)
-        self.table_findings.cellClicked.connect(self.show_finding_details)
-        self.table_findings.setMinimumHeight(160)
-        self.table_findings.verticalHeader().setVisible(False)
-        self.table_findings.verticalHeader().setDefaultSectionSize(32)
+        header = self.table_findings.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        prepare_table(self.table_findings, 40)
+        self.table_findings.setProperty("flow", "orange")
+        self.table_findings.currentCellChanged.connect(lambda row, col, _pr, _pc: self.show_finding_details(row, col))
+        self.table_findings.setMinimumHeight(220)
 
         detail_header = QHBoxLayout()
         detail_label = QLabel("تحليل النتيجة المحددة")
         detail_label.setStyleSheet(f"color: {TEXT_SECONDARY}; font-weight: 600; font-size: {FONT_SIZE_SMALL}px;")
         detail_header.addWidget(detail_label)
+        self.finding_position = QLabel("")
+        self.finding_position.setStyleSheet(f"color: {TEXT_MUTED}; font-size: {FONT_SIZE_SMALL}px;")
+        detail_header.addWidget(self.finding_position)
         detail_header.addStretch()
+        self.btn_prev_finding = QPushButton("السابقة")
+        self.btn_next_finding = QPushButton("التالية")
+        self.btn_prev_finding.setToolTip("النتيجة السابقة (Alt+Up)")
+        self.btn_next_finding.setToolTip("النتيجة التالية (Alt+Down)")
+        self.btn_prev_finding.clicked.connect(lambda: self.step_finding(-1))
+        self.btn_next_finding.clicked.connect(lambda: self.step_finding(1))
+        QShortcut(QKeySequence("Alt+Up"), self, activated=lambda: self.step_finding(-1))
+        QShortcut(QKeySequence("Alt+Down"), self, activated=lambda: self.step_finding(1))
+        detail_header.addWidget(self.btn_prev_finding)
+        detail_header.addWidget(self.btn_next_finding)
 
         self.btn_apply_autofix = QPushButton("تطبيق الإصلاح التلقائي")
         self.btn_apply_autofix.setObjectName("primary")
@@ -637,9 +777,9 @@ class UnifiedCockpitWindow(QMainWindow):
         self.btn_apply_autofix.clicked.connect(self.apply_selected_finding_fix)
         detail_header.addWidget(self.btn_apply_autofix)
 
-        self.finding_detail = QPlainTextEdit(readOnly=True)
-        self.finding_detail.setPlaceholderText("حدد نتيجة لعرض التفاصيل والدليل والتوصية.")
-        self.finding_detail.setMinimumHeight(130)
+        self.finding_detail = QTextEdit(readOnly=True)
+        self.finding_detail.setPlaceholderText("حدد نتيجة لعرض ما المشكلة ولماذا تهم وكيف تُصلح.")
+        self.finding_detail.setMinimumHeight(170)
 
         findings_splitter = QSplitter(Qt.Orientation.Vertical)
         findings_splitter.setHandleWidth(2)
@@ -653,8 +793,17 @@ class UnifiedCockpitWindow(QMainWindow):
         findings_splitter.addWidget(detail_panel)
         findings_splitter.setStretchFactor(0, 3)
         findings_splitter.setStretchFactor(1, 2)
+        findings_splitter.setMinimumHeight(520)
         box.addWidget(findings_splitter)
         layout.addWidget(group)
+
+    def step_finding(self, delta: int) -> None:
+        count = self.table_findings.rowCount()
+        if not count:
+            return
+        row = max(0, min(count - 1, (self.table_findings.currentRow() if self.table_findings.currentRow() >= 0 else (-1 if delta > 0 else count)) + delta))
+        self.table_findings.selectRow(row)
+        self.table_findings.setCurrentCell(row, 0)
 
     def apply_selected_finding_fix(self) -> None:
         row = self.table_findings.currentRow()
@@ -1035,6 +1184,12 @@ class UnifiedCockpitWindow(QMainWindow):
         self.setting_github_token.setEchoMode(QLineEdit.EchoMode.PasswordEchoOnEdit)
         self.setting_github_token.setPlaceholderText("GitHub Personal Access Token")
 
+        self.setting_cse_key = QLineEdit(self.settings.get("google_cse_key", ""))
+        self.setting_cse_key.setEchoMode(QLineEdit.EchoMode.PasswordEchoOnEdit)
+        self.setting_cse_key.setPlaceholderText("Google Programmable Search Key (اختياري)")
+        self.setting_cse_cx = QLineEdit(self.settings.get("google_cse_cx", ""))
+        self.setting_cse_cx.setPlaceholderText("معرّف محرك البحث cx (اختياري)")
+
         self.setting_report_dir = QLineEdit(self.settings.get("report_dir", os.path.expanduser("~/ayfam-reports")))
 
         self.setting_lang_combo = QComboBox()
@@ -1054,11 +1209,17 @@ class UnifiedCockpitWindow(QMainWindow):
         grid.addWidget(QLabel("GitHub Token:"), 3, 0)
         grid.addWidget(self.setting_github_token, 3, 1)
 
-        grid.addWidget(QLabel("مجلد التقارير:"), 4, 0)
-        grid.addWidget(self.setting_report_dir, 4, 1)
+        grid.addWidget(QLabel("Google Search Key:"), 4, 0)
+        grid.addWidget(self.setting_cse_key, 4, 1)
 
-        grid.addWidget(QLabel("اللغة (Language):"), 5, 0)
-        grid.addWidget(self.setting_lang_combo, 5, 1)
+        grid.addWidget(QLabel("Google Search cx:"), 5, 0)
+        grid.addWidget(self.setting_cse_cx, 5, 1)
+
+        grid.addWidget(QLabel("مجلد التقارير:"), 6, 0)
+        grid.addWidget(self.setting_report_dir, 6, 1)
+
+        grid.addWidget(QLabel("اللغة (Language):"), 7, 0)
+        grid.addWidget(self.setting_lang_combo, 7, 1)
 
         layout.addWidget(form_group)
 
@@ -1072,11 +1233,16 @@ class UnifiedCockpitWindow(QMainWindow):
         test_gemini_btn = QPushButton("اختبار مفتاح Gemini")
         test_gemini_btn.clicked.connect(self.test_gemini_settings)
 
+        test_search_btn = QPushButton("اختبار البحث في الإنترنت")
+        test_search_btn.setToolTip("يتحقق من Google وويكيبيديا ويعرض حالة كل محرك")
+        test_search_btn.clicked.connect(self.test_search_settings)
+
         clear_hist_btn = QPushButton("مسح تاريخ المحادثات")
         clear_hist_btn.clicked.connect(self.clear_history_settings)
 
         btns_row.addWidget(save_btn)
         btns_row.addWidget(test_gemini_btn)
+        btns_row.addWidget(test_search_btn)
         btns_row.addWidget(clear_hist_btn)
         btns_row.addStretch()
 
@@ -1092,6 +1258,8 @@ class UnifiedCockpitWindow(QMainWindow):
         self.settings.set("abuseipdb_key", self.setting_abuseipdb_key.text().strip())
         self.settings.set("nvd_api_key", self.setting_nvd_key.text().strip())
         self.settings.set("github_token", self.setting_github_token.text().strip())
+        self.settings.set("google_cse_key", self.setting_cse_key.text().strip())
+        self.settings.set("google_cse_cx", self.setting_cse_cx.text().strip())
         self.settings.set("report_dir", self.setting_report_dir.text().strip())
         lang = self.setting_lang_combo.currentText()
         self.settings.set("language", lang)
@@ -1099,6 +1267,16 @@ class UnifiedCockpitWindow(QMainWindow):
         self.agent.intel.language = lang
         self.settings_log.setPlainText("[نجاح] تم حفظ الإعدادات بنجاح!")
         QMessageBox.information(self, "حفظ الإعدادات", "تم حفظ جميع الإعدادات والمفاتيح آمنة محلياً.")
+
+    def test_search_settings(self) -> None:
+        self.save_settings()
+
+        def show(report) -> None:
+            lines = ["[حالة محركات البحث]"] + [f"{name}: {status}" for name, status in report.engines.items()]
+            lines.append(f"النتائج المقبولة: {len(report.hits)} | المحذوفة لعدم الصلة: {report.dropped}")
+            self.settings_log.setPlainText("\n".join(lines))
+
+        self.run_background_task(lambda: self.agent.smart_search("Kali Linux"), "اختبار البحث", preserve_findings=True, result_handler=show)
 
     def test_gemini_settings(self) -> None:
         key = self.setting_gemini_key.text().strip() or self.settings.get("gemini_api_key", "")
@@ -1235,43 +1413,74 @@ class UnifiedCockpitWindow(QMainWindow):
     # ═══════════════════════════════════════════════════════════════════════════
     #  LIVE TELEMETRY
     # ═══════════════════════════════════════════════════════════════════════════
+    @staticmethod
+    def _table_state(table: QTableWidget, key_col: int) -> tuple[int, str | None]:
+        row = table.currentRow()
+        key = table.item(row, key_col).text() if row >= 0 and table.item(row, key_col) else None
+        return table.verticalScrollBar().value(), key
+
+    @staticmethod
+    def _restore_table(table: QTableWidget, state: tuple[int, str | None], key_col: int) -> None:
+        scroll, key = state
+        if key is not None:
+            for row in range(table.rowCount()):
+                item = table.item(row, key_col)
+                if item and item.text() == key:
+                    table.selectRow(row)
+                    break
+        table.verticalScrollBar().setValue(scroll)
+
     def update_live_telemetry(self) -> None:
         try:
             conns = LiveReconEngine.get_live_connections()
-            self.table_conns.setRowCount(0)
-            for c in conns[:30]:
-                values = [c.get("proto", ""), c.get("state", ""),
-                          "خارجي" if c.get("is_foreign") else "محلي",
-                          c.get("local", ""), c.get("remote", ""),
-                          c.get("process", ""), c.get("pid", "")]
-                row = self.table_conns.rowCount()
-                self.table_conns.insertRow(row)
-                for col, value in enumerate(values):
-                    item = QTableWidgetItem(str(value))
-                    if col == 2:
-                        item.setForeground(QColor(SEV_HIGH if c.get("is_foreign") else SEV_SAFE))
-                    self.table_conns.setItem(row, col, item)
-            procs = LiveReconEngine.get_top_processes(15)
-            self.table_procs.setRowCount(0)
-            for p in procs:
-                row = self.table_procs.rowCount()
-                self.table_procs.insertRow(row)
-                cmd_raw = str(p.get("command", ""))
-                cmd_item = QTableWidgetItem(cmd_raw)
-                cmd_item.setToolTip(cmd_raw)
-                values = [p.get("user", ""), p.get("pid", ""),
-                          f"{p.get('cpu', 0)}%", f"{p.get('mem', 0)}%", cmd_item]
-                for col, value in enumerate(values):
-                    if isinstance(value, QTableWidgetItem):
-                        self.table_procs.setItem(row, col, value)
-                    else:
-                        self.table_procs.setItem(row, col, QTableWidgetItem(str(value)))
+            procs = LiveReconEngine.get_top_processes(20)
+            conn_state = self._table_state(self.table_conns, 3)
+            proc_state = self._table_state(self.table_procs, 1)
+            for table in (self.table_conns, self.table_procs):
+                table.setUpdatesEnabled(False)
+            try:
+                self.table_conns.setRowCount(len(conns[:60]))
+                for row, c in enumerate(conns[:60]):
+                    state = str(c.get("state", ""))
+                    foreign = bool(c.get("is_foreign"))
+                    state_color = CONN_STATE_COLORS.get(state.upper(), TEXT_SECONDARY)
+                    remote = str(c.get("remote", ""))
+                    cells = [
+                        table_cell(c.get("proto", ""), center=True),
+                        table_cell(state, state_color, center=True, bold=True, tip=f"حالة الاتصال: {state}"),
+                        table_cell("خارجي" if foreign else "محلي", SEV_HIGH if foreign else SEV_SAFE, center=True, bold=True,
+                                   tip="اتصال بعنوان خارج الشبكة المحلية" if foreign else "اتصال داخل الجهاز أو الشبكة المحلية"),
+                        table_cell(c.get("local", "")),
+                        table_cell(remote, SEV_HIGH if foreign else None),
+                        table_cell(c.get("process", "") or "—"),
+                        table_cell(c.get("pid", ""), center=True),
+                    ]
+                    for col, cell in enumerate(cells):
+                        self.table_conns.setItem(row, col, cell)
+                self.table_procs.setRowCount(len(procs))
+                for row, p in enumerate(procs):
+                    cpu, mem = float(p.get("cpu", 0) or 0), float(p.get("mem", 0) or 0)
+                    cmd_raw = str(p.get("command", ""))
+                    cells = [
+                        table_cell(p.get("user", "")),
+                        table_cell(p.get("pid", ""), center=True),
+                        table_cell(f"{cpu:g}%", SEV_CRITICAL if cpu >= 70 else SEV_HIGH if cpu >= 30 else None, center=True, bold=cpu >= 30),
+                        table_cell(f"{mem:g}%", SEV_CRITICAL if mem >= 70 else SEV_HIGH if mem >= 30 else None, center=True, bold=mem >= 30),
+                        table_cell(cmd_raw),
+                    ]
+                    for col, cell in enumerate(cells):
+                        self.table_procs.setItem(row, col, cell)
+                self._restore_table(self.table_conns, conn_state, 3)
+                self._restore_table(self.table_procs, proc_state, 1)
+            finally:
+                for table in (self.table_conns, self.table_procs):
+                    table.setUpdatesEnabled(True)
             self.metric_labels["connections"].setText(str(len(conns)))
             self.metric_labels["processes"].setText(str(len(procs)))
             external = sum(1 for c in conns if c.get("is_foreign"))
+            listening = sum(1 for c in conns if str(c.get("state", "")).upper() == "LISTEN")
             self.connection_summary.setText(
-                f"{len(conns)} اتصال نشط  |  {external} خارجي  |  تحديث كل 3 ثوانٍ"
-            )
+                f"{len(conns)} اتصال  |  {external} خارجي  |  {listening} منصت  |  تحديث كل 3 ثوانٍ")
         except Exception as exc:
             self.chat_display.append(f"[تحذير الرادار] {exc}")
 
@@ -1287,22 +1496,144 @@ class UnifiedCockpitWindow(QMainWindow):
     # ═══════════════════════════════════════════════════════════════════════════
     #  CHAT
     # ═══════════════════════════════════════════════════════════════════════════
+    def _say(self, text: str) -> None:
+        self.chat_display.append(f"[الوكيل] {text}")
+        self.chat_history.append(("assistant", text))
+        del self.chat_history[:-20]
+
+    def _submit_text(self, text: str) -> None:
+        self.chat_input.setText(text)
+        self.send_chat_message()
+
     def send_chat_message(self) -> None:
         text = self.chat_input.text().strip()
         if not text:
             return
         self.chat_input.clear()
         self.chat_display.append(f"\n[أنت] {text}")
-        cmd = self.agent.nlp.parse(text)
-        self.chat_display.append(f"[الوكيل] فهمت: {self.agent.nlp.describe_intent(cmd.intent, 'ar')}")
+        self.chat_history.append(("user", text))
+        turn = self.agent.chat_engine.process(text)
+        self.chat_display.append_thinking(turn.steps)
+        self._dispatch_turn(turn)
+
+    def _dispatch_turn(self, turn) -> None:
+        if turn.action == "reply":
+            self._say(turn.reply)
+        elif turn.action == "clarify":
+            actions = []
+            for label, value in turn.suggestions:
+                if value:
+                    actions.append((label, lambda v=value: self._submit_text(v), "primary" if not actions else ""))
+                else:
+                    actions.append((label, lambda: self._say("اكتب سؤالك كاملاً وسأحاول فهمه."), ""))
+            self.chat_display.append_actions(turn.reply, actions)
+            self.chat_history.append(("assistant", turn.reply))
+        elif turn.action == "web_search":
+            self._run_web_search(turn.query)
+        elif turn.action == "learn_online":
+            self._run_learning(turn.query)
+        elif turn.action == "route":
+            self._route_command(turn.cmd, turn.text)
+        else:
+            self._ask_assistant(turn.text)
+
+    # ── ذكاء المحادثة ──
+    def _ask_assistant(self, text: str) -> None:
+        history = list(self.chat_history[:-1])
+        self.run_background_task(
+            lambda: (self.agent.ask_ai_or_local(text, history), self.agent.last_answer_was_gap),
+            "المساعد الذكي", preserve_findings=True,
+            result_handler=lambda out: self._deliver_answer(out[0], text, out[1]),
+        )
+
+    def _deliver_answer(self, answer: str, topic: str, gap: bool) -> None:
+        self._say(answer)
+        if gap:
+            self.chat_display.append_actions(
+                "ما رأيك أن أبحث لك الآن؟",
+                [("ابحث في الإنترنت", lambda: self._run_web_search(topic), "primary"),
+                 ("تعلّم من الإنترنت", lambda: self._run_learning(topic), "")],
+            )
+
+    # ── البحث الدقيق (Google + ويكيبيديا) ──
+    def _run_web_search(self, query: str) -> None:
+        self.run_background_task(
+            lambda: self.agent.smart_search(query), "بحث في الإنترنت", preserve_findings=True,
+            result_handler=self._show_search,
+        )
+
+    def _show_search(self, report) -> None:
+        if not report.online:
+            self._say("لا يوجد اتصال بالإنترنت حالياً. تحقق من الشبكة ثم أعد المحاولة.")
+            return
+        actions = [("تعلّم من هذه النتائج", lambda: self._run_learning(report.query), "primary")] if report.ok else []
+        self.chat_display.append_results(report, actions=actions)
+        self.chat_history.append(("assistant", f"نتائج البحث عن {report.query}"))
+
+    # ── التعلم من الإنترنت: يتصل ويبحث عمّا ينقصه، والمستخدم يقرر الحفظ ──
+    def _run_learning(self, topic: str) -> None:
+        self.run_background_task(
+            lambda: self.agent.prepare_learning(topic), "التعلم من الإنترنت", preserve_findings=True,
+            result_handler=self._show_learning,
+        )
+
+    def _show_learning(self, result: dict) -> None:
+        if not result.get("online"):
+            self._say("لا يوجد اتصال بالإنترنت، لذلك لا أستطيع التعلم الآن. تحقق من الشبكة وأعد المحاولة.")
+            return
+        items = result.get("items") or []
+        if not items:
+            self._say("لا أجد ما ينقصني حالياً. اكتب «تعلم من الإنترنت عن …» وحدد الموضوع.")
+            return
+        names = "، ".join(item["topic"] for item in items)
+        self._say(("اتصلت بالإنترنت تلقائياً وبحثت فيما ينقصني: " if result.get("inferred") else "اتصلت بالإنترنت وبحثت عن: ") + names)
+        ready = []
+        for item in items:
+            self.chat_display.append_results(item["report"], title=f"ما وجدته عن «{item['topic']}»")
+            if item.get("path"):
+                ready.append(item)
+        if not ready:
+            self._say("لم أجد مصادر مفيدة، لذلك لن أحفظ شيئاً.")
+            return
+        first = ready[0]["path"]
+        self.chat_display.append_actions(
+            f"جهزت {len(ready)} ملف للمراجعة (مثل {Path(first).name}). هل أحفظ ما وجدته في معرفتي وأعتمد عليه في التفكير والإجابة؟",
+            [("حفظ وتعلّم", lambda: self._commit_learning(ready), "primary"),
+             ("تجاهل", lambda: self._discard_learning(ready), "danger"),
+             ("فتح الملف", lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(first)), "", True)],
+        )
+
+    def _commit_learning(self, ready: list) -> None:
+        self.run_background_task(
+            lambda: self.agent.commit_learning(ready), "حفظ ما تعلمته", preserve_findings=True,
+            result_handler=self._learning_saved,
+        )
+
+    def _learning_saved(self, saved: list) -> None:
+        self.refresh_library()
+        if saved:
+            self._say("تعلمت وحفظت: " + "، ".join(f"{s['topic']} ({s['chunks']} مقطع)" for s in saved)
+                      + ". سأستخدمها في الإجابات القادمة، ويمكنك مراجعتها في مكتبة المعرفة.")
+        else:
+            self._say("لم يتم حفظ شيء: الملفات لم تعد موجودة.")
+
+    def _discard_learning(self, ready: list) -> None:
+        removed = self.agent.discard_learning(ready)
+        self._say(f"تجاهلت النتائج وحذفت {removed} ملف مؤقت. لم أتعلم منها شيئاً.")
+
+    # ── توجيه الأوامر ──
+    def _route_command(self, cmd, text: str) -> None:
         if cmd.intent == "explain":
             target = cmd.explain_target or text
-            self.run_background_task(
-                lambda: self.agent.nlp.explain(target),
-                "شرح السؤال",
-                preserve_findings=True,
-                result_handler=lambda answer: self.chat_display.append(f"[الوكيل]\n{answer}"),
-            )
+
+            def deliver(answer: str) -> None:
+                gap = "لم أجد شرحاً محدداً" in answer
+                if gap:
+                    self.agent.phrases.record_gap(target)
+                    answer = f"لا أملك شرحاً محدداً لـ«{target}» في معرفتي الحالية."
+                self._deliver_answer(answer, target, gap)
+
+            self.run_background_task(lambda: self.agent.nlp.explain(target), "شرح السؤال", preserve_findings=True, result_handler=deliver)
             return
 
         entities = cmd.entities
@@ -1323,9 +1654,11 @@ class UnifiedCockpitWindow(QMainWindow):
             "teach": ("حفظ معلومة", lambda: self.agent._teach(entities.get("fact", ""))),
             "cve_search": ("بحث CVE", lambda: self.agent._cve_search(entities.get("cve") or entities.get("keyword") or text)),
             "pkg_vuln_search": ("ثغرات حزمة", lambda: self.agent._pkg_vuln_search(entities.get("package", ""))),
-            "web_search": ("بحث ويب", lambda: self.agent._web_search(entities.get("keyword") or text)),
             "update_intel": ("تحديث التهديدات", self.agent._update_intel),
         }
+        if cmd.intent == "web_search":
+            self._run_web_search(text)
+            return
         if cmd.intent in routes:
             title, handler = routes[cmd.intent]
             self.run_background_task(handler, title, preserve_findings=cmd.intent in {"rebuild_index", "show_learned"})
@@ -1349,22 +1682,14 @@ class UnifiedCockpitWindow(QMainWindow):
             filepath = entities.get("filepath", "")
             if filepath:
                 self.run_background_task(
-                    lambda: self.agent._learn_from_file(filepath),
-                    "استيعاب كتاب",
-                    preserve_findings=True,
-                    result_handler=lambda _result: self.refresh_library(),
+                    lambda: self.agent._learn_from_file(filepath), "استيعاب كتاب",
+                    preserve_findings=True, result_handler=lambda _result: self.refresh_library(),
                 )
             else:
                 self.switch_page("library")
-                self.chat_display.append("[الوكيل] اختر «إضافة كتب» من مكتبة المعرفة.")
+                self._say("اختر «إضافة كتب» من مكتبة المعرفة.")
             return
-        # If no specific system action command matched, query AI Assistant (Gemini / Local brain)
-        self.run_background_task(
-            lambda: self.agent.ask_ai_or_local(text),
-            "المساعد الذكي",
-            preserve_findings=True,
-            result_handler=lambda answer: self.chat_display.append(f"\n{answer}"),
-        )
+        self._ask_assistant(text)
 
     # ═══════════════════════════════════════════════════════════════════════════
     #  BACKGROUND TASK EXECUTION
@@ -1603,33 +1928,11 @@ class UnifiedCockpitWindow(QMainWindow):
     # ═══════════════════════════════════════════════════════════════════════════
     #  FINDINGS DISPLAY
     # ═══════════════════════════════════════════════════════════════════════════
-    def show_finding_details(self, row: int, _column: int) -> None:
-        if row >= len(self.current_findings):
+    def show_finding_details(self, row: int, _column: int = 0) -> None:
+        if row < 0 or row >= len(self.current_findings):
             return
-        finding = self.current_findings[row]
-        confidence = finding.get("confidence")
-        confidence_text = f"{float(confidence):.0%}" if isinstance(confidence, (int, float)) else "غير محددة"
-        evidence = finding.get("evidence") or {}
-        lines = [
-            f"النتيجة: {finding.get('title', 'بلا عنوان')}",
-            f"الخطورة: {str(finding.get('severity', 'info')).upper()} | الثقة: {confidence_text}",
-            f"الفئة: {finding.get('category', 'غير مصنفة')}",
-            "",
-            "ماذا رُصد:",
-            str(finding.get("detail") or "لم يوفر الفاحص تفاصيل إضافية."),
-            "",
-            "التوصية:",
-            str(finding.get("fix") or "لا توجد توصية آلية مسجلة."),
-        ]
-        if evidence:
-            lines.extend(["", "الدليل المسجل:", json.dumps(evidence, ensure_ascii=False, indent=2, default=str)])
-        tags = finding.get("tags") or []
-        if tags:
-            lines.extend(["", f"الوسوم: {', '.join(str(t) for t in tags)}"])
-        attack_ids = finding.get("attack_ids") or []
-        if attack_ids:
-            lines.extend([f"ATT&CK: {', '.join(str(i) for i in attack_ids)}"])
-        self.finding_detail.setPlainText("\n".join(lines))
+        self.finding_detail.setHtml(finding_html(self.current_findings[row]))
+        self.finding_position.setText(f"النتيجة {row + 1} من {len(self.current_findings)}")
 
     def task_done(self, result: Any, title: str) -> None:
         if getattr(self, "_busy_cursor_owned", False):
@@ -1661,25 +1964,51 @@ class UnifiedCockpitWindow(QMainWindow):
         self.set_activity_state("idle", "جاهز")
         self.scan_hint.setText(f"✅ اكتمل: {title} | النتائج: {len(findings)}")
         self.chat_display.append(f"✅ [اكتمل] {title} | النتائج: {len(findings)}")
+        self._say(summarize_findings(findings, title))
 
     def render_findings(self, findings: list) -> None:
-        self.current_findings = findings
-        self.table_findings.setRowCount(0)
-        self.finding_detail.clear()
-        if not findings:
-            self.finding_detail.setPlaceholderText("لم يسجل هذا الفحص نتائج أمنية.")
-        for finding in findings:
-            row = self.table_findings.rowCount()
-            self.table_findings.insertRow(row)
-            severity = str(finding.get("severity", "info")).upper()
-            sev_item = QTableWidgetItem(severity)
-            sev_item.setForeground(_sev_brush(severity))
-            confidence = finding.get("confidence")
-            confidence_text = f"{float(confidence):.0%}" if isinstance(confidence, (int, float)) else "—"
-            values = [sev_item, QTableWidgetItem(str(finding.get("title", ""))),
-                      QTableWidgetItem(str(finding.get("category", ""))), QTableWidgetItem(confidence_text)]
-            for col, cell in enumerate(values):
-                self.table_findings.setItem(row, col, cell)
+        self.all_findings = sort_findings(findings)
+        counts = {key: sum(1 for f in findings if _sev_key(f) == key) for key in SEV_ORDER}
+        if findings:
+            chips = "  ".join(
+                f"<span style='color:{severity_color(k)};font-weight:700'>{SEV_AR[k]} {counts[k]}</span>" for k in SEV_ORDER if counts[k])
+            self.findings_chips.setText(f"{len(findings)} نتيجة:  {chips}")
+        else:
+            self.findings_chips.setText("لا توجد نتائج في آخر فحص.")
+        self._apply_findings_filter()
+        self._update_score(findings)
+
+    def _apply_findings_filter(self) -> None:
+        wanted = self.sev_filter.currentData() if hasattr(self, "sev_filter") else "all"
+        shown = [f for f in self.all_findings if wanted in ("all", None) or _sev_key(f) == wanted]
+        self.current_findings = shown
+        table = self.table_findings
+        table.setUpdatesEnabled(False)
+        try:
+            table.setRowCount(len(shown))
+            self.finding_detail.clear()
+            self.finding_position.setText("")
+            for row, finding in enumerate(shown):
+                key = _sev_key(finding)
+                color = severity_color(key)
+                confidence = finding.get("confidence")
+                conf = f"{float(confidence):.0%}" if isinstance(confidence, (int, float)) else "—"
+                sev_item = table_cell(SEV_AR[key], color, center=True, bold=True, tip=SEV_WHY[key])
+                sev_item.setBackground(QColor(alpha(color, 34)))
+                title = str(finding.get("title", ""))
+                cells = [sev_item, table_cell(title, tip=str(finding.get("detail") or title)),
+                         table_cell(finding.get("category", ""), TEXT_SECONDARY), table_cell(conf, center=True)]
+                for col, cell in enumerate(cells):
+                    table.setItem(row, col, cell)
+        finally:
+            table.setUpdatesEnabled(True)
+        if not shown:
+            self.finding_detail.setPlaceholderText("لا توجد نتائج لعرضها بهذا الفلتر." if self.all_findings else "لم يسجل هذا الفحص نتائج أمنية.")
+        else:
+            table.selectRow(0)
+            table.setCurrentCell(0, 0)
+
+    def _update_score(self, findings: list) -> None:
         evaluation = RiskEngine.evaluate(findings)
         self.metric_labels["findings"].setText(str(len(findings)))
         self.metric_labels["score"].setText(f"{evaluation.get('score', 100)}/100")

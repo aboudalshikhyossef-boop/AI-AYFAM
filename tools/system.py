@@ -408,42 +408,114 @@ def list_upgradable_security_packages() -> dict:
     return result
 
 
-def analyze_logs() -> dict:
-    result = {"findings": [], "brute_force_ips": {}, "failed_logins": 0, "successful_root_logins": 0}
-    brute_ips = {}
-    for log_path in ["/var/log/auth.log", "/var/log/auth.log.1", "/var/log/syslog"]:
+def _read_log_sources() -> tuple[list[str], list[dict]]:
+    """يقرأ سجلات المصادقة من الملفات ثم journald، ويُبلغ عن كل مصدر (قُرئ / مرفوض / غير موجود)."""
+    lines, sources = [], []
+    for log_path in ("/var/log/auth.log", "/var/log/auth.log.1", "/var/log/secure", "/var/log/syslog"):
         if not os.path.exists(log_path):
             continue
-        out = safe_exec.run(["tail", "-n", "2000", log_path]).stdout
-        for line in out.split("\n"):
-            if "Failed password" in line or "authentication failure" in line:
-                result["failed_logins"] += 1
-                m = re.search(r"from\s+(\d+\.\d+\.\d+\.\d+)", line)
-                if m:
-                    ip = m.group(1)
-                    brute_ips[ip] = brute_ips.get(ip, 0) + 1
-            if "Accepted" in line and "root" in line:
-                result["successful_root_logins"] += 1
-                result["findings"].append({
-                    "severity": "high",
-                    "title": "دخول root ناجح عبر SSH!",
-                    "detail": line.strip()[:200],
-                    "fix": "راجع هذا الدخول.\nPermitRootLogin no في /etc/ssh/sshd_config",
-                })
+        res = safe_exec.run(["tail", "-n", "3000", log_path])
+        if res.ok and res.stdout:
+            chunk = res.stdout.split("\n")
+            lines.extend(chunk)
+            sources.append({"source": log_path, "status": "read", "lines": len(chunk)})
+        else:
+            denied = "denied" in (res.stderr or "").lower() or "permission" in (res.stderr or "").lower()
+            sources.append({"source": log_path, "status": "denied" if denied else "empty", "lines": 0})
+    if not any(s["status"] == "read" for s in sources):
+        res = safe_exec.run(["journalctl", "-u", "ssh", "-u", "sshd", "-t", "sudo", "--since", "-7d", "-n", "3000", "--no-pager", "-o", "short"], timeout=20)
+        text = res.stdout or ""
+        if res.ok and text and "No entries" not in text and "-- No" not in text[:20]:
+            chunk = text.split("\n")
+            lines.extend(chunk)
+            sources.append({"source": "journalctl (7 أيام)", "status": "read", "lines": len(chunk)})
+        else:
+            denied = "not seeing messages" in (res.stderr or "") or "permission" in (res.stderr or "").lower()
+            sources.append({"source": "journalctl", "status": "denied" if denied else "empty", "lines": 0})
+    return lines, sources
+
+
+def analyze_logs() -> dict:
+    result = {"findings": [], "brute_force_ips": {}, "failed_logins": 0, "successful_root_logins": 0, "sources": [],
+              "invalid_users": {}, "sudo_failures": 0, "new_users": []}
+    lines, sources = _read_log_sources()
+    result["sources"] = sources
+    read = [s for s in sources if s["status"] == "read"]
+    if not read:
+        result["findings"].append({
+            "severity": "medium", "category": "logs", "confidence": 0.9,
+            "title": "تعذّر قراءة سجلات المصادقة",
+            "detail": "لا توجد صلاحية لقراءة سجلات الدخول، لذلك لا يمكن القول إن النظام نظيف. المصادر المحاولة: "
+                      + "، ".join(f"{s['source']} ({'مرفوض' if s['status'] == 'denied' else 'فارغ'})" for s in sources),
+            "fix": "sudo usermod -aG adm,systemd-journal $USER   # ثم سجّل الخروج والدخول، أو شغّل التطبيق بصلاحيات sudo",
+        })
+        return result
+    brute_ips, invalid = {}, {}
+    for line in lines:
+        if "Failed password" in line or "authentication failure" in line:
+            result["failed_logins"] += 1
+            m = re.search(r"from\s+(\d+\.\d+\.\d+\.\d+)|rhost=(\d+\.\d+\.\d+\.\d+)", line)
+            if m:
+                ip = m.group(1) or m.group(2)
+                brute_ips[ip] = brute_ips.get(ip, 0) + 1
+        m = re.search(r"Invalid user (\S+) from (\d+\.\d+\.\d+\.\d+)", line)
+        if m:
+            invalid[m.group(1)] = invalid.get(m.group(1), 0) + 1
+        if "sudo:" in line and ("authentication failure" in line or "incorrect password" in line):
+            result["sudo_failures"] += 1
+        if "new user:" in line or "useradd[" in line:
+            result["new_users"].append(line.strip()[-120:])
+        if "Accepted" in line and "for root" in line:
+            result["successful_root_logins"] += 1
+            result["findings"].append({
+                "severity": "high", "category": "logs", "confidence": 0.9,
+                "title": "دخول root ناجح عبر SSH",
+                "detail": line.strip()[:200],
+                "fix": "راجع هذا الدخول وعطّل الدخول المباشر: PermitRootLogin no في /etc/ssh/sshd_config ثم sudo systemctl restart ssh",
+            })
     result["brute_force_ips"] = brute_ips
+    result["invalid_users"] = invalid
     for ip, count in brute_ips.items():
         if count >= 10:
             result["findings"].append({
-                "severity": "high" if count >= 50 else "medium",
-                "title": f"هجوم Brute Force: {ip} ({count} محاولة)",
-                "detail": f"محاولات فاشلة متعددة من {ip}",
+                "severity": "high" if count >= 50 else "medium", "category": "logs", "confidence": 0.9,
+                "title": f"هجوم تخمين كلمات مرور من {ip} ({count} محاولة)",
+                "detail": f"{count} محاولة دخول فاشلة من {ip} ضمن السجلات المقروءة.",
                 "fix": f"sudo ufw deny from {ip}\nsudo fail2ban-client set sshd banip {ip}",
+                "evidence": {"ip": ip, "attempts": count},
             })
+    if invalid:
+        top = sorted(invalid.items(), key=lambda x: -x[1])[:5]
+        result["findings"].append({
+            "severity": "medium" if sum(invalid.values()) >= 20 else "low", "category": "logs", "confidence": 0.85,
+            "title": f"محاولات بأسماء مستخدمين غير موجودة ({sum(invalid.values())})",
+            "detail": "مهاجمون يجرّبون أسماء شائعة مثل: " + "، ".join(f"{n} ({c})" for n, c in top),
+            "fix": "فعّل fail2ban وعطّل الدخول بكلمة المرور: PasswordAuthentication no",
+        })
+    if result["sudo_failures"] >= 3:
+        result["findings"].append({
+            "severity": "medium", "category": "logs", "confidence": 0.8,
+            "title": f"فشل صلاحيات sudo {result['sudo_failures']} مرة",
+            "detail": "محاولات رفع صلاحيات فاشلة؛ قد تكون أخطاء كتابة أو محاولة تخمين.",
+            "fix": "راجع من حاول: sudo grep 'sudo:' /var/log/auth.log | tail -n 20",
+        })
+    for entry in result["new_users"][-3:]:
+        result["findings"].append({
+            "severity": "medium", "category": "logs", "confidence": 0.7,
+            "title": "إنشاء مستخدم جديد في السجلات", "detail": entry,
+            "fix": "تأكد أنك أنشأت الحساب بنفسك؛ وإلا احذفه: sudo userdel -r <name>",
+        })
     if result["failed_logins"] > 5 and not brute_ips:
         result["findings"].append({
-            "severity": "low",
-            "title": f"محاولات تسجيل دخول فاشلة: {result['failed_logins']}",
-            "detail": "",
+            "severity": "low", "category": "logs", "confidence": 0.7,
+            "title": f"محاولات تسجيل دخول فاشلة: {result['failed_logins']}", "detail": "متفرقة وليست من عنوان واحد متكرر.",
             "fix": "sudo apt install fail2ban && sudo systemctl enable --now fail2ban",
+        })
+    if not result["findings"]:
+        result["findings"].append({
+            "severity": "info", "category": "logs", "confidence": 0.9,
+            "title": "لا نشاط مشبوه في السجلات المقروءة",
+            "detail": "حُلّل " + "، ".join(f"{s['source']} ({s['lines']} سطر)" for s in read) + ". لا تخمين كلمات مرور ولا دخول root ولا مستخدمين جدد.",
+            "fix": "لا إجراء. أعد الفحص دورياً.",
         })
     return result

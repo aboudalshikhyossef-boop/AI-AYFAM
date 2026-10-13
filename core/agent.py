@@ -38,6 +38,9 @@ from engine.correlation import CorrelationEngine, SmartRemediationAdvisor
 from utils import safe_exec
 from engine.gemini_cti import GeminiCTIError, GeminiThreatClient, LocalThreatMatcher, ThreatHistory, markdown_report, resolve_api_key
 from engine.ai_assistant import AssistantConfig, AssistantError, build_provider
+from brain.conversation import ConversationEngine, ROUTE_THRESHOLD
+from brain.learning import PhraseMemory
+from tools import websearch
 
 
 def _run(cmd, timeout=30, sudo=False):
@@ -70,6 +73,9 @@ class AYFAMAgent(AgentV5Mixin):
         self.nlp        = NLPEngine(knowledge_base=self.kb)
         self.ctx        = ContextEngine()
         self.healer     = SelfHealEngine(knowledge_base=self.kb, ui=ui)
+        self.phrases    = PhraseMemory(self.kb)
+        self.chat_engine = ConversationEngine(self.kb, self.nlp, self.phrases)
+        self.last_answer_was_gap = False
 
         # ── Conversation state ──
         self._chat_history = []   # [(role, msg)]
@@ -163,8 +169,20 @@ class AYFAMAgent(AgentV5Mixin):
             if client:
                 client.close()
 
-    def ask_ai_or_local(self, prompt: str) -> str:
-        """استشارة OpenAI أو Gemini بأمان، ثم التراجع إلى المحرك المحلي."""
+    def ask_ai_or_local(self, prompt: str, history: list | None = None) -> str:
+        """استشارة OpenAI أو Gemini بأمان، ثم التراجع إلى المحرك المحلي.
+
+        history: آخر رسائل المحادثة [(role, text)] ليفهم الذكاء السياق ويصحح المفاهيم الخاطئة.
+        """
+        self.last_answer_was_gap = False
+        persona = (
+            "أنت AI AYFAM، مساعد أمن معلومات على لينكس. أجب بلغة المستخدم بإيجاز ودقة. "
+            "فكّر قبل الجواب: افهم قصد المستخدم، وإن كان في كلامه مفهوم خاطئ فصححه بلطف مع السبب. "
+            "إن كان السؤال غامضاً اسأل سؤالاً توضيحياً واحداً. لا تختلق معلومات ولا تدّعِ أنك نفذت فحصاً لم يُنفَّذ."
+        )
+        if history:
+            recent = "\n".join(f"{'المستخدم' if role == 'user' else 'المساعد'}: {text[:300]}" for role, text in history[-6:])
+            prompt = f"المحادثة السابقة:\n{recent}\n\nالسؤال الحالي: {prompt}"
         config = AssistantConfig(
             provider=self.settings.get("ai_provider", "auto"),
             openai_api_key=self.settings.get("openai_api_key", ""),
@@ -176,7 +194,7 @@ class AYFAMAgent(AgentV5Mixin):
         try:
             provider = build_provider(config)
             if provider:
-                answer = provider.ask(prompt, system_context=f"Hostname: {self._hostname}; language: {self.lang}")
+                answer = provider.ask(prompt, system_context=f"{persona} Hostname: {self._hostname}; language: {self.lang}")
                 if answer:
                     return f"🧠 [{provider.name.title()} AI Agent]\n\n{answer}"
         except AssistantError as exc:
@@ -186,7 +204,9 @@ class AYFAMAgent(AgentV5Mixin):
         # Local Offline Brain Fallback
         try:
             explanation = self.nlp.explain(prompt)
-            if explanation and len(explanation.strip()) > 30:
+            if explanation and "لم أجد شرحاً محدداً" in explanation:
+                pass  # يُسجَّل كفجوة فقط إن لم يتوفر دليل محلي أدناه
+            elif explanation and len(explanation.strip()) > 30:
                 return f"🛡️ [المحرك المحلي - بدون إنترنت]\n\n{explanation}"
         except Exception:
             pass
@@ -219,10 +239,12 @@ class AYFAMAgent(AgentV5Mixin):
                 "sudo ufw enable"
             )
 
+        self.phrases.record_gap(prompt)
+        self.last_answer_was_gap = True
         return (
-            "🛡️ [الوكيل المحلي]: تم استيعاب سؤالك. للحصول على تحليل موسّع بالذكاء التوليدي السحابي، "
-            "تأكد من ضبط مفتاح OpenAI أو Gemini في إعدادات النظام، أو شغّل أوامر الفحص والتدقيق: "
-            "'فحص النظام'، 'فحص الشبكة'، 'فحص المنافذ'."
+            "🛡️ [الوكيل المحلي]: لا أملك معلومات كافية عن هذا الموضوع بعد. "
+            "يمكنني البحث عنه الآن في الإنترنت (Google وويكيبيديا) ثم تقرر أنت هل أحفظه، "
+            "أو أضف مفتاح Gemini في الإعدادات للحصول على إجابة مباشرة."
         )
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -320,9 +342,16 @@ class AYFAMAgent(AgentV5Mixin):
                 self.kb.save_message("user", raw_input)
                 self._chat_history.append(("user", raw_input))
 
+                # تعلّم المعنى / كلمات متعلَّمة / تصحيح مفاهيم: ردّ فوري مختصر
+                direct = self.chat_engine.direct_reply(raw_input)
+                if direct:
+                    self.ui.chat_agent(direct, intent="LEARN")
+                    self.kb.save_message("agent", direct, intent="phrase_rule")
+                    continue
+
                 # Parse with NLP — augment with recent context for follow-up understanding
                 self.ui.chat_thinking(self._t("أحلل طلبك...", "Analyzing..."))
-                cmd = self.nlp.parse(raw_input)
+                cmd = self.nlp.parse(self.chat_engine.process(raw_input).text)
                 # Carry forward entities from previous turn when current input lacks them
                 # (lets "now scan it" after an IP mention reuse the IP)
                 if self._last_entities:
@@ -363,7 +392,7 @@ class AYFAMAgent(AgentV5Mixin):
             self.ui.info(f"[NLP] intent={intent} score={score:.2f} entities={entities}")
 
         # Low confidence — ask for clarification
-        if not intent or score < 0.2:
+        if not intent or score < ROUTE_THRESHOLD:
             response = self._t(
                 f"لم أفهم تماماً ما تقصده. هل تريد:\n"
                 f"  • فحص الشبكة؟  • فحص USB؟  • البحث عن ثغرة؟  • مساعدة؟\n"
@@ -535,17 +564,10 @@ class AYFAMAgent(AgentV5Mixin):
             fact = self.ui.ask(self._t("ماذا تريد أن تعلّمني؟", "What should I learn?"))
         if not fact:
             return
-        key = self.kb.teach_fact(fact)
-        response = self._t(
-            f"✅ تم! سأتذكر هذا:\n  \"{fact}\"\n\n"
-            f"سأستخدمه في أي شرح أو تشخيص لاحق ذي صلة، ويمكنك رؤية كل ما "
-            f"علّمتني إياه عبر قول 'ماذا تعلمت'.",
-            f"✅ Got it! I'll remember:\n  \"{fact}\"\n\n"
-            f"I'll use it in future relevant explanations, and you can see "
-            f"everything you've taught me by asking 'what have you learned'."
-        )
+        self.kb.teach_fact(fact)
+        response = self._t("تم حفظ المعلومة وسأستخدمها عند الحاجة.", "Saved. I will use it when relevant.")
         self.ui.chat_agent(response, intent="TEACH")
-        self.kb.save_message("agent", f"[teach] {fact}", intent="teach")
+        self.kb.save_message("agent", "[teach] saved", intent="teach")
 
     def _show_learned(self):
         self.ui.section(self._t("🧠 ماذا تعلمت حتى الآن", "🧠 What I've learned so far"))
@@ -561,6 +583,14 @@ class AYFAMAgent(AgentV5Mixin):
                 [self._t("مقاطع مفهرسة من المكتبة","Indexed library chunks"), summary["library_chunks"]],
             ]
         )
+
+        rules = self.phrases.list_rules()
+        if rules:
+            self.ui.subsection(self._t("كلمات تعلمتها (ردود مختصرة):", "Words I learned (short replies):"))
+            self.ui.print_table(
+                [self._t("عندما تقول", "When you say"), self._t("أجيب", "I answer"), self._t("مرات الاستخدام", "Uses")],
+                [[r["trigger_raw"], r["reply"], r["hits"]] for r in rules[:15]],
+            )
 
         taught = self.kb.get_taught_facts(limit=10)
         if taught:
@@ -1097,8 +1127,8 @@ You can type any of these or anything similar in plain language:
         self.ui.info(self._t(f"الأداة: {result['tool_used']} | مفتوح: {len(open_ports)}",
                              f"Tool: {result['tool_used']} | Open: {len(open_ports)}"))
         if open_ports:
-            rows = [[p["port"], p["state"], p["service"], p["risk"]] for p in open_ports]
-            self.ui.print_table(["Port","State","Service","Risk"], rows,
+            rows = [[p["port"], p["service"], p["risk"], p.get("exposure") or "—", p.get("banner") or "—"] for p in open_ports]
+            self.ui.print_table(["Port","Service","Risk","Exposure","Banner"], rows,
                                 title=self._t("المنافذ المفتوحة","Open Ports"))
 
             # Explain any suspicious ports from KB
@@ -1578,26 +1608,98 @@ You can type any of these or anything similar in plain language:
     #  WEB SEARCH
     # ─────────────────────────────────────────────────────────────────────────
 
+    def smart_search(self, raw_query: str):
+        """بحث دقيق (Google + ويكيبيديا) بعبارة المستخدم الكاملة؛ يعيد SearchReport للواجهة."""
+        return websearch.search(raw_query, self.settings)
+
     def _web_search(self, query: str):
         if not query:
             query = self.ui.ask(self._t("ماذا تريد البحث عنه؟","What to search for?"))
+        if not query:
+            return None
         self.ui.section(self._t(f"بحث: {query}",f"Search: {query}"))
-        with self.ui.spinner(self._t("البحث في عدة مصادر (DuckDuckGo + Wikipedia)...","Searching multiple sources (DuckDuckGo + Wikipedia)...")):
+        report = self.smart_search(query)
+        for name, status in report.engines.items():
+            self.ui.info(f"  {name}: {status}")
+        if not report.online:
+            self.ui.warning(self._t("لا يوجد اتصال بالإنترنت.", "No internet connection."))
+            return report
+        if report.answer:
+            self.ui.raw(f"\n{report.answer}")
+        for i, hit in enumerate(report.hits, 1):
+            self.ui.info(f"\n  [{i}] {hit.title}  [dim]({hit.engine_label} · صلة {int(hit.relevance * 100)}%)[/dim]")
+            if hit.snippet:
+                self.ui.raw(f"      {hit.snippet[:160]}")
+            self.ui.raw(f"      {hit.url}")
+        if not report.ok:
+            self.ui.warning(self._t(f"لا نتائج مرتبطة بـ «{report.query}».", f"No relevant results for '{report.query}'."))
+            return report
+        try:
+            choice = self.ui.ask(self._t("فتح رابط؟ (رقم أو Enter)","Open URL? (# or Enter)"), default="")
+            if choice.isdigit() and 0 <= int(choice)-1 < len(report.hits):
+                web.open_browser(report.hits[int(choice)-1].url)
+        except Exception:
             pass
-        results = web.web_search(query)
-        if not results or "error" in results[0]:
-            msg = results[0]["error"] if results else self._t("لا نتائج","No results")
-            self.ui.warning(msg)
-            return
-        for i, r in enumerate(results,1):
-            self.ui.info(f"\n  [{i}] {r.get('title','')}  [dim]({r.get('source','')})[/dim]")
-            if r.get("snippet"):
-                self.ui.raw(f"      {r['snippet'][:100]}")
-            if r.get("url"):
-                self.ui.raw(f"      🔗 {r['url']}")
-        choice = self.ui.ask(self._t("فتح رابط؟ (رقم أو Enter)","Open URL? (# or Enter)"), default="")
-        if choice.isdigit() and 0 <= int(choice)-1 < len(results) and results[int(choice)-1].get("url"):
-            web.open_browser(results[int(choice)-1]["url"])
+        return report
+
+    # ─────────────────────────────────────────────────────────────────────────
+    #  LEARN ONLINE — يبحث عمّا ينقصه، يكتب ملفاً للمراجعة، ولا يعتمد شيئاً دون موافقة
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def find_learning_gaps(self, limit: int = 3) -> list[str]:
+        """ما ينقصني: أسئلة لم أجد لها جواباً أولاً، ثم أدوات معروفة لا أملك لها أمثلة في كتبي."""
+        topics = list(self.phrases.top_gaps(limit))
+        if len(topics) < limit:
+            from brain.tech_extractor import KNOWN_TOOLS
+
+            for tool in KNOWN_TOOLS:
+                if len(topics) >= limit:
+                    break
+                try:
+                    if not self.kb.get_tool_knowledge(tool, limit=1):
+                        topics.append(tool)
+                except Exception:
+                    continue
+        return topics[:limit]
+
+    def prepare_learning(self, topic: str = "") -> dict:
+        """يتصل بالإنترنت تلقائياً ويجمع ملف مراجعة لكل موضوع. لا يحفظ في المعرفة."""
+        topics = [topic] if topic else self.find_learning_gaps()
+        inferred = not topic
+        if not topics:
+            return {"online": True, "topics": [], "inferred": inferred, "items": []}
+        if not websearch.check_connectivity():
+            return {"online": False, "topics": topics, "inferred": inferred, "items": []}
+        folder = self.settings.get("report_dir", os.path.expanduser("~/ayfam-reports"))
+        items = []
+        for name in topics:
+            report = websearch.search(name, self.settings, limit=5, deep=True)
+            path = websearch.write_learning_file(name, report, folder) if report.ok else None
+            items.append({"topic": name, "report": report, "path": str(path) if path else ""})
+        return {"online": True, "topics": topics, "inferred": inferred, "items": items}
+
+    def commit_learning(self, items: list[dict]) -> list[dict]:
+        """بعد موافقة المستخدم فقط: يفهرس الملفات في المكتبة ويغلق فجوات المعرفة."""
+        saved = []
+        for item in items:
+            path = item.get("path")
+            if not path or not os.path.exists(path):
+                continue
+            result = library.ingest_file(path, self.kb, title=f"إنترنت: {item['topic']}")
+            self.phrases.resolve_gap(item["topic"])
+            self.kb.log_update("web_learning", 1, f"learned {item['topic']}")
+            saved.append({"topic": item["topic"], "chunks": result.get("chunks", 0), "path": path})
+        return saved
+
+    @staticmethod
+    def discard_learning(items: list[dict]) -> int:
+        removed = 0
+        for item in items:
+            path = item.get("path")
+            if path and os.path.exists(path):
+                os.remove(path)
+                removed += 1
+        return removed
 
     # ─────────────────────────────────────────────────────────────────────────
     #  IP REPUTATION
