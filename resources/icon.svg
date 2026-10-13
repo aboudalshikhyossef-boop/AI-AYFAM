@@ -1,5 +1,26 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="128" height="128">
-  <path fill="#06b6d4" d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 2.18l7 3.12v4.7c0 4.67-3.13 9.02-7 10.15-3.87-1.13-7-5.48-7-10.15V6.3l7-3.12z"/>
-  <path fill="#10b981" d="M12 4.5l-5 2.2v4.3c0 3.6 2.3 6.9 5 7.8 2.7-.9 5-4.2 5-7.8V6.7l-5-2.2z"/>
-  <circle cx="12" cy="11" r="2.5" fill="#f8fafc"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="128" height="128">
+  <defs>
+    <linearGradient id="ringGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#22d3ee"/>
+      <stop offset="100%" stop-color="#a78bfa"/>
+    </linearGradient>
+    <linearGradient id="coreGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#22d3ee" stop-opacity="0.4"/>
+      <stop offset="100%" stop-color="#a78bfa" stop-opacity="0.5"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Rotating dashed outer ring -->
+  <circle cx="50" cy="50" r="46" fill="none" stroke="url(#ringGrad)" stroke-width="1.5"
+    stroke-dasharray="12 8" opacity="0.6"/>
+
+  <!-- Hexagon outline -->
+  <polygon points="50,8 88,30 88,70 50,92 12,70 12,30" fill="none" stroke="url(#ringGrad)" stroke-width="1" opacity="0.35"/>
+
+  <!-- Core shield -->
+  <path d="M50 22 L70 32 V50 C70 65 61 73 50 78 C39 73 30 65 30 50 V32 Z"
+    fill="url(#coreGrad)" stroke="url(#ringGrad)" stroke-width="1.5"/>
+
+  <!-- Checkmark -->
+  <path d="M42 50 L48 56 L60 42" fill="none" stroke="#f8fafc" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>
