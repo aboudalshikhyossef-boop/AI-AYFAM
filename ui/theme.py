@@ -91,6 +91,12 @@ QPushButton#navButton:checked {{
     font-weight: 700;
 }}
 QPushButton#navButton:checked:hover {{ background: #39d39f2d; }}
+QLabel#navGroupLabel {{ color: {TEXT_MUTED}; font-size: 9px; font-weight: 800; padding: 14px 8px 4px; letter-spacing: 1px; }}
+QPushButton#assistantNavButton {{
+    background: #39d39f12; color: {ACCENT}; border: 1px solid #39d39f55;
+    border-radius: 9px; padding: 10px 12px; font-weight: 700; margin-top: 12px;
+}}
+QPushButton#assistantNavButton:hover {{ background: #39d39f24; border-color: {ACCENT}; }}
 
 /* App bar */
 QFrame#headerBar {{
@@ -102,6 +108,13 @@ QLabel#brandMark {{
     background: {ACCENT}; color: {BG_BASE}; border-radius: 10px;
     font-size: 18px; font-weight: 900; padding: 7px 10px;
 }}
+QFrame#missionBanner {{
+    background: qlineargradient(x1:0,y1:0,x2:1,y2:0,stop:0 #122b3a,stop:0.58 #102538,stop:1 #132238);
+    border: 1px solid #2e5365; border-radius: 14px;
+}}
+QLabel#missionTitle {{ color: {TEXT_PRIMARY}; font-size: 23px; font-weight: 900; padding-top: 1px; }}
+QPushButton#quietAction {{ background: #ffffff0b; border-color: #ffffff20; color: {TEXT_PRIMARY}; }}
+QPushButton#quietAction:hover {{ background: #ffffff18; border-color: #ffffff45; }}
 
 /* Surfaces */
 QFrame#card {{

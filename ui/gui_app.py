@@ -160,21 +160,38 @@ class UnifiedCockpitWindow(QMainWindow):
         sub.setStyleSheet(f"color: {ACCENT}; font-size: 10px; font-weight: 700; padding: 0 6px 20px 6px;")
         sidebar_layout.addWidget(sub)
 
-        # Nav buttons with SVG icons
+        # Navigation grouped by operator intent rather than by implementation detail.
         self.nav_button_map: dict[str, QPushButton] = {}
         icons_dir = ROOT_DIR / "resources" / "icons"
-        for key, label in NAV_ITEMS:
-            btn = QPushButton(f"  {label}")
-            btn.setObjectName("navButton")
-            btn.setCheckable(True)
-            icon_path = icons_dir / f"{key}.svg"
-            if icon_path.exists():
-                btn.setIcon(QIcon(str(icon_path)))
-                btn.setIconSize(QSize(18, 18))
-            btn.clicked.connect(lambda checked=False, k=key: self.switch_page(k))
-            sidebar_layout.addWidget(btn)
-            self.nav_button_map[key] = btn
-            self.nav_buttons.append(btn)
+        nav_groups = [
+            ("المراقبة", ("dashboard", "scans", "usb")),
+            ("التحليل والاستجابة", ("tools", "chat", "playbooks")),
+            ("المعرفة والتقارير", ("library", "reports")),
+            ("النظام", ("settings",)),
+        ]
+        labels = dict(NAV_ITEMS)
+        for group_title, keys in nav_groups:
+            group_label = QLabel(group_title.upper())
+            group_label.setObjectName("navGroupLabel")
+            sidebar_layout.addWidget(group_label)
+            for key in keys:
+                btn = QPushButton(f"  {labels[key]}")
+                btn.setObjectName("navButton")
+                btn.setCheckable(True)
+                icon_path = icons_dir / f"{key}.svg"
+                if icon_path.exists():
+                    btn.setIcon(QIcon(str(icon_path)))
+                    btn.setIconSize(QSize(18, 18))
+                btn.clicked.connect(lambda checked=False, k=key: self.switch_page(k))
+                sidebar_layout.addWidget(btn)
+                self.nav_button_map[key] = btn
+                self.nav_buttons.append(btn)
+
+        assistant_btn = QPushButton("  افتح المساعد الذكي")
+        assistant_btn.setObjectName("assistantNavButton")
+        assistant_btn.setIcon(QIcon(str(icons_dir / "chat.svg")))
+        assistant_btn.clicked.connect(lambda: self.switch_page("chat"))
+        sidebar_layout.addWidget(assistant_btn)
 
         sidebar_layout.addStretch()
 
@@ -321,6 +338,36 @@ class UnifiedCockpitWindow(QMainWindow):
         layout = QVBoxLayout(self.page_dashboard)
         layout.setContentsMargins(SP_XL, SP_LG, SP_XL, SP_LG)
         layout.setSpacing(SP_LG)
+
+        # Mission brief: orient the operator before showing telemetry.
+        mission = QFrame(objectName="missionBanner")
+        mission_layout = QHBoxLayout(mission)
+        mission_layout.setContentsMargins(SP_XL, SP_LG, SP_XL, SP_LG)
+        mission_layout.setSpacing(SP_LG)
+        mission_copy = QVBoxLayout()
+        mission_copy.setSpacing(SP_XS)
+        mission_kicker = QLabel("حالة البيئة  /  LOCAL DEFENSE POSTURE")
+        mission_kicker.setObjectName("eyebrow")
+        mission_copy.addWidget(mission_kicker)
+        mission_title = QLabel("اعرف ما يحدث قبل أن تتصرف")
+        mission_title.setObjectName("missionTitle")
+        mission_copy.addWidget(mission_title)
+        mission_note = QLabel("مراقبة حية، فحوصات قابلة للتنفيذ، وقرارات موثقة في مكان واحد.")
+        mission_note.setObjectName("sectionSubtitle")
+        mission_copy.addWidget(mission_note)
+        mission_layout.addLayout(mission_copy, 1)
+        mission_actions = QVBoxLayout()
+        mission_actions.setSpacing(SP_SM)
+        quick_scan = QPushButton("بدء فحص شامل")
+        quick_scan.setObjectName("primary")
+        quick_scan.clicked.connect(lambda: self.run_background_task(self.agent._full_scan, "الفحص الشامل"))
+        mission_actions.addWidget(quick_scan)
+        ask_ai = QPushButton("اسأل المساعد")
+        ask_ai.setObjectName("quietAction")
+        ask_ai.clicked.connect(lambda: self.switch_page("chat"))
+        mission_actions.addWidget(ask_ai)
+        mission_layout.addLayout(mission_actions)
+        layout.addWidget(mission)
 
         # ── Metric Cards Row ──
         metrics = QGridLayout()
