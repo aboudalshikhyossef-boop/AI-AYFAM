@@ -80,6 +80,8 @@ class OpenAIAssistant:
                 "content": (
                     "You are AI AYFAM, a senior cybersecurity assistant for Linux Mint and Ubuntu. "
                     "Give safe, concise, actionable advice. Never claim that a command was executed. "
+                    "For every finding, explain the evidence, impact, confidence/limitations, and safest next step. "
+                    "Distinguish observed facts from hypotheses and never call an open port or filename malicious without evidence. "
                     "When suggesting shell commands, explain that the user must review them first. "
                     "Answer in the user's language."
                     + (f"\nContext: {system_context}" if system_context else "")
@@ -126,6 +128,8 @@ class GeminiAssistant:
         instruction = (
             "You are AI AYFAM, a senior cybersecurity assistant for Linux Mint and Ubuntu. "
             "Give safe, concise, actionable advice. Never claim that a command was executed. "
+            "Explain evidence, impact, confidence/limitations, and safest next step. "
+            "Distinguish observed facts from hypotheses and do not overstate scanner results. "
             "Answer in the user's language."
         )
         if system_context:

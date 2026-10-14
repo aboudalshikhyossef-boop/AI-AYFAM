@@ -129,6 +129,17 @@
     </div>
   }
 
+  @if (state.scanError()) {
+    <div class="mx-4 mt-3 rounded-xl border border-amber-500/30 bg-amber-950/30 px-4 py-3 text-xs text-amber-200 flex items-start gap-2" role="alert">
+      <mat-icon class="text-amber-400 shrink-0">info</mat-icon>
+      <div>
+        <strong>@if (state.locale() === 'ar') { تعذر تنفيذ الفحص الفعلي } @else { Real scan unavailable }</strong>
+        <p class="mt-0.5 text-amber-200/80">{{ state.scanError() }}</p>
+        <p class="mt-1 text-amber-200/70">@if (state.locale() === 'ar') { لم يتم استبدال النتائج الحالية بنتائج وهمية. شغّل خادم API ثم أعد المحاولة. } @else { Existing findings were kept; start the API server and retry. }</p>
+      </div>
+    </div>
+  }
+
   <!-- Main Cockpit Layout: Sidebar + Main Stage -->
   <div class="flex-1 flex overflow-hidden">
     <!-- Sidebar Navigation -->
@@ -575,6 +586,10 @@
                   Port scan, SUID privileges, secret leaks, SSH hardening, and UFW firewall status.
                 }
               </p>
+              <div class="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-cyan-500/20 bg-cyan-500/10 px-2.5 py-1 text-[11px] text-cyan-300">
+                <mat-icon class="text-sm">verified</mat-icon>
+                @if (state.scanSource() === 'local-scanners') { @if (state.locale() === 'ar') { نتائج من الفاحصات المحلية الفعلية } @else { Results from real local scanners } } @else { @if (state.locale() === 'ar') { بيانات أولية — شغّل فحصاً فعلياً } @else { Initial data — run a real scan } }
+              </div>
             </div>
 
             <!-- Severity Filter Buttons -->
