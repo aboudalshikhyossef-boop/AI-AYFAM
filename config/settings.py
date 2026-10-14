@@ -33,7 +33,7 @@ DEFAULT_SETTINGS = {
     "google_cse_cx": "",   # معرّف محرك البحث المخصص (cx)
     "ai_provider": "auto",  # auto | openai | gemini | local
     "openai_model": "gpt-4o-mini",
-    "gemini_model": "gemini-2.5-flash",
+    "gemini_model": "gemini-3.8-flash",
     "auto_fix": False,
     "report_dir": str(Path.home() / "ayfam-reports"),
     "cve_cache_hours": 6,
@@ -77,6 +77,8 @@ class Settings:
                     if not isinstance(saved, dict):
                         raise ValueError("configuration root must be an object")
                     self._data.update(saved)
+                    if self._data.get("gemini_model") in {"gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-flash-latest"}:
+                        self._data["gemini_model"] = "gemini-3.8-flash"
             except (json.JSONDecodeError, OSError) as e:
                 # Don't silently lose user config (including github_token).
                 # Back up the bad file so the user can recover it manually.

@@ -38,6 +38,7 @@ from engine.correlation import CorrelationEngine, SmartRemediationAdvisor
 from utils import safe_exec
 from engine.gemini_cti import GeminiCTIError, GeminiThreatClient, LocalThreatMatcher, ThreatHistory, markdown_report, resolve_api_key
 from engine.ai_assistant import AssistantConfig, AssistantError, build_provider
+from engine.gemini_rate_limit import DEFAULT_GEMINI_MODEL, gemini_model_name
 from brain.conversation import ConversationEngine, ROUTE_THRESHOLD
 from brain.learning import PhraseMemory
 from tools import websearch
@@ -134,7 +135,7 @@ class AYFAMAgent(AgentV5Mixin):
             self.ui.info(self._t("جلب معلومات تهديدات عامة من المصادر الموثوقة...", "Fetching public threat intelligence from authoritative sources..."))
             client = GeminiThreatClient(key)
             feed = client.fetch_threats(window_hours=window_hours)
-            model = client.selected_model.short_name
+            model = gemini_model_name(os.getenv("GEMINI_MODEL", DEFAULT_GEMINI_MODEL))
             self.ui.info(self._t("مطابقة النتائج مع الجهاز محلياً فقط...", "Matching results against this host locally only..."))
             matched = LocalThreatMatcher().match(feed)
             history = ThreatHistory()
@@ -188,7 +189,7 @@ class AYFAMAgent(AgentV5Mixin):
             openai_api_key=self.settings.get("openai_api_key", ""),
             openai_model=self.settings.get("openai_model", "gpt-4o-mini"),
             gemini_api_key=self.settings.get("gemini_api_key", ""),
-            gemini_model=self.settings.get("gemini_model", "gemini-2.5-flash"),
+            gemini_model=gemini_model_name(self.settings.get("gemini_model", DEFAULT_GEMINI_MODEL)),
             timeout=25.0,
         )
         try:

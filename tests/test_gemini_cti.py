@@ -124,7 +124,7 @@ class GeminiCTITests(unittest.TestCase):
         self.assertFalse(_is_text_research_model("gemini-2.5-flash-preview-tts"))
         self.assertTrue(_is_text_research_model("gemini-2.5-flash"))
 
-    def test_discovery_prefers_free_tier_search_models_over_gemini_3(self):
+    def test_discovery_excludes_retired_models_and_selects_gemini_3(self):
         class Response:
             status_code = 200
             def json(self):
@@ -136,7 +136,7 @@ class GeminiCTITests(unittest.TestCase):
         client = GeminiThreatClient("test-key")
         with patch("engine.gemini_cti.requests.get", return_value=Response()):
             models = client.discover_models()
-        self.assertEqual([model.short_name for model in models], ["gemini-3.8-flash", "gemini-2.5-flash", "gemini-2.5-flash-lite"])
+        self.assertEqual([model.short_name for model in models], ["gemini-3.8-flash"])
         self.assertEqual(client.selected_model.short_name, "gemini-3.8-flash")
 
     def test_invalid_listed_model_stops_without_fallback_burst(self):

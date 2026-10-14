@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from typing import Any, Mapping, Protocol
 
 from utils import http_client
-from engine.gemini_rate_limit import compact_text, wait_for_slot
+from engine.gemini_rate_limit import DEFAULT_GEMINI_MODEL, compact_text, gemini_model_name, wait_for_slot
 
 
 class AssistantError(RuntimeError):
@@ -32,7 +32,7 @@ class AssistantConfig:
     openai_api_key: str = ""
     openai_model: str = "gpt-4o-mini"
     gemini_api_key: str = ""
-    gemini_model: str = "gemini-2.5-flash"
+    gemini_model: str = DEFAULT_GEMINI_MODEL
     timeout: float = 30.0
 
 
@@ -116,9 +116,9 @@ class OpenAIAssistant:
 class GeminiAssistant:
     name = "gemini"
 
-    def __init__(self, api_key: str, model: str = "gemini-2.5-flash", timeout: float = 30.0):
+    def __init__(self, api_key: str, model: str = DEFAULT_GEMINI_MODEL, timeout: float = 30.0):
         self.api_key = _text(api_key)
-        self.model = _text(model) or "gemini-2.5-flash"
+        self.model = gemini_model_name(model)
         self.timeout = timeout
         if not self.api_key:
             raise AssistantError("Gemini API key is missing")

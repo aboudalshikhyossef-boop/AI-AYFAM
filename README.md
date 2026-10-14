@@ -74,10 +74,9 @@ sudo ayfam --gemini-models
 sudo ayfam --gemini-threats
 ```
 
-يستخدم AI AYFAM افتراضياً `gemini-2.5-flash` ثم `gemini-2.5-flash-lite` مع أداة
-`google_search_retrieval`، لأن بحث Google متاح لهذين النموذجين على Free tier حتى
-500 طلب grounded يومياً (الحد مشترك بينهما). أما `gemini-3.8-flash` فتوليد النص
-فيه مجاني، لكن Grounding with Google Search غير متاح على Free tier ويتطلب Paid tier.
+يستخدم AI AYFAM افتراضياً `gemini-3.8-flash` مع أداة بحث Google المتاحة للنموذج،
+ويتم ترحيل الإعدادات القديمة تلقائياً من النماذج المتوقفة إلى هذا النموذج. يمكن
+تغيير النموذج عبر `GEMINI_MODEL`، لكن لا يُنصح باستخدام اسم نموذج متقاعد.
 
 يدعم البرنامج `GOOGLE_API_KEY` و`GEMINI_API_KEY`؛ وتتقدم قيم البيئة على المفتاح
 المحفوظ في الإعدادات. عند التشغيل عبر `sudo`، يجب أن تكون قيمة البيئة متاحة
@@ -140,7 +139,7 @@ export OPENAI_API_KEY="..."
 export GEMINI_API_KEY="..."
 export AI_PROVIDER=auto       # auto | openai | gemini | local
 export OPENAI_MODEL=gpt-4o-mini
-export GEMINI_MODEL=gemini-2.5-flash
+export GEMINI_MODEL=gemini-3.8-flash
 
 # طرفية منفصلة
 python3 api_server.py

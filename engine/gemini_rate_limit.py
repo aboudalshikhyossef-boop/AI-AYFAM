@@ -1,10 +1,4 @@
-"""Shared Gemini quota guard.
-
-The guard is process-safe: all Gemini callers use one lock/timestamp file under
-~/.ayfam, so the 30-second spacing also applies when the GUI, CLI, and search
-workers run at the same time. The first request is immediate; later requests
-sleep until the minimum interval has elapsed.
-"""
+"""Shared Gemini quota guard and model policy."""
 from __future__ import annotations
 
 import hashlib
@@ -20,6 +14,14 @@ except ImportError:  # pragma: no cover - Linux is the supported runtime
     fcntl = None
 
 DEFAULT_MIN_INTERVAL = 30.0
+DEFAULT_GEMINI_MODEL = "gemini-3.8-flash"
+LEGACY_GEMINI_MODELS = {"gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-flash-latest"}
+
+
+def gemini_model_name(value: str | None) -> str:
+    """Return a supported model and transparently migrate retired defaults."""
+    model = str(value or "").strip()
+    return DEFAULT_GEMINI_MODEL if not model or model in LEGACY_GEMINI_MODELS else model
 
 
 def _interval() -> float:
@@ -39,11 +41,7 @@ def _state_path(api_key: str) -> Path:
 
 def wait_for_slot(api_key: str, *, clock: Callable[[], float] = time.time,
                   sleeper: Callable[[float], None] = time.sleep) -> float:
-    """Reserve the next Gemini slot and return the seconds waited.
-
-    A file lock is held while reading, waiting, and writing the timestamp. This
-    serializes callers across threads and separate Python processes.
-    """
+    """Reserve the next Gemini slot; calls sharing a key are serialized."""
     path = _state_path(api_key)
     lock_path = path.with_suffix(".lock")
     interval = _interval()
@@ -58,8 +56,7 @@ def wait_for_slot(api_key: str, *, clock: Callable[[], float] = time.time,
                 last = float(state.get("last_request", 0.0))
             except (OSError, ValueError, TypeError, json.JSONDecodeError):
                 last = 0.0
-            now = clock()
-            remaining = max(0.0, interval - (now - last))
+            remaining = max(0.0, interval - (clock() - last))
             if remaining:
                 sleeper(remaining)
                 waited = remaining

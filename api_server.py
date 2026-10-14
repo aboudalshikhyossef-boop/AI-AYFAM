@@ -13,6 +13,7 @@ from typing import Any, Callable
 
 from config.settings import Settings
 from engine.ai_assistant import AssistantConfig, AssistantError, build_provider
+from engine.gemini_rate_limit import DEFAULT_GEMINI_MODEL, gemini_model_name
 from tools import network, system
 
 
@@ -169,7 +170,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                 openai_api_key=settings.get("openai_api_key", ""),
                 openai_model=os.getenv("OPENAI_MODEL", settings.get("openai_model", "gpt-4o-mini")),
                 gemini_api_key=settings.get("gemini_api_key", ""),
-                gemini_model=os.getenv("GEMINI_MODEL", settings.get("gemini_model", "gemini-2.5-flash")),
+                gemini_model=gemini_model_name(os.getenv("GEMINI_MODEL", settings.get("gemini_model", DEFAULT_GEMINI_MODEL))),
                 timeout=45.0,
             ))
             if provider is None:

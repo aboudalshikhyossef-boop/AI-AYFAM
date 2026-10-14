@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping
 
 from utils import http_client as requests
-from engine.gemini_rate_limit import compact_text, wait_for_slot
+from engine.gemini_rate_limit import DEFAULT_GEMINI_MODEL, LEGACY_GEMINI_MODELS, compact_text, gemini_model_name, wait_for_slot
 
 THREAT_SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -54,7 +54,7 @@ THREAT_SCHEMA: dict[str, Any] = {
 # Google Search grounding is available on the Gemini 2.5 Flash family in the
 # Gemini API Free tier. Gemini 3.x model inference can be free, but its Search
 # grounding requires the Paid tier.
-FREE_TIER_SEARCH_MODELS = ("gemini-3.8-flash", "gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-flash-latest")
+FREE_TIER_SEARCH_MODELS = ("gemini-3.8-flash",)
 
 SYSTEM_PROMPT = """You are a cyber threat-intelligence research assistant.
 Search authoritative public sources only: CISA, MITRE, NVD, CERT advisories,
@@ -269,7 +269,7 @@ class GeminiThreatClient:
         context = compact_text(system_context, 600)
         if context:
             sys_instruction += f"\nContext: {context}"
-        model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+        model = gemini_model_name(os.getenv("GEMINI_MODEL", DEFAULT_GEMINI_MODEL))
         payload = {"contents": [{"parts": [{"text": compact_text(prompt, 3600)}]}],
                    "systemInstruction": {"parts": [{"text": sys_instruction}]},
                    "generationConfig": {"temperature": 0.1, "maxOutputTokens": 256}}
@@ -336,6 +336,8 @@ class GeminiThreatClient:
             if not name or not _supports_generate(raw):
                 continue
             short = name.rsplit("/", 1)[-1].lower()
+            if short in LEGACY_GEMINI_MODELS:
+                continue
             if not _is_text_research_model(short):
                 continue
             models.append(ModelInfo(
@@ -412,7 +414,7 @@ Return one compact JSON object with at most 5 significant items. Each item must 
 one recommendation, and at most 2 authoritative source URLs. Return [] when evidence is insufficient."""
         # Keep the operational path to one API call: model discovery is an
         # explicit settings/diagnostic action, not part of threat collection.
-        model = ModelInfo(f"models/{os.getenv('GEMINI_MODEL', 'gemini-2.5-flash')}")
+        model = ModelInfo(f"models/{gemini_model_name(os.getenv('GEMINI_MODEL', DEFAULT_GEMINI_MODEL))}")
         try:
             raw = self._request_with_interactions(model, query)
             return validate_threat_feed(json.loads(raw), window_hours=window_hours)

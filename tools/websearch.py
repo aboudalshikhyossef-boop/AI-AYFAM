@@ -27,7 +27,7 @@ except Exception:  # pragma: no cover
 from utils import http_client
 
 USER_AGENT = "AI-AYFAM/9.0 (https://github.com/aboudalshikhyossef-boop/AI-AYFAM; local security assistant)"
-GEMINI_MODELS = ("gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-flash-latest")
+GEMINI_MODELS = ("gemini-3.8-flash",)
 TIMEOUT = 9
 
 _STOPWORDS = {normalize(w) for w in (
@@ -132,7 +132,8 @@ def google_cse(query: str, key: str, cx: str, lang: str, limit: int = 6) -> list
 def google_grounded(query: str, api_key: str, lang: str) -> tuple[str, list[SearchHit]]:
     """One compact grounded Gemini request with a shared 30-second quota gate."""
     from engine.gemini_rate_limit import compact_text, wait_for_slot
-    model = os.environ.get("GEMINI_MODEL", GEMINI_MODELS[1])
+    from engine.gemini_rate_limit import gemini_model_name
+    model = gemini_model_name(os.environ.get("GEMINI_MODEL", GEMINI_MODELS[0]))
     prompt = (f"ابحث في Google عن: {compact_text(query, 600)}. "
               f"أجب بـ{'العربية' if lang == 'ar' else 'English'} في 3 أسطر فقط، "
               "اذكر أهم حقيقة ومصدرين كحد أقصى، ولا تخترع معلومات.")
