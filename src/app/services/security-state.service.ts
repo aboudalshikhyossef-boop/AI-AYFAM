@@ -598,8 +598,8 @@ AI AYFAM Countermeasures:
       id: `fix-${Date.now()}`,
       timestamp: new Date().toLocaleTimeString(),
       level: 'FIX',
-      message: `تم تطبيق الإصلاح الأمني بنجاح: ${title}`,
-      messageEn: `Security fix successfully applied: ${titleEn}`,
+      message: `تم تعليم النتيجة كمراجعة محلية فقط (لم يُنفذ أمر النظام): ${title}`,
+      messageEn: `Finding marked as locally reviewed only (no system command executed): ${titleEn}`,
       category: 'auto_fix',
     });
   }
@@ -614,8 +614,8 @@ AI AYFAM Countermeasures:
       id: `fix-all-${Date.now()}`,
       timestamp: new Date().toLocaleTimeString(),
       level: 'ACTION',
-      message: 'تم تشغيل المعالج التلقائي الشامل — تطبيق جميع معايير التحصين والسياسات الموصى بها',
-      messageEn: 'Comprehensive Auto-Reactor executed — all hardening baselines and recommended rules applied',
+      message: 'تم تعليم النتائج كمراجعة محلية فقط — لم تُنفذ أوامر على النظام',
+      messageEn: 'Findings marked as locally reviewed only — no system commands were executed',
       category: 'autoreactor',
     });
   }
