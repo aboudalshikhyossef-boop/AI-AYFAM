@@ -201,11 +201,12 @@ _SEARCH_PREFIXES = [
     r"(?:(?:ممكن|هل يمكنك|بامكانك|تقدر|اريدك ان|أريدك أن|اريد ان|أريد أن|اريد|أريد|بدي|لازم)\s+)?",
 ]
 _SEARCH_VERBS = (
-    r"(?:[تاني]?بحث|إبحث|[تاني]?دور|[تاني]?فتش|[تاني]?جد|اوجد|أوجد|هات لي|هات|جيب لي|جيب|search for|search|look up|look for|find|google|"
+    r"(?:[تاني]?بحث|إبحث|[تاني]?دور|[تاني]?فتش|[تاني]?جد|اوجد|أوجد|هات لي|هات|جيب لي|جيب|search for|search|look up|look for|find|google search|google|"
     r"قوقل|جوجل|غوغل|ويكيبيديا|ويكيديا|wikipedia)"
 )
 _WHERE = (
-    r"(?:\s+(?:لي|لى))?(?:\s+(?:في|على|عبر|ب|من|بواسطة|using|on|in|via))?"
+    r"(?:\s+(?:لي|لى))?(?:\s+(?:في|على|عبر|ب[ـ\-]?|من|بواسطة|باستخدام|using|on|in|via|with|from))?"
+    r"(?:\s+(?:محرك\s+|موقع\s+|خدمة\s+)?)?"
     r"(?:\s+(?:الانترنت|الإنترنت|الانترنيت|النت|الويب|الشبكة العنكبوتية|جوجل|قوقل|غوغل|google|ويكيبيديا|ويكيديا|wikipedia|the internet|internet|the web|web|online))*"
 )
 _ABOUT = r"(?:\s+(?:عن|حول|بخصوص|about|for|on|regarding))?"
@@ -214,7 +215,8 @@ _SEARCH_RE = re.compile(
     re.IGNORECASE,
 )
 _TRAILING_SOURCE = re.compile(
-    r"\s+(?:في|على|عبر|من|using|on|in|via)\s+(?:الانترنت|الإنترنت|النت|الويب|جوجل|قوقل|google|ويكيبيديا|ويكيديا|wikipedia|internet|web)\s*$",
+    r"\s+(?:في|على|عبر|من|باستخدام|بواسطة|b|using|on|in|via|with|from)\s*(?:محرك\s+|موقع\s+)?"
+    r"(?:الانترنت|الإنترنت|النت|الويب|جوجل|قوقل|غوغل|google|ويكيبيديا|ويكيديا|wikipedia|internet|web)\s*$",
     re.IGNORECASE,
 )
 
@@ -225,13 +227,20 @@ def clean_search_query(text: str) -> str:
     match = _SEARCH_RE.match(value)
     if match:
         value = match.group("q")
+    # Clean secondary leftover leading search verbs/prepositions or engine phrases if matched
+    value = re.sub(r"^(?:search\s+for|search\s+on|search|find|look\s+up|ابحث\s+عن|ابحث)\s+", "", value, flags=re.IGNORECASE).strip()
+    value = re.sub(r"^(?:ب[ـ\-]?|عبر\s+|في\s+|باستخدام\s+)?(?:محرك\s+|موقع\s+)?(?:جوجل|قوقل|غوغل|google|ويكيبيديا|wikipedia)\s+(?:عن\s+|حول\s+|for\s+)?", "", value, flags=re.IGNORECASE).strip()
     value = _TRAILING_SOURCE.sub("", value).strip(" \t\"'«»؟?.!،,")
     return value
 
 
 _SOURCE_RE = re.compile(
-    r"(?:^|\s)(?:في|على|عبر|من|بواسطة|باستخدام|ب|using|on|in|via|with|from)\s*(?:محرك\s+|موقع\s+)?"
-    r"(?P<src>جوجل|قوقل|غوغل|google|ويكيبيديا|ويكيديا|ويكي|wikipedia)(?=\s|$|[.,،؟?!])",
+    r"(?:^|\s)(?:"
+    r"(?:في|على|عبر|من|بواسطة|باستخدام|ب|using|on|in|via|with|from|using\s+the|on\s+the)\s*(?:محرك\s+|موقع\s+|خدمة\s+)?"
+    r"|(?<=ابحث\s)|(?<=إبحث\s)|(?<=بحث\s)|(?<=دور\s)|(?<=فتش\s)|(?<=search\s)|(?<=look\ up\ )"
+    r"|(?<=google\ )"
+    r")(?P<src>جوجل|قوقل|غوغل|google|ويكيبيديا|ويكيديا|ويكي|wikipedia)(?=\s|$|[.,،؟?!])"
+    r"|(?:^|\s)(?P<src_direct>google|قوقل|جوجل|غوغل)\s+(?:search|بحث|ابحث|دور)",
     re.IGNORECASE,
 )
 
@@ -239,9 +248,13 @@ _SOURCE_RE = re.compile(
 def wants_source(text: str) -> set[str]:
     """Which engines did the user explicitly ask for? (google / wikipedia)  — only when named as the place to search."""
     wanted = set()
-    for match in _SOURCE_RE.finditer(normalize_for_trigger(text)):
-        src = match.group("src").lower()
-        wanted.add("google" if src in ("جوجل", "قوقل", "غوغل", "google") else "wikipedia")
+    norm = normalize_for_trigger(text)
+    for match in _SOURCE_RE.finditer(norm):
+        src = (match.group("src") or match.group("src_direct") or "").lower()
+        if src in ("جوجل", "قوقل", "غوغل", "google"):
+            wanted.add("google")
+        elif src in ("ويكيبيديا", "ويكيديا", "ويكي", "wikipedia"):
+            wanted.add("wikipedia")
     return wanted
 
 

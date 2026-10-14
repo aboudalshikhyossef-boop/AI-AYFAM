@@ -61,3 +61,49 @@ def test_explicit_google_search_falls_back_with_visible_status():
     assert any("400" in status and "badRequest" in status for status in report.engines.values())
     assert any("DuckDuckGo" in name for name in report.engines)
     assert report.hits
+
+
+def test_google_wants_source_and_clean_query_variations():
+    from brain.language import wants_source, clean_search_query
+
+    cases = [
+        ("ابحث في جوجل عن لينكس", "لينكس"),
+        ("ابحث جوجل عن ثغرات SSH", "ثغرات SSH"),
+        ("بحث جوجل عن أمن المعلومات", "أمن المعلومات"),
+        ("google search for linux security", "linux security"),
+        ("search google for firewall", "firewall"),
+        ("ابحث بـ جوجل عن CVE-2024-1234", "CVE-2024-1234"),
+    ]
+    for raw, expected_clean in cases:
+        assert wants_source(raw) == {"google"}, f"Failed wants_source for {raw}"
+        assert clean_search_query(raw) == expected_clean, f"Failed clean_search_query for {raw}: got {clean_search_query(raw)}"
+
+
+def test_execute_google_search_falls_back_from_cse_to_gemini():
+    with patch.object(websearch, "google_cse", side_effect=websearch.SearchProviderError("Google CSE", 400, reason="invalidKey")), \
+         patch.object(websearch, "google_grounded", return_value=("Summary", [websearch.SearchHit("Title", "https://example.com", "Snippet", "google")])):
+        engine_name, kind, payload = websearch.execute_google_search("linux", "bad-key", "cx", "gemini-key", "en")
+        assert engine_name == "Google (Gemini)"
+        assert kind == "grounded"
+        assert payload[0] == "Summary"
+        assert len(payload[1]) == 1
+
+
+def test_google_grounded_parses_grounding_metadata():
+    gemini_resp = response(200, {
+        "candidates": [{
+            "content": {"parts": [{"text": "Grounding summary"}]},
+            "groundingMetadata": {
+                "groundingChunks": [{"web": {"title": "Example", "uri": "https://example.com/item"}}],
+                "groundingSupports": [{"segment": {"text": "Supporting snippet"}, "groundingChunkIndices": [0]}]
+            }
+        }]
+    })
+    with patch.object(websearch.http_client, "post", return_value=gemini_resp), \
+         patch("engine.gemini_rate_limit.wait_for_slot", return_value=0.0):
+        answer, hits = websearch.google_grounded("linux", "valid-gemini-key", "en")
+        assert answer == "Grounding summary"
+        assert len(hits) == 1
+        assert hits[0].title == "Example"
+        assert hits[0].url == "https://example.com/item"
+        assert hits[0].snippet == "Supporting snippet"

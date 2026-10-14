@@ -185,8 +185,11 @@ def test_port_scan_produces_findings_for_every_open_port(monkeypatch):
 # ── الواجهة (offscreen) ──
 def test_gui_chat_flow_and_summary():
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-    from PyQt6.QtWidgets import QApplication
-    from ui.gui_app import UnifiedCockpitWindow, summarize_findings, sort_findings, finding_html
+    try:
+        from PyQt6.QtWidgets import QApplication
+        from ui.gui_app import UnifiedCockpitWindow, summarize_findings, sort_findings, finding_html
+    except (ImportError, OSError) as exc:
+        pytest.skip(f"PyQt6 is unavailable ({exc})")
 
     findings = [{"severity": "low", "title": "ب"}, {"severity": "critical", "title": "أ", "fix": "sudo ufw enable"}]
     assert sort_findings(findings)[0]["title"] == "أ"

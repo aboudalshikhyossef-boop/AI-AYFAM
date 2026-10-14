@@ -1275,6 +1275,10 @@ class UnifiedCockpitWindow(QMainWindow):
         def show(report) -> None:
             lines = ["[حالة محركات البحث]"] + [f"{name}: {status}" for name, status in report.engines.items()]
             lines.append(f"النتائج المقبولة: {len(report.hits)} | المحذوفة لعدم الصلة: {report.dropped}")
+            if report.answer:
+                lines.append(f"الملخص: {report.answer[:120]}...")
+            if not any("يعمل" in str(s) for s in report.engines.values()):
+                lines.append("\n• ملاحظة: لتفعيل Google Search البرمجي مباشرة أدخل GOOGLE_CSE_KEY و GOOGLE_CSE_CX أو أدخل GEMINI_API_KEY في الإعدادات.")
             self.settings_log.setPlainText("\n".join(lines))
 
         self.run_background_task(lambda: self.agent.smart_search("Kali Linux"), "اختبار البحث", preserve_findings=True, result_handler=show)

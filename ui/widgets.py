@@ -474,7 +474,7 @@ class ChatBubble(QFrame):
         self.setFixedWidth(int(min(limit, max(270 if self.role == "system" else 280, desired))))
 
 
-ENGINE_COLORS = {"google": "#38bdf8", "google-cse": "#38bdf8", "wikipedia-ar": "#34d399", "wikipedia-en": "#34d399", "duckduckgo": "#fb923c"}
+ENGINE_COLORS = {"google": "#38bdf8", "google-cse": "#38bdf8", "wikipedia-ar": "#34d399", "wikipedia-en": "#34d399", "duckduckgo": "#fb923c", "bing-rss": "#a855f7"}
 BUTTON_KINDS = {"primary": "#34d399", "danger": "#f87171", "": "#38bdf8"}
 
 
