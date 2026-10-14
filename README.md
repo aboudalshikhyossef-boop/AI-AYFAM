@@ -26,6 +26,26 @@
 
 ---
 
+### بحث الويب الموحّد
+
+تحتوي واجهة **ترسانة التهديدات** على Google Programmable Search بالمعرّف
+`f5fbcd40fda484bc7` الذي يعمل مباشرة في المتصفح. وهو مسار مستقل لا يستبدل
+مصادر المشروع الأخرى: Google Grounding عبر Gemini، وGoogle Custom Search JSON
+API عند توفير `GOOGLE_CSE_KEY`، وDuckDuckGo، وWikipedia، وNVD/OSV.dev وExploit-DB.
+
+لتمكين مسار Google JSON API في الخادم (اختياري)، انسخ القيم التالية إلى ملف
+البيئة أو إلى إعدادات AI AYFAM:
+
+```bash
+GOOGLE_CSE_KEY=your_google_custom_search_api_key
+GOOGLE_CSE_CX=f5fbcd40fda484bc7
+```
+
+> ملاحظة: قيمة `cx` وحدها تكفي لواجهة البحث المضمّنة، لكنها لا تكفي لاستدعاء
+> Google Custom Search JSON API الذي يتطلب مفتاح API منفصلاً.
+
+---
+
 ## 📦 التثبيت / Installation
 
 ```bash

@@ -873,6 +873,28 @@
             </div>
           </div>
 
+          <!-- Google Programmable Search: browser-side search, independent from the local CVE filter. -->
+          <section class="p-5 rounded-2xl bg-slate-900/60 border border-cyan-500/20 space-y-3">
+            <div class="flex items-center gap-2">
+              <mat-icon class="text-cyan-400">travel_explore</mat-icon>
+              <div>
+                <h3 class="font-bold text-sm text-slate-100">
+                  @if (state.locale() === 'ar') { بحث Google المباشر } @else { Google Web Search }
+                </h3>
+                <p class="text-[11px] text-slate-400">
+                  @if (state.locale() === 'ar') {
+                    يعمل عبر محرك Google المخصص المعرّف بالمعرّف الأساسي، بالتوازي مع محركات CVE وOSV وExploit-DB.
+                  } @else {
+                    Powered by the configured Google Programmable Search engine, alongside CVE, OSV, and Exploit-DB sources.
+                  }
+                </p>
+              </div>
+            </div>
+            <div class="rounded-xl bg-white p-3 min-h-20 text-slate-900">
+              <div id="ayfam-google-cse" class="gcse-search"></div>
+            </div>
+          </section>
+
           <!-- Threat Items Grid -->
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             @for (ti of filteredThreats(); track ti.id) {
