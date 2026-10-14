@@ -190,26 +190,64 @@ def google_grounded(query: str, api_key: str, lang: str) -> tuple[str, list[Sear
             json_data=body, timeout=25)
         wait_for_slot(api_key)
         if response.status_code != 200:
-            raise RuntimeError(f"{model}: HTTP {response.status_code}")
-        candidate = (response.json().get("candidates") or [{}])[0]
-        answer = "".join(part.get("text", "") for part in (candidate.get("content") or {}).get("parts", [])).strip()
+            raise SearchProviderError("Google (Gemini)", response.status_code, reason=f"Model {model} error")
+        data = response.json()
+        candidates = data.get("candidates") or [{}]
+        if not candidates:
+            return "", []
+        candidate = candidates[0]
+        answer = "".join(part.get("text", "") for part in (candidate.get("content") or {}).get("parts", []) if isinstance(part, dict)).strip()
         meta = candidate.get("groundingMetadata") or {}
         chunks = meta.get("groundingChunks") or []
         snippets: dict[int, list[str]] = {}
         for support in meta.get("groundingSupports") or []:
-            text = (support.get("segment") or {}).get("text", "")
-            for index in support.get("groundingChunkIndices") or []:
-                snippets.setdefault(index, []).append(text)
+            if isinstance(support, dict):
+                text = (support.get("segment") or {}).get("text", "")
+                for index in support.get("groundingChunkIndices") or []:
+                    if isinstance(index, int):
+                        snippets.setdefault(index, []).append(text)
         hits = []
         for index, chunk in enumerate(chunks):
-            web = chunk.get("web") or {}
-            if web.get("uri"):
-                hits.append(SearchHit(web.get("title") or urllib.parse.urlparse(web["uri"]).netloc,
-                                      web["uri"], " ".join(snippets.get(index, [])[:2])[:320],
-                                      "google", lang=lang))
+            if isinstance(chunk, dict):
+                web = chunk.get("web") or {}
+                uri = web.get("uri") or ""
+                if uri:
+                    hits.append(SearchHit(web.get("title") or urllib.parse.urlparse(uri).netloc or "Google Result",
+                                          uri, " ".join(snippets.get(index, [])[:2])[:320],
+                                          "google", lang=lang))
         return answer, hits
     except Exception as exc:
-        raise RuntimeError(f"{model}: {exc}") from exc
+        if isinstance(exc, SearchProviderError):
+            raise
+        raise SearchProviderError("Google (Gemini)", message=str(exc)) from exc
+
+
+def execute_google_search(query: str, cse_key: str, cse_cx: str, gemini_key: str, lang: str, limit: int = 6) -> tuple[str, str, Any]:
+    """سلسلة مرنة للبحث عبر Google: تجرّب CSE أولاً إن وُجد، ثم التراجع إلى Gemini Grounding."""
+    errors = []
+    if cse_key and cse_cx:
+        try:
+            hits = google_cse(query, cse_key, cse_cx, lang, limit)
+            if hits:
+                return "Google (CSE)", "hits", hits
+            errors.append("Google (CSE): لم يُرجع نتائج")
+        except Exception as exc:
+            errors.append(str(exc))
+
+    if gemini_key:
+        try:
+            answer, hits = google_grounded(query, gemini_key, lang)
+            if answer or hits:
+                return "Google (Gemini)", "grounded", (answer, hits)
+            errors.append("Google (Gemini): لم يُرجع إجابة أو نتائج")
+        except Exception as exc:
+            errors.append(str(exc))
+
+    if not cse_key and not gemini_key:
+        raise SearchProviderError("Google", reason="غير مفعّل في الخادم: يلزم إعداد GOOGLE_CSE_KEY أو GEMINI_API_KEY للبحث البرمجي عبر Google")
+
+    reason_text = " — ".join(errors) if errors else "تعذّر الحصول على نتائج من Google"
+    raise SearchProviderError("Google", reason=reason_text)
 
 def duckduckgo(query: str, limit: int = 6) -> list[SearchHit]:
     from tools import web  # الاحتياط القديم، يبقى كما هو
@@ -334,42 +372,35 @@ def search(raw_query: str, settings: dict | None = None, limit: int = 6, deep: b
     want_google = not requested or "google" in requested
     want_wiki = not requested or "wikipedia" in requested
     if want_google:
-        if cse_key and cse_cx:
-            jobs["Google (CSE)"] = lambda: ("hits", google_cse(query, cse_key, cse_cx, lang, limit))
-        elif gemini_key:
-            jobs["Google (Gemini)"] = lambda: ("grounded", google_grounded(query, gemini_key, lang))
-        else:
-            report.engines["Google"] = "غير مفعّل في الخادم: cx متاح للواجهة، ويلزم Gemini أو GOOGLE_CSE_KEY للبحث البرمجي"
-        jobs["Bing (RSS)"] = lambda: ("hits", bing_rss(query, lang, limit))
+        jobs["Google"] = lambda: execute_google_search(query, cse_key, cse_cx, gemini_key, lang, limit)
+        jobs["Bing (RSS)"] = lambda: ("Bing (RSS)", "hits", bing_rss(query, lang, limit))
     if want_wiki:
-        jobs[f"ويكيبيديا ({lang})"] = lambda: ("hits", wikipedia(query, lang, limit, sentences))
+        jobs[f"ويكيبيديا ({lang})"] = lambda: (f"ويكيبيديا ({lang})", "hits", wikipedia(query, lang, limit, sentences))
         if lang == "ar" and latin_terms and latin_terms.lower() != query.lower():
-            jobs["Wikipedia (en)"] = lambda: ("hits", wikipedia(latin_terms, "en", 3, sentences))
-        elif lang == "en":
-            pass
+            jobs["Wikipedia (en)"] = lambda: ("Wikipedia (en)", "hits", wikipedia(latin_terms, "en", 3, sentences))
 
     collected: list[SearchHit] = []
     with ThreadPoolExecutor(max_workers=max(1, len(jobs))) as pool:
         futures = {pool.submit(job): name for name, job in jobs.items()}
         for future in as_completed(futures):
-            name = futures[future]
+            default_name = futures[future]
             try:
-                kind, payload = future.result()
+                effective_name, kind, payload = future.result()
                 if kind == "grounded":
                     answer, hits = payload
                     report.answer = answer
                     collected.extend(hits)
-                    report.engines[name] = f"يعمل — {len(hits)} مصدر"
+                    report.engines[effective_name] = f"يعمل — {len(hits)} مصدر"
                 else:
                     collected.extend(payload)
-                    report.engines[name] = f"يعمل — {len(payload)} نتيجة"
+                    report.engines[effective_name] = f"يعمل — {len(payload)} نتيجة"
             except Exception as exc:
                 if isinstance(exc, SearchProviderError):
                     status = f" [{exc.status}]" if exc.status else ""
                     detail = exc.reason or exc.message or "تعذر الاتصال"
-                    report.engines[name] = f"فشل{status}: {detail[:150]}"
+                    report.engines[exc.provider or default_name] = f"فشل{status}: {detail[:150]}"
                 else:
-                    report.engines[name] = f"فشل: {str(exc)[:150]}"
+                    report.engines[default_name] = f"فشل: {str(exc)[:150]}"
 
     google_ok = any(h.engine.startswith("google") for h in collected) or bool(report.answer)
     if not google_ok and want_google:
