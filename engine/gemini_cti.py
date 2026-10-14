@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping
 
 from utils import http_client as requests
+from engine.gemini_rate_limit import compact_text, wait_for_slot
 
 THREAT_SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -259,61 +260,38 @@ class GeminiThreatClient:
         self._client = None
 
     def ask_assistant(self, prompt: str, system_context: str = "") -> str:
-        """Query Gemini generative model directly for cyber assistance."""
+        """Make exactly one compact Gemini request; no SDK/model fallback burst."""
         sys_instruction = (
-            "You are AI AYFAM, a senior cybersecurity expert specialized in Linux Mint and Ubuntu defense. "
-            "Provide concise, actionable advice. If recommending commands, output clean bash snippets. "
-            "Support both Arabic and English naturally."
+            "You are AI AYFAM, a senior cybersecurity expert for Linux Mint and Ubuntu. "
+            "Answer briefly with evidence, impact, confidence limits, and one safe next step. "
+            "Never claim a command was executed. Support Arabic and English."
         )
-        if system_context:
-            sys_instruction += f"\nHost/Telemetry Context: {system_context}"
-
-        models_to_try = ["gemini-3.8-flash", "gemini-2.5-flash", "gemini-flash-latest"]
-        last_error = ""
-
-        # Try google-genai SDK first if installed
+        context = compact_text(system_context, 600)
+        if context:
+            sys_instruction += f"\nContext: {context}"
+        model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+        payload = {"contents": [{"parts": [{"text": compact_text(prompt, 3600)}]}],
+                   "systemInstruction": {"parts": [{"text": sys_instruction}]},
+                   "generationConfig": {"temperature": 0.1, "maxOutputTokens": 256}}
+        wait_for_slot(self.api_key)
         try:
-            from google import genai
-            client = genai.Client(api_key=self.api_key)
-            resp = client.models.generateContent(
-                model="gemini-3.8-flash",
-                contents=prompt,
-                config={"systemInstruction": sys_instruction}
-            )
-            if resp and resp.text:
-                return resp.text.strip()
+            response = requests.post(f"{self.base_url}/models/{model}:generateContent",
+                headers={"x-goog-api-key": self.api_key, "Content-Type": "application/json"},
+                json_data=payload, timeout=self.timeout)
+            wait_for_slot(self.api_key)
+            if response.status_code != 200:
+                raise GeminiHTTPError(response)
+            body = response.json()
+            candidates = body.get("candidates", [])
+            parts = candidates[0].get("content", {}).get("parts", []) if candidates else []
+            answer = "\n".join(p.get("text", "") for p in parts if isinstance(p, dict) and p.get("text")).strip()
+            if not answer:
+                raise GeminiCTIError("Gemini returned an empty response")
+            return answer
+        except GeminiCTIError:
+            raise
         except Exception as exc:
-            last_error = str(exc)
-
-        # Fallback to direct REST API
-        for model in models_to_try:
-            url = f"{self.base_url}/models/{model}:generateContent"
-            payload = {
-                "contents": [{"parts": [{"text": prompt}]}],
-                "systemInstruction": {"parts": [{"text": sys_instruction}]},
-            }
-            try:
-                resp = requests.post(
-                    url,
-                    headers={"x-goog-api-key": self.api_key, "Content-Type": "application/json"},
-                    json_data=payload,
-                    timeout=self.timeout
-                )
-                if resp.status_code == 200:
-                    data = resp.json()
-                    candidates = data.get("candidates", [])
-                    if candidates and isinstance(candidates, list):
-                        parts = candidates[0].get("content", {}).get("parts", [])
-                        texts = [p.get("text", "") for p in parts if isinstance(p, dict) and p.get("text")]
-                        if texts:
-                            return "\n".join(texts).strip()
-                elif resp.status_code == 429:
-                    continue
-            except Exception as exc:
-                last_error = str(exc)
-                continue
-
-        raise GeminiCTIError(f"Could not generate assistant response: {last_error or 'All model requests failed'}")
+            raise GeminiCTIError(f"Could not generate assistant response: {exc}") from exc
 
     @classmethod
     def from_environment(cls) -> "GeminiThreatClient":
@@ -337,12 +315,14 @@ class GeminiThreatClient:
         if self._models and not force:
             return list(self._models)
         try:
+            wait_for_slot(self.api_key)
             response = requests.get(
                 f"{self.base_url}/models",
                 headers={"x-goog-api-key": self.api_key},
                 params={"pageSize": 1000},
                 timeout=(10, self.timeout),
             )
+            wait_for_slot(self.api_key)
             if response.status_code >= 400:
                 raise GeminiHTTPError(response)
             raw_models = response.json().get("models", [])
@@ -401,157 +381,47 @@ class GeminiThreatClient:
         return f" Retry after approximately {match.group(1)} seconds." if match else ""
 
     def _request_with_interactions(self, model: ModelInfo, query: str) -> str:
-        """Call the official endpoint once with a visible connect/read timeout.
-
-        Direct HTTP avoids SDK retries and AFC behavior, both of which can make a
-        failed request look like an endless wait and consume quota unexpectedly.
-        """
-        model_name = model.short_name
-        tool_type = _google_search_tool_type(model)
-
-        # 1. Standard generateContent REST API (with search tool)
-        gc_payload = {
-            "contents": [{"parts": [{"text": query}]}],
-            "tools": [{"googleSearch": {}}],
-            "generationConfig": {
-                "responseMimeType": "application/json",
-                "responseSchema": THREAT_SCHEMA,
-            },
-        }
-        gc_url = f"{self.base_url}/models/{model_name}:generateContent"
-        try:
-            response = requests.post(
-                gc_url,
-                headers={"x-goog-api-key": self.api_key, "Content-Type": "application/json"},
-                json=gc_payload,
-                timeout=(10, self.timeout),
-            )
-            if response.status_code < 400:
-                body = response.json()
-                text = _interaction_output_text(body)
-                if text:
-                    return text
-            elif response.status_code == 429:
-                raise GeminiHTTPError(response)
-        except GeminiHTTPError:
-            raise
-        except (requests.RequestException, ValueError):
-            pass
-
-        # 1b. Fallback: generateContent REST API without search tool (for models/tiers without grounding support)
-        gc_payload_noground = {
-            "contents": [{"parts": [{"text": query}]}],
-            "generationConfig": {
-                "responseMimeType": "application/json",
-                "responseSchema": THREAT_SCHEMA,
-            },
-        }
-        try:
-            response = requests.post(
-                gc_url,
-                headers={"x-goog-api-key": self.api_key, "Content-Type": "application/json"},
-                json=gc_payload_noground,
-                timeout=(10, self.timeout),
-            )
-            if response.status_code < 400:
-                body = response.json()
-                text = _interaction_output_text(body)
-                if text:
-                    return text
-            elif response.status_code == 429:
-                raise GeminiHTTPError(response)
-        except GeminiHTTPError:
-            raise
-        except (requests.RequestException, ValueError):
-            pass
-
-        # 2. Fallback to /interactions endpoint for backward compatibility
+        """Send one grounded generateContent request only."""
         payload = {
-            "model": model_name,
-            "input": query,
-            "tools": [{"type": tool_type}],
-            "response_format": {"type": "text", "mime_type": "application/json", "schema": THREAT_SCHEMA},
+            "contents": [{"parts": [{"text": compact_text(query, 5200)}]}],
+            "tools": [{"googleSearch": {}}],
+            "generationConfig": {"responseMimeType": "application/json",
+                                 "responseSchema": THREAT_SCHEMA,
+                                 "temperature": 0.1, "maxOutputTokens": 900},
         }
-        try:
-            response = requests.post(
-                f"{self.base_url}/interactions",
-                headers={"x-goog-api-key": self.api_key, "Content-Type": "application/json"},
-                json=payload,
-                timeout=(10, self.timeout),
-            )
-        except requests.Timeout as exc:
-            raise GeminiCTIError(f"Gemini request timed out after {self.timeout:g} seconds") from exc
-        except requests.RequestException as exc:
-            raise GeminiCTIError(f"Gemini network request failed: {exc}") from exc
+        wait_for_slot(self.api_key)
+        response = requests.post(
+            f"{self.base_url}/models/{model.short_name}:generateContent",
+            headers={"x-goog-api-key": self.api_key, "Content-Type": "application/json"},
+            json_data=payload, timeout=(10, self.timeout))
+        wait_for_slot(self.api_key)
         if response.status_code >= 400:
             raise GeminiHTTPError(response)
         try:
-            body = response.json()
+            text = _interaction_output_text(response.json())
         except ValueError as exc:
             raise GeminiCTIError("Gemini returned a non-JSON HTTP response") from exc
-        if body.get("status") == "failed":
-            errors = body.get("errors") or body.get("error") or "Gemini marked the interaction as failed"
-            raise GeminiCTIError(f"Gemini interaction failed: {_text(errors)}")
-        return _interaction_output_text(body)
+        if not text:
+            raise GeminiCTIError("Gemini returned an empty response")
+        return text
 
     def fetch_threats(self, window_hours: int = 48) -> dict[str, Any]:
         query = f"""{SYSTEM_PROMPT}
-
-Research window: the last {window_hours} hours from now (UTC).
-Return only a JSON object matching the response schema. Keep the list concise
-(maximum 10 significant items) and cite authoritative source URLs."""
-        models = self.discover_models()
-        quota_failures: list[tuple[ModelInfo, Exception]] = []
-        invalid_models: list[tuple[ModelInfo, Exception]] = []
-        # Try a small number of candidates to avoid turning one failure into a burst.
-        for model in models[:3]:
-            try:
-                raw = self._request_with_interactions(model, query)
-                if not raw:
-                    raise GeminiCTIError(f"Gemini returned an empty response from {model.short_name}")
-                try:
-                    data = json.loads(raw)
-                except json.JSONDecodeError as exc:
-                    raise GeminiCTIError(f"Gemini returned invalid JSON: {exc}") from exc
-                return validate_threat_feed(data, window_hours=window_hours)
-            except GeminiHTTPError as exc:
-                if exc.status_code == 429:
-                    if exc.model_scoped_quota:
-                        quota_failures.append((model, exc))
-                        continue
-                    hint = self._retry_hint(exc)
-                    raise GeminiCTIError(
-                        f"Gemini returned a project-wide or unclassified HTTP 429 for {model.short_name}: {exc}{hint}"
-                    ) from exc
-                if self._is_invalid_model_error(exc):
-                    invalid_models.append((model, exc))
-                    continue
-                raise GeminiCTIError(f"Gemini threat research failed using {model.short_name}: {exc}") from exc
-            except Exception as exc:
-                if self._is_quota_error(exc):
-                    raise GeminiCTIError(f"Gemini returned a rate/quota error for {model.short_name}: {exc}") from exc
-                if self._is_invalid_model_error(exc):
-                    invalid_models.append((model, exc))
-                    continue
-                if isinstance(exc, GeminiCTIError):
-                    raise
-                raise GeminiCTIError(f"Gemini threat research failed using {model.short_name}: {exc}") from exc
-        if quota_failures:
-            names = ", ".join(model.short_name for model, _ in quota_failures)
-            details = str(quota_failures[0][1])
-            hint = self._retry_hint(quota_failures[0][1])
-            raise GeminiCTIError(
-                f"Google reported model-specific 429 quota limits for the tested candidates ({names}). "
-                f"Original Google error: {details}{hint} Check AI Studio's per-model limits or choose another available model."
-            )
-        if invalid_models:
-            names = ", ".join(model.short_name for model, _ in invalid_models)
-            details = str(invalid_models[0][1])
-            raise GeminiCTIError(
-                f"Google listed model candidates that are not valid for this request ({names}). "
-                f"Original Google error: {details}"
-            )
-        raise GeminiCTIError("No usable Gemini model completed the threat research request")
+Research window: the last {int(window_hours)} hours from now (UTC).
+Return one compact JSON object with at most 5 significant items. Each item must have one short description,
+one recommendation, and at most 2 authoritative source URLs. Return [] when evidence is insufficient."""
+        model = self.discover_models()[0]
+        try:
+            raw = self._request_with_interactions(model, query)
+            return validate_threat_feed(json.loads(raw), window_hours=window_hours)
+        except GeminiHTTPError as exc:
+            raise GeminiCTIError(f"Gemini threat research failed using {model.short_name}: {exc}") from exc
+        except json.JSONDecodeError as exc:
+            raise GeminiCTIError(f"Gemini returned invalid JSON: {exc}") from exc
+        except GeminiCTIError:
+            raise
+        except Exception as exc:
+            raise GeminiCTIError(f"Gemini threat research failed using {model.short_name}: {exc}") from exc
 
     def close(self) -> None:
         if self._client is not None:

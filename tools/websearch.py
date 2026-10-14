@@ -130,46 +130,42 @@ def google_cse(query: str, key: str, cx: str, lang: str, limit: int = 6) -> list
 
 
 def google_grounded(query: str, api_key: str, lang: str) -> tuple[str, list[SearchHit]]:
-    """بحث Google الحقيقي عبر أداة التأريض في Gemini؛ يعيد ملخصاً مع روابط المصادر."""
-    last_error = "لا نموذج متاح"
-    prompt = (
-        f"ابحث في Google عن: {query}\n"
-        f"أجب بإيجاز ودقة بـ{'العربية' if lang == 'ar' else 'English'} في 4 إلى 6 أسطر اعتماداً على نتائج البحث فقط، "
-        "دون اختلاق معلومات. إن لم تجد نتائج مطابقة قل ذلك صراحة."
-    )
-    body = {"contents": [{"parts": [{"text": prompt}]}], "tools": [{"googleSearch": {}}], "generationConfig": {"temperature": 0.1}}
-    for model in GEMINI_MODELS:
-        try:
-            response = http_client.post(
-                f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
-                headers={"x-goog-api-key": api_key, "Content-Type": "application/json", "User-Agent": USER_AGENT},
-                json_data=body, timeout=25,
-            )
-            if response.status_code != 200:
-                last_error = f"{model}: HTTP {response.status_code}"
-                if response.status_code in (400, 401, 403):
-                    break
-                continue
-            candidate = (response.json().get("candidates") or [{}])[0]
-            answer = "".join(part.get("text", "") for part in (candidate.get("content") or {}).get("parts", [])).strip()
-            meta = candidate.get("groundingMetadata") or {}
-            chunks = meta.get("groundingChunks") or []
-            snippets: dict[int, list[str]] = {}
-            for support in meta.get("groundingSupports") or []:
-                text = (support.get("segment") or {}).get("text", "")
-                for index in support.get("groundingChunkIndices") or []:
-                    snippets.setdefault(index, []).append(text)
-            hits = []
-            for index, chunk in enumerate(chunks):
-                web = chunk.get("web") or {}
-                if web.get("uri"):
-                    hits.append(SearchHit(web.get("title") or urllib.parse.urlparse(web["uri"]).netloc, web["uri"],
-                                          " ".join(snippets.get(index, [])[:2])[:320], "google", lang=lang))
-            return answer, hits
-        except Exception as exc:
-            last_error = f"{model}: {exc}"
-    raise RuntimeError(last_error)
-
+    """One compact grounded Gemini request with a shared 30-second quota gate."""
+    from engine.gemini_rate_limit import compact_text, wait_for_slot
+    model = os.environ.get("GEMINI_MODEL", GEMINI_MODELS[1])
+    prompt = (f"ابحث في Google عن: {compact_text(query, 600)}. "
+              f"أجب بـ{'العربية' if lang == 'ar' else 'English'} في 3 أسطر فقط، "
+              "اذكر أهم حقيقة ومصدرين كحد أقصى، ولا تخترع معلومات.")
+    body = {"contents": [{"parts": [{"text": prompt}]}], "tools": [{"googleSearch": {}}],
+            "generationConfig": {"temperature": 0.1, "maxOutputTokens": 180}}
+    wait_for_slot(api_key)
+    try:
+        response = http_client.post(
+            f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
+            headers={"x-goog-api-key": api_key, "Content-Type": "application/json", "User-Agent": USER_AGENT},
+            json_data=body, timeout=25)
+        wait_for_slot(api_key)
+        if response.status_code != 200:
+            raise RuntimeError(f"{model}: HTTP {response.status_code}")
+        candidate = (response.json().get("candidates") or [{}])[0]
+        answer = "".join(part.get("text", "") for part in (candidate.get("content") or {}).get("parts", [])).strip()
+        meta = candidate.get("groundingMetadata") or {}
+        chunks = meta.get("groundingChunks") or []
+        snippets: dict[int, list[str]] = {}
+        for support in meta.get("groundingSupports") or []:
+            text = (support.get("segment") or {}).get("text", "")
+            for index in support.get("groundingChunkIndices") or []:
+                snippets.setdefault(index, []).append(text)
+        hits = []
+        for index, chunk in enumerate(chunks):
+            web = chunk.get("web") or {}
+            if web.get("uri"):
+                hits.append(SearchHit(web.get("title") or urllib.parse.urlparse(web["uri"]).netloc,
+                                      web["uri"], " ".join(snippets.get(index, [])[:2])[:320],
+                                      "google", lang=lang))
+        return answer, hits
+    except Exception as exc:
+        raise RuntimeError(f"{model}: {exc}") from exc
 
 def duckduckgo(query: str, limit: int = 6) -> list[SearchHit]:
     from tools import web  # الاحتياط القديم، يبقى كما هو

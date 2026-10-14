@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from typing import Any, Mapping, Protocol
 
 from utils import http_client
+from engine.gemini_rate_limit import compact_text, wait_for_slot
 
 
 class AssistantError(RuntimeError):
@@ -125,6 +126,8 @@ class GeminiAssistant:
     def ask(self, prompt: str, *, system_context: str = "") -> str:
         if not _text(prompt):
             raise AssistantError("Prompt is empty")
+        prompt = compact_text(prompt, 3600)
+        context = compact_text(system_context, 600)
         instruction = (
             "You are AI AYFAM, a senior cybersecurity assistant for Linux Mint and Ubuntu. "
             "Give safe, concise, actionable advice. Never claim that a command was executed. "
@@ -132,17 +135,20 @@ class GeminiAssistant:
             "Distinguish observed facts from hypotheses and do not overstate scanner results. "
             "Answer in the user's language."
         )
-        if system_context:
-            instruction += f"\nContext: {system_context}"
+        if context:
+            instruction += f"\nContext: {context}"
+        wait_for_slot(self.api_key)
         response = http_client.post(
             f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent",
             headers={"x-goog-api-key": self.api_key, "Content-Type": "application/json"},
             json_data={
                 "systemInstruction": {"parts": [{"text": instruction}]},
                 "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+                "generationConfig": {"temperature": 0.1, "maxOutputTokens": 256},
             },
             timeout=self.timeout,
         )
+        wait_for_slot(self.api_key)
         if getattr(response, "status_code", 0) != 200:
             detail = _error_message(response)
             raise AssistantError(f"Gemini request failed ({response.status_code}): {detail or 'unknown error'}")

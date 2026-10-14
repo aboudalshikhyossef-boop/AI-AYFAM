@@ -82,7 +82,7 @@ class GeminiCTITests(unittest.TestCase):
         with patch("engine.gemini_cti.requests.post", return_value=Response()):
             self.assertEqual(client.fetch_threats()["threats"], [])
 
-    def test_model_scoped_quota_tries_one_alternate_and_keeps_details(self):
+    def test_model_scoped_quota_stops_after_one_request(self):
         class Response:
             def __init__(self, status_code, payload):
                 self.status_code = status_code
@@ -95,9 +95,9 @@ class GeminiCTITests(unittest.TestCase):
         client = GeminiThreatClient("test-key")
         client.discover_models = lambda force=False: [ModelInfo("models/gemini-2.5-flash"), ModelInfo("models/gemini-2.5-flash-lite")]
         with patch("engine.gemini_cti.requests.post", side_effect=[quota, success]) as post:
-            result = client.fetch_threats()
-        self.assertEqual(result["threats"], [])
-        self.assertEqual(post.call_count, 2)
+            with self.assertRaises(GeminiCTIError):
+                client.fetch_threats()
+        self.assertEqual(post.call_count, 1)
 
     def test_project_wide_429_preserves_google_diagnostic_and_stops(self):
         class Response:
@@ -139,7 +139,7 @@ class GeminiCTITests(unittest.TestCase):
         self.assertEqual([model.short_name for model in models], ["gemini-3.8-flash", "gemini-2.5-flash", "gemini-2.5-flash-lite"])
         self.assertEqual(client.selected_model.short_name, "gemini-3.8-flash")
 
-    def test_invalid_listed_model_falls_back_to_next_model(self):
+    def test_invalid_listed_model_stops_without_fallback_burst(self):
         class Response:
             def __init__(self, status_code, text, output=None):
                 self.status_code, self.text, self._output = status_code, text, output
@@ -149,9 +149,9 @@ class GeminiCTITests(unittest.TestCase):
         client.discover_models = lambda force=False: [ModelInfo("models/stale"), ModelInfo("models/gemini-2.5-flash")]
         responses = [Response(400, "Model stale not found"), Response(200, "", json.dumps({"generated_at": "now", "threats": []}))]
         with patch("engine.gemini_cti.requests.post", side_effect=responses) as post:
-            result = client.fetch_threats()
-        self.assertEqual(result["threats"], [])
-        self.assertEqual(post.call_count, 2)
+            with self.assertRaises(GeminiCTIError):
+                client.fetch_threats()
+        self.assertEqual(post.call_count, 1)
 
 
 if __name__ == "__main__":
