@@ -30,7 +30,7 @@ DEFAULT_SETTINGS = {
     "gemini_api_key": "",  # Gemini Developer API — يُستخدم فقط لجلب CTI عام
     "openai_api_key": "",  # OpenAI API — يُستخدم للمساعد الأمني الاختياري
     "google_cse_key": "",  # Google Programmable Search (اختياري): نتائج Google مباشرة بدل التأسيس عبر Gemini
-    "google_cse_cx": "",   # معرّف محرك البحث المخصص (cx)
+    "google_cse_cx": "f5fbcd40fda484bc7",   # معرّف محرك البحث المخصص (cx)
     "ai_provider": "auto",  # auto | openai | gemini | local
     "openai_model": "gpt-4o-mini",
     "gemini_model": "gemini-3.8-flash",

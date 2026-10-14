@@ -13,6 +13,8 @@ import os
 import re
 import time
 import urllib.parse
+import html
+import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -29,6 +31,7 @@ from utils import http_client
 USER_AGENT = "AI-AYFAM/9.0 (https://github.com/aboudalshikhyossef-boop/AI-AYFAM; local security assistant)"
 GEMINI_MODELS = ("gemini-3.8-flash",)
 TIMEOUT = 9
+DEFAULT_GOOGLE_CSE_CX = "f5fbcd40fda484bc7"
 
 _STOPWORDS = {normalize(w) for w in (
     "في", "من", "على", "عن", "الى", "إلى", "هذا", "هذه", "ذلك", "تلك", "ما", "ماذا", "هو", "هي", "لي", "لك", "مع", "او", "أو",
@@ -67,7 +70,7 @@ class SearchHit:
     @property
     def engine_label(self) -> str:
         return {"google": "Google", "google-cse": "Google", "wikipedia-ar": "ويكيبيديا (عربي)",
-                "wikipedia-en": "Wikipedia (EN)", "duckduckgo": "DuckDuckGo"}.get(self.engine, self.engine)
+                "wikipedia-en": "Wikipedia (EN)", "duckduckgo": "DuckDuckGo", "bing-rss": "Bing"}.get(self.engine, self.engine)
 
 
 @dataclass
@@ -85,13 +88,42 @@ class SearchReport:
         return bool(self.hits or self.answer)
 
 
+class SearchProviderError(RuntimeError):
+    """خطأ قابل للعرض للمستخدم مع حالة HTTP وسبب مزوّد الخدمة إن توفر."""
+
+    def __init__(self, provider: str, status: int | None = None, reason: str = "", message: str = ""):
+        self.provider = provider
+        self.status = status
+        self.reason = reason
+        self.message = message
+        super().__init__(self._format())
+
+    def _format(self) -> str:
+        code = f"HTTP {self.status}" if self.status else "اتصال"
+        detail = self.reason or self.message or "خطأ غير موصوف"
+        return f"{self.provider}: {code} — {detail}"
+
+    def __str__(self) -> str:
+        return self._format()
+
+
 # ── أدوات HTTP ──────────────────────────────────────────────────────────────
 def _get_json(url: str, params: dict | None = None, headers: dict | None = None) -> dict:
     merged = {"User-Agent": USER_AGENT, "Accept": "application/json"}
     merged.update(headers or {})
     response = http_client.get(url, headers=merged, params=params, timeout=TIMEOUT)
     if response.status_code != 200:
-        raise RuntimeError(f"HTTP {response.status_code}")
+        detail = ""
+        try:
+            payload = response.json()
+            error = payload.get("error", payload) if isinstance(payload, dict) else {}
+            detail = error.get("message", "") if isinstance(error, dict) else ""
+            if isinstance(error, dict) and error.get("errors"):
+                reason = (error["errors"][0] or {}).get("reason", "")
+                detail = f"{reason}: {detail}" if reason and reason not in detail else detail
+        except Exception:
+            detail = re.sub(r"\s+", " ", getattr(response, "text", ""))[:180]
+        raise SearchProviderError(urllib.parse.urlparse(url).netloc or "HTTP", response.status_code, message=detail)
     return response.json()
 
 
@@ -122,9 +154,20 @@ def wikipedia(query: str, lang: str = "ar", limit: int = 5, sentences: int = 3) 
 
 # ── Google ──────────────────────────────────────────────────────────────────
 def google_cse(query: str, key: str, cx: str, lang: str, limit: int = 6) -> list[SearchHit]:
-    data = _get_json("https://www.googleapis.com/customsearch/v1", {
-        "key": key, "cx": cx, "q": query, "num": min(limit, 10), "hl": lang, "lr": f"lang_{lang}" if lang in ("ar", "en") else None,
-    })
+    key = (key or "").strip()
+    cx = (cx or DEFAULT_GOOGLE_CSE_CX).strip()
+    if not key:
+        raise SearchProviderError("Google CSE", reason="GOOGLE_CSE_KEY مفقود؛ cx وحده يخص الواجهة المضمّنة ولا يفعّل JSON API")
+    if not re.fullmatch(r"[A-Za-z0-9_-]{8,128}", cx):
+        raise SearchProviderError("Google CSE", reason="قيمة GOOGLE_CSE_CX غير صحيحة")
+    params = {"key": key, "cx": cx, "q": query, "num": max(1, min(int(limit), 10)), "hl": lang}
+    if lang in ("ar", "en"):
+        params["lr"] = f"lang_{lang}"
+    try:
+        data = _get_json("https://www.googleapis.com/customsearch/v1", params)
+    except SearchProviderError as exc:
+        exc.provider = "Google CSE"
+        raise
     return [SearchHit(item.get("title", ""), item.get("link", ""), re.sub(r"\s+", " ", item.get("snippet", "")).strip(), "google-cse", lang=lang)
             for item in data.get("items", []) if item.get("link")]
 
@@ -173,6 +216,31 @@ def duckduckgo(query: str, limit: int = 6) -> list[SearchHit]:
 
     rows = web._ddg_html_search(query, limit)
     return [SearchHit(r.get("title", ""), r.get("url", ""), r.get("snippet", ""), "duckduckgo") for r in rows if r.get("url")]
+
+
+def bing_rss(query: str, lang: str = "en", limit: int = 6) -> list[SearchHit]:
+    """مصدر Bing RSS خفيف بلا مفتاح API، يستخدم كطبقة مستقلة لا كـ scraping لصفحة HTML."""
+    response = http_client.get(
+        "https://www.bing.com/search",
+        headers={"User-Agent": USER_AGENT, "Accept": "application/rss+xml, application/xml"},
+        params={"q": query, "format": "rss", "setlang": lang},
+        timeout=TIMEOUT,
+    )
+    if response.status_code != 200:
+        raise SearchProviderError("Bing RSS", response.status_code)
+    try:
+        root = ET.fromstring(response.text)
+    except ET.ParseError as exc:
+        raise SearchProviderError("Bing RSS", message=f"XML غير صالح: {exc}") from exc
+    hits: list[SearchHit] = []
+    for item in root.findall("./channel/item")[: max(1, min(int(limit), 10))]:
+        title = html.unescape((item.findtext("title") or "").strip())
+        url = (item.findtext("link") or "").strip()
+        snippet = html.unescape(re.sub(r"<[^>]+>", " ", item.findtext("description") or ""))
+        snippet = re.sub(r"\s+", " ", snippet).strip()
+        if title and url:
+            hits.append(SearchHit(title, url, snippet, "bing-rss", lang=lang))
+    return hits
 
 
 # ── الصلة والترتيب ──────────────────────────────────────────────────────────
@@ -259,7 +327,7 @@ def search(raw_query: str, settings: dict | None = None, limit: int = 6, deep: b
     sentences = 7 if deep else 3
 
     cse_key = settings.get("google_cse_key") or os.environ.get("GOOGLE_CSE_KEY", "")
-    cse_cx = settings.get("google_cse_cx") or os.environ.get("GOOGLE_CSE_CX", "")
+    cse_cx = settings.get("google_cse_cx") or os.environ.get("GOOGLE_CSE_CX", "") or DEFAULT_GOOGLE_CSE_CX
     gemini_key = _resolve_gemini_key(settings)
 
     jobs: dict[str, callable] = {}
@@ -271,7 +339,8 @@ def search(raw_query: str, settings: dict | None = None, limit: int = 6, deep: b
         elif gemini_key:
             jobs["Google (Gemini)"] = lambda: ("grounded", google_grounded(query, gemini_key, lang))
         else:
-            report.engines["Google"] = "غير مفعّل: أضف مفتاح Gemini أو Google CSE من الإعدادات"
+            report.engines["Google"] = "غير مفعّل في الخادم: cx متاح للواجهة، ويلزم Gemini أو GOOGLE_CSE_KEY للبحث البرمجي"
+        jobs["Bing (RSS)"] = lambda: ("hits", bing_rss(query, lang, limit))
     if want_wiki:
         jobs[f"ويكيبيديا ({lang})"] = lambda: ("hits", wikipedia(query, lang, limit, sentences))
         if lang == "ar" and latin_terms and latin_terms.lower() != query.lower():
@@ -295,16 +364,22 @@ def search(raw_query: str, settings: dict | None = None, limit: int = 6, deep: b
                     collected.extend(payload)
                     report.engines[name] = f"يعمل — {len(payload)} نتيجة"
             except Exception as exc:
-                report.engines[name] = f"فشل: {str(exc)[:90]}"
+                if isinstance(exc, SearchProviderError):
+                    status = f" [{exc.status}]" if exc.status else ""
+                    detail = exc.reason or exc.message or "تعذر الاتصال"
+                    report.engines[name] = f"فشل{status}: {detail[:150]}"
+                else:
+                    report.engines[name] = f"فشل: {str(exc)[:150]}"
 
     google_ok = any(h.engine.startswith("google") for h in collected) or bool(report.answer)
-    if not google_ok and want_google and not requested - {"google"}:
+    if not google_ok and want_google:
         try:
             ddg = duckduckgo(query, limit)
             collected.extend(ddg)
-            report.engines["DuckDuckGo احتياط"] = f"يعمل — {len(ddg)} نتيجة" if ddg else "لا نتائج"
+            label = "DuckDuckGo احتياط Google" if requested == {"google"} else "DuckDuckGo احتياط"
+            report.engines[label] = f"يعمل — {len(ddg)} نتيجة" if ddg else "لا نتائج"
         except Exception as exc:
-            report.engines["DuckDuckGo احتياط"] = f"فشل: {str(exc)[:60]}"
+            report.engines["DuckDuckGo احتياط"] = f"فشل: {str(exc)[:120]}"
 
     latin_stems = [_stem(t) for t in latin_terms.split()] or None
     report.hits, report.dropped = _filter_and_rank(collected, terms, latin_stems)

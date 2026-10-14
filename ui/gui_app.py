@@ -28,6 +28,7 @@ from engine.live_recon import LiveReconEngine
 from engine.risk import RiskEngine
 from tools.usb import analyze_mounted_filesystem, list_usb_devices, scan_mounted_drives
 from tools.usb_control import authorize_device, deauthorize_device
+from tools.websearch import DEFAULT_GOOGLE_CSE_CX
 from ui.terminal import TerminalUI
 from ui.icons import framed_icon, glyph_icon
 from ui.widgets import AccentLine, AmbientSurface, ChatView, HoverController, NavIndicator
@@ -1187,8 +1188,8 @@ class UnifiedCockpitWindow(QMainWindow):
         self.setting_cse_key = QLineEdit(self.settings.get("google_cse_key", ""))
         self.setting_cse_key.setEchoMode(QLineEdit.EchoMode.PasswordEchoOnEdit)
         self.setting_cse_key.setPlaceholderText("Google Programmable Search Key (اختياري)")
-        self.setting_cse_cx = QLineEdit(self.settings.get("google_cse_cx", ""))
-        self.setting_cse_cx.setPlaceholderText("معرّف محرك البحث cx (اختياري)")
+        self.setting_cse_cx = QLineEdit(self.settings.get("google_cse_cx", "") or DEFAULT_GOOGLE_CSE_CX)
+        self.setting_cse_cx.setPlaceholderText("معرّف محرك البحث cx")
 
         self.setting_report_dir = QLineEdit(self.settings.get("report_dir", os.path.expanduser("~/ayfam-reports")))
 

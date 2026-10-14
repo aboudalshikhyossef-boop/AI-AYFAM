@@ -31,7 +31,9 @@
 تحتوي واجهة **ترسانة التهديدات** على Google Programmable Search بالمعرّف
 `f5fbcd40fda484bc7` الذي يعمل مباشرة في المتصفح. وهو مسار مستقل لا يستبدل
 مصادر المشروع الأخرى: Google Grounding عبر Gemini، وGoogle Custom Search JSON
-API عند توفير `GOOGLE_CSE_KEY`، وDuckDuckGo، وWikipedia، وNVD/OSV.dev وExploit-DB.
+API عند توفير `GOOGLE_CSE_KEY`، وBing RSS، وDuckDuckGo، وWikipedia، وNVD/OSV.dev
+وExploit-DB. عند تعذر Google API تُعرض حالة HTTP وسبب Google الحقيقي، ثم يعمل
+Bing وDuckDuckGo كبدائل واضحة بدلاً من إخفاء الخطأ.
 
 لتمكين مسار Google JSON API في الخادم (اختياري)، انسخ القيم التالية إلى ملف
 البيئة أو إلى إعدادات AI AYFAM:
