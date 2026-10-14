@@ -410,7 +410,9 @@ class GeminiThreatClient:
 Research window: the last {int(window_hours)} hours from now (UTC).
 Return one compact JSON object with at most 5 significant items. Each item must have one short description,
 one recommendation, and at most 2 authoritative source URLs. Return [] when evidence is insufficient."""
-        model = self.discover_models()[0]
+        # Keep the operational path to one API call: model discovery is an
+        # explicit settings/diagnostic action, not part of threat collection.
+        model = ModelInfo(f"models/{os.getenv('GEMINI_MODEL', 'gemini-2.5-flash')}")
         try:
             raw = self._request_with_interactions(model, query)
             return validate_threat_feed(json.loads(raw), window_hours=window_hours)
