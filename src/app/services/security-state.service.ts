@@ -637,8 +637,8 @@ AI AYFAM Countermeasures:
             id: `usb-auth-${Date.now()}`,
             timestamp: new Date().toLocaleTimeString(),
             level: nextAuth ? 'ACTION' : 'WARN',
-            message: `تم تغيير حالة جهاز USB [${device.name}]: ${statusAr}`,
-            messageEn: `USB device [${device.nameEn}] status changed: ${statusEn}`,
+              message: `تم تحديث حالة العرض المحلية لجهاز USB [${device.name}]: ${statusAr} — لم يُنفذ أمر USBGuard`,
+              messageEn: `Local USB device review changed for [${device.nameEn}]: ${statusEn} — no USBGuard command was executed`,
             category: 'usb_control',
           });
           return { ...device, authorized: nextAuth };

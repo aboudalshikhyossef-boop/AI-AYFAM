@@ -67,13 +67,13 @@
       </div>
     </div>
 
-    <!-- Right Controls: Quick Auto-Fix, Full Scan, Language Switcher -->
+    <!-- Right Controls: local review, full scan, language switcher -->
     <div class="flex items-center gap-2">
-      <!-- Auto Reactor Button -->
+      <!-- Local review button: does not execute privileged commands -->
       <button
         (click)="state.remediateAll()"
         class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-semibold text-xs transition-all shadow-md shadow-emerald-600/20 active:scale-95 cursor-pointer"
-        title="Auto-Reactor: Apply All Security Fixes">
+        title="Mark all findings as locally reviewed; no system command is executed">
         <mat-icon>auto_fix_high</mat-icon>
         <span>
           @if (state.locale() === 'ar') { مراجعة النتائج } @else { Review Findings }
@@ -663,7 +663,7 @@
                       @if (f.fixed) {
                         <span class="px-2.5 py-0.5 rounded text-xs font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1 font-mono">
                           <mat-icon class="text-xs">check_circle</mat-icon>
-                          @if (state.locale() === 'ar') { تم الإصلاح } @else { FIXED }
+                          @if (state.locale() === 'ar') { تمت المراجعة } @else { REVIEWED }
                         </span>
                       }
 
@@ -711,7 +711,7 @@
                     } @else {
                       <span class="text-xs text-emerald-400 font-mono flex items-center gap-1">
                         <mat-icon>done_all</mat-icon>
-                        @if (state.locale() === 'ar') { محصّن } @else { Hardened }
+                        @if (state.locale() === 'ar') { تمت المراجعة } @else { Reviewed }
                       </span>
                     }
                   </div>
@@ -745,7 +745,7 @@
 
               <div class="flex items-center gap-2">
                 <span class="px-3 py-1.5 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-xs font-mono">
-                  USBGuard: ENFORCED
+                  @if (state.locale() === 'ar') { حالة USBGuard تتطلب تحققاً } @else { USBGuard status requires verification }
                 </span>
               </div>
             </div>

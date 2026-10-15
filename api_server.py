@@ -15,6 +15,12 @@ from config.settings import Settings
 from engine.ai_assistant import AssistantConfig, AssistantError, build_provider
 from engine.gemini_rate_limit import DEFAULT_GEMINI_MODEL, gemini_model_name
 from tools import network, system
+from utils.validators import validate_scan_target
+
+
+def _allowed_origins() -> set[str]:
+    configured = os.getenv("AYFAM_ALLOWED_ORIGINS", "http://127.0.0.1:3000,http://localhost:3000")
+    return {origin.strip() for origin in configured.split(",") if origin.strip()}
 
 
 def _finding(item: dict[str, Any], index: int, source: str) -> dict[str, Any]:
@@ -117,19 +123,35 @@ class ApiHandler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Access-Control-Allow-Origin", "*")
+        origin = self.headers.get("Origin")
+        if origin and origin in _allowed_origins():
+            self.send_header("Access-Control-Allow-Origin", origin)
+            self.send_header("Vary", "Origin")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.end_headers()
         self.wfile.write(body)
 
+    def _origin_allowed(self) -> bool:
+        origin = self.headers.get("Origin")
+        return not origin or origin in _allowed_origins()
+
     def do_OPTIONS(self) -> None:  # noqa: N802
+        origin = self.headers.get("Origin")
+        if origin and origin not in _allowed_origins():
+            self._send(403, {"error": "origin_not_allowed"})
+            return
         self.send_response(204)
-        self.send_header("Access-Control-Allow-Origin", "*")
+        if origin:
+            self.send_header("Access-Control-Allow-Origin", origin)
+            self.send_header("Vary", "Origin")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.end_headers()
 
     def do_GET(self) -> None:  # noqa: N802
+        if not self._origin_allowed():
+            self._send(403, {"error": "origin_not_allowed"})
+            return
         if self.path == "/api/health":
             self._send(200, {"ok": True, "service": "ai-ayfam-api", "scanners": True})
         else:
@@ -148,13 +170,18 @@ class ApiHandler(BaseHTTPRequestHandler):
         return data
 
     def do_POST(self) -> None:  # noqa: N802
+        if not self._origin_allowed():
+            self._send(403, {"error": "origin_not_allowed"})
+            return
         try:
             data = self._read_json()
             if self.path == "/api/scan":
                 profile = str(data.get("profile", "full")).strip().lower()
                 target = str(data.get("target", "127.0.0.1")).strip()
-                if len(target) > 255:
-                    raise ValueError("target_too_long")
+                valid_target, target_result = validate_scan_target(target)
+                if not valid_target:
+                    raise ValueError(target_result)
+                target = target_result
                 self._send(200, run_scan(profile, target))
                 return
             if self.path != "/api/assistant":

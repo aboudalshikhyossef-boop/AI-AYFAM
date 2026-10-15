@@ -62,6 +62,29 @@ mat-icon {
   flex: 0 0 20px;
 }
 
+/* Angular class bindings cannot contain Tailwind's slash opacity syntax.
+   Keep the readable bindings and provide their exact CSS tokens. */
+.bg-amber-500_20 { background-color: rgb(245 158 11 / .20); }
+.bg-amber-950_30 { background-color: rgb(69 26 3 / .30); }
+.bg-blue-500_20 { background-color: rgb(59 130 246 / .20); }
+.bg-emerald-500_10 { background-color: rgb(16 185 129 / .10); }
+.bg-emerald-500_20 { background-color: rgb(16 185 129 / .20); }
+.bg-emerald-950_20 { background-color: rgb(2 44 34 / .20); }
+.bg-emerald-950_30 { background-color: rgb(2 44 34 / .30); }
+.bg-rose-500_20 { background-color: rgb(244 63 94 / .20); }
+.bg-rose-950_10 { background-color: rgb(76 5 25 / .10); }
+.bg-rose-950_30 { background-color: rgb(76 5 25 / .30); }
+.bg-slate-900_40 { background-color: rgb(15 23 42 / .40); }
+.bg-slate-950_60 { background-color: rgb(2 6 23 / .60); }
+.bg-yellow-500_20 { background-color: rgb(234 179 8 / .20); }
+.border-amber-500_30 { border-color: rgb(245 158 11 / .30); }
+.border-blue-500_30 { border-color: rgb(59 130 246 / .30); }
+.border-emerald-500_20 { border-color: rgb(16 185 129 / .20); }
+.border-emerald-500_30 { border-color: rgb(16 185 129 / .30); }
+.border-rose-500_30 { border-color: rgb(244 63 94 / .30); }
+.border-rose-500_40 { border-color: rgb(244 63 94 / .40); }
+.border-yellow-500_30 { border-color: rgb(234 179 8 / .30); }
+
 .mat-icon-lg {
   font-size: 28px;
   width: 28px;

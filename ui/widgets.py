@@ -317,9 +317,12 @@ class HoverController(QObject):
             widget.destroyed.connect(lambda _=None, key=widget: self._forget(key))
 
     def _forget(self, key):
-        self.overlays.pop(key, None)
-        self.active.discard(key)
-        self.animating.discard(key)
+        # Qt may emit ``destroyed`` while QObject teardown has already
+        # removed Python attributes from the controller.  Cleanup must be
+        # idempotent and safe during interpreter/application shutdown.
+        getattr(self, "overlays", {}).pop(key, None)
+        getattr(self, "active", set()).discard(key)
+        getattr(self, "animating", set()).discard(key)
 
     @staticmethod
     def _cursor_for(widget):

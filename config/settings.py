@@ -12,6 +12,17 @@ import stat
 import tempfile
 from pathlib import Path
 
+try:
+    from dotenv import load_dotenv
+except ImportError:  # optional at import time; preflight reports it when missing
+    load_dotenv = None
+
+
+PROJECT_ENV_FILE = Path(__file__).resolve().parents[1] / ".env"
+if load_dotenv is not None:
+    # Explicit environment variables always win over the project file.
+    load_dotenv(PROJECT_ENV_FILE, override=False)
+
 
 CONFIG_DIR = Path.home() / ".ayfam"
 CONFIG_FILE = CONFIG_DIR / "config.json"

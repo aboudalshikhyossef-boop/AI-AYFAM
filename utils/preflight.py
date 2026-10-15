@@ -26,10 +26,13 @@ class Requirement:
 PYTHON_REQUIREMENTS = (
     Requirement("rich", "Python", "python3 -m pip install rich"),
     Requirement("requests", "Python", "python3 -m pip install requests"),
+    Requirement("dotenv", "Python", "python3 -m pip install python-dotenv"),
     Requirement("pypdf", "Python", "python3 -m pip install pypdf"),
     Requirement("sklearn", "Python", "python3 -m pip install scikit-learn"),
     Requirement("numpy", "Python", "python3 -m pip install numpy"),
     Requirement("scipy", "Python", "python3 -m pip install scipy"),
+    Requirement("cryptography", "Python", "python3 -m pip install cryptography"),
+    Requirement("yara", "Python", "python3 -m pip install yara-python"),
 )
 
 FEATURE_REQUIREMENTS = {
@@ -150,7 +153,7 @@ def feature_flags(args) -> set[str]:
     if getattr(args, "gemini_threats", False) or getattr(args, "gemini_models", False):
         features.add("gemini")
     scan = getattr(args, "scan", None)
-    if scan:
+    if isinstance(scan, str) and scan:
         features.add(scan)
     if getattr(args, "lynis", False):
         features.add("lynis")
