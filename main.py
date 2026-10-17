@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 AI AYFAM — Unified Cybersecurity Operations Center
-Target: Linux Mint / Ubuntu Desktop (PyQt6 + Terminal CLI)
+Target: Linux Mint / Ubuntu Desktop (PyQt6 desktop application only)
 """
 
 from __future__ import annotations
@@ -12,47 +12,33 @@ import sys
 import traceback
 from pathlib import Path
 
-# Add project root to sys.path
 ROOT_DIR = Path(__file__).resolve().parent
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-from config.settings import Settings
-from core.agent import AYFAMAgent
-from ui.terminal import TerminalUI
-from utils.preflight import check_requirements, is_root
+from utils.preflight import check_requirements
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="ayfam",
-        description="AI AYFAM — Unified Cybersecurity Suite for Linux Mint",
+        description="AI AYFAM — تطبيق سطح مكتب للأمن السيبراني على Linux Mint",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    mode_group = parser.add_mutually_exclusive_group()
-    mode_group.add_argument("--gui", action="store_true", help="Launch PyQt6 Desktop GUI Cockpit")
-    mode_group.add_argument("--cli", action="store_true", help="Launch interactive Terminal UI")
-    mode_group.add_argument("--scan", action="store_true", help="Execute immediate full security audit")
-    mode_group.add_argument("--harden", action="store_true", help="Run automated Linux Mint hardening routine")
-    mode_group.add_argument("--check", action="store_true", help="Run preflight diagnostic checks")
-
-    parser.add_argument("--no-color", action="store_true", help="Disable colored output in terminal")
-    parser.add_argument("--cve", type=str, metavar="QUERY", help="Search CVE / vulnerability intelligence")
-    parser.add_argument("--version", action="version", version="AI AYFAM v5.2.0 (Linux Mint Edition)")
+    parser.add_argument("--gui", action="store_true", help="تشغيل تطبيق سطح المكتب (الوضع الوحيد)")
+    parser.add_argument("--check", action="store_true", help="فحص المتطلبات قبل تشغيل التطبيق")
+    parser.add_argument("--version", action="version", version="AI AYFAM v5.2.0 (Linux Mint Desktop)")
     return parser.parse_args()
 
 
 def prepare_gui_environment() -> None:
-    """Ensure GUI display variables and Python path resolution for PyQt6 work under sudo."""
     sudo_user = os.environ.get("SUDO_USER")
     sudo_uid = os.environ.get("SUDO_UID")
 
     if sudo_user:
         user_home = Path(f"/home/{sudo_user}")
-
-        # 1. Resolve PyQt6 if installed in user site-packages or virtual environment
         try:
-            import PyQt6
+            import PyQt6  # noqa: F401
         except ImportError:
             candidates = [
                 ROOT_DIR / ".venv/lib" / f"python{sys.version_info.major}.{sys.version_info.minor}" / "site-packages",
@@ -63,21 +49,16 @@ def prepare_gui_environment() -> None:
             if user_py_dir.exists():
                 for p in user_py_dir.glob("python3.*/site-packages"):
                     candidates.append(p)
-
             for cand in candidates:
                 if cand.exists() and str(cand) not in sys.path:
                     sys.path.insert(0, str(cand))
                     try:
-                        import PyQt6
+                        import PyQt6  # noqa: F401
                         break
                     except ImportError:
                         pass
-
-        # 2. Preserve DISPLAY for GUI
         if not os.environ.get("DISPLAY") and not os.environ.get("WAYLAND_DISPLAY"):
             os.environ["DISPLAY"] = ":0"
-
-        # 3. Preserve XAUTHORITY for GUI
         if not os.environ.get("XAUTHORITY"):
             xauth_candidates = [user_home / ".Xauthority"]
             if sudo_uid:
@@ -86,13 +67,10 @@ def prepare_gui_environment() -> None:
                 if run_user_dir.exists():
                     xauth_candidates.extend(list(run_user_dir.glob(".Xauthority*")))
                     xauth_candidates.extend(list(run_user_dir.glob("xauth*")))
-
             for xauth in xauth_candidates:
                 if xauth.exists():
                     os.environ["XAUTHORITY"] = str(xauth)
                     break
-
-        # 4. Preserve XDG_RUNTIME_DIR
         if not os.environ.get("XDG_RUNTIME_DIR") and sudo_uid:
             os.environ["XDG_RUNTIME_DIR"] = f"/run/user/{sudo_uid}"
 
@@ -101,6 +79,7 @@ def run_gui() -> int:
     prepare_gui_environment()
     log_dir = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state")) / "ayfam"
     log_file = log_dir / "gui.log"
+
     def log_failure(exc: BaseException) -> None:
         try:
             log_dir.mkdir(parents=True, exist_ok=True)
@@ -108,13 +87,15 @@ def run_gui() -> int:
                 stream.write(f"\n--- GUI startup failure ---\n{traceback.format_exc()}\n")
         except OSError:
             pass
+
     try:
         from PyQt6.QtWidgets import QApplication
         from ui.gui_app import UnifiedCockpitWindow
     except ImportError as exc:
-        print(f"[!] PyQt6 is not installed or GUI libraries are missing: {exc}", file=sys.stderr)
-        print("[*] Falling back to Terminal UI...\n", file=sys.stderr)
-        return run_cli()
+        print(f"[!] PyQt6 غير مثبت أو مكتبات الواجهة ناقصة: {exc}", file=sys.stderr)
+        print("[*] ثبّت التطبيق عبر setup.sh أو: python3 -m pip install PyQt6", file=sys.stderr)
+        print("[*] هذا الإصدار يعمل كتطبيق سطح مكتب فقط، بدون طرفية وبدون واجهة ويب.", file=sys.stderr)
+        return 2
 
     try:
         app = QApplication.instance()
@@ -131,105 +112,15 @@ def run_gui() -> int:
         return 1
 
 
-def run_cli(no_color: bool = False) -> int:
-    ui = TerminalUI(no_color=no_color)
-    settings = Settings()
-    agent = AYFAMAgent(settings=settings, ui=ui)
-
-    if not is_root():
-        ui.warning("تنبيه: الأداة تعمل بدون صلاحيات root. بعض الفحوصات العميقة (مثل فحص المنافذ وجدار الحماية) قد تكون محدودة.")
-
-    agent.interactive_loop()
-    return 0
-
-
-def run_direct_scan(no_color: bool = False) -> int:
-    ui = TerminalUI(no_color=no_color)
-    settings = Settings()
-    agent = AYFAMAgent(settings=settings, ui=ui)
-
-    ui.info("بدء الفحص الأمني الشامل للنظام...")
-    results = agent.run_full_audit()
-    ui.print_table(
-        headers=["الخطورة", "العنوان", "الفئة"],
-        rows=[[f.get("severity", "info"), f.get("title", ""), f.get("category", "")] for f in results],
-        title="نتائج الفحص الأمني"
-    )
-    ui.success(f"اكتمل الفحص: {len(results)} نتائج مسجلة.")
-    return 0
-
-
-def run_direct_hardening(no_color: bool = False) -> int:
-    ui = TerminalUI(no_color=no_color)
-    settings = Settings()
-    agent = AYFAMAgent(settings=settings, ui=ui)
-
-    if not is_root():
-        ui.error("يتطلب تطبيق التحصين الأمني صلاحيات root.")
-        return 1
-
-    ui.info("بدء تطبيق إجراءات التحصين الأمني...")
-    res = agent.run_hardening()
-    ui.success(f"تم تنفيذ إجراءات التحصين بنجاح: {res}")
-    return 0
-
-
-def run_cve_search(query: str, no_color: bool = False) -> int:
-    ui = TerminalUI(no_color=no_color)
-    settings = Settings()
-    agent = AYFAMAgent(settings=settings, ui=ui)
-
-    ui.info(f"البحث في قواعد ثغرات CVE عن: {query}...")
-    findings = agent.search_cve(query)
-    if findings:
-        for f in findings:
-            ui.print_finding(
-                severity=f.get("severity", "medium"),
-                title=f.get("title", query),
-                detail=f.get("detail", ""),
-                fix=f.get("fix", "")
-            )
-    else:
-        ui.warning(f"لم يتم العثور على نتائج لـ {query}")
-    return 0
-
-
 def main() -> int:
     args = parse_args()
-
-    # Preflight check
     if args.check:
         results = check_requirements()
         print("AI AYFAM Preflight Diagnostics:")
         print(results.text())
-        return 0 if results.ok else 1
-
-    if args.scan:
-        return run_direct_scan(no_color=args.no_color)
-
-    if args.harden:
-        return run_direct_hardening(no_color=args.no_color)
-
-    if args.cve:
-        return run_cve_search(args.cve, no_color=args.no_color)
-
-    if args.cli:
-        return run_cli(no_color=args.no_color)
-
-    if args.gui:
-        return run_gui()
-
-    # Default launch logic:
-    # If a display is available (Linux Mint desktop session), prefer GUI; otherwise CLI
-    has_display = bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
-    if has_display:
-        try:
-            import PyQt6
-            return run_gui()
-        except ImportError:
-            return run_cli(no_color=args.no_color)
-
-    return run_cli(no_color=args.no_color)
+        if not results.ok:
+            return 1
+    return run_gui()
 
 
 if __name__ == "__main__":
