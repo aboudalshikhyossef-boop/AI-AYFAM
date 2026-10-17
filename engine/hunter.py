@@ -10,6 +10,53 @@ from typing import List, Optional
 from engine.finding import Finding
 from engine.sysreader import SystemReader
 
+_KEY_TYPES = {
+    "ssh-rsa", "ssh-ed25519", "ssh-dss",
+    "ecdsa-sha2-nistp256", "ecdsa-sha2-nistp384", "ecdsa-sha2-nistp521",
+    "sk-ecdsa-sha2-nistp256@openssh.com", "sk-ssh-ed25519@openssh.com",
+}
+_SUSPICIOUS_COMMAND = re.compile(
+    r"(?:^|[^\w])(?:sh|bash|dash|zsh|nc|ncat|curl|wget|python\d*|perl|ruby|socat)(?:$|[^\w])|/dev/tcp/"
+)
+
+
+def _forced_commands(line: str) -> list:
+    """استخرج قيم command= حتى لو سبقتها خيارات أخرى مثل restrict أو no-port-forwarding."""
+    first = line.split(None, 1)[0]
+    if first in _KEY_TYPES or first.startswith(("ssh-", "ecdsa-", "sk-")):
+        return []
+    commands = []
+    i = 0
+    while i < len(line):
+        if not line.startswith("command=", i):
+            i += 1
+            continue
+        i += len("command=")
+        if i < len(line) and line[i] == '"':
+            i += 1
+            buf = []
+            while i < len(line):
+                if line[i] == "\\" and i + 1 < len(line):
+                    buf.append(line[i + 1])
+                    i += 2
+                    continue
+                if line[i] == '"':
+                    i += 1
+                    break
+                buf.append(line[i])
+                i += 1
+            commands.append("".join(buf))
+            continue
+        end = len(line)
+        for stop in (",", " "):
+            pos = line.find(stop, i)
+            if pos != -1:
+                end = min(end, pos)
+        commands.append(line[i:end])
+        i = end
+    return commands
+
+
 class ThreatHunter:
     def __init__(self, sys_reader: Optional[SystemReader] = None):
         self.sys = sys_reader or SystemReader()
@@ -31,7 +78,7 @@ class ThreatHunter:
             if content:
                 findings.append(Finding(
                     severity="critical",
-                    title="🚨 رصد مكتبة مشتركة محقونة في /etc/ld.so.preload",
+                    title="رصد مكتبة مشتركة محقونة في /etc/ld.so.preload",
                     detail=f"الملف يحتوي على: '{content}'. هذا مؤشر كلاسيكي لـ Userland Rootkit يعترض نداءات النظام.",
                     fix=f"sudo rm -f {preload_file} # وافحص المكتبة المذكورة فوراً",
                     category="persistence",
@@ -42,7 +89,6 @@ class ThreatHunter:
         return findings
 
     def check_deleted_exe_processes(self) -> List[Finding]:
-        """كشف العمليات التي تعمل حالياً من ملف تنفيذي تم حذفه من القرص."""
         findings = []
         proc_dir = "/proc"
         if not self.sys.is_dir(proc_dir):
@@ -53,7 +99,6 @@ class ThreatHunter:
                 continue
             exe_link = f"/proc/{pid}/exe"
             try:
-                # التحقق إن كان الرابط يشير إلى (deleted)
                 dest = os.readlink(exe_link) if hasattr(os, "readlink") else ""
                 if "(deleted)" in dest:
                     cmdline = self.sys.read_text(f"/proc/{pid}/cmdline").replace("\x00", " ")
@@ -71,7 +116,6 @@ class ThreatHunter:
         return findings
 
     def check_authorized_keys(self) -> List[Finding]:
-        """فحص مفاتيح SSH المصرح بها وكشف الحقن أو المفاتيح المقيدة المريبة."""
         findings = []
         auth_keys_pattern = "/home/*/.ssh/authorized_keys"
         all_keys = self.sys.glob(auth_keys_pattern) + ["/root/.ssh/authorized_keys"]
@@ -84,13 +128,17 @@ class ThreatHunter:
                 line = line.strip()
                 if not line or line.startswith("#"):
                     continue
-                # كشف الأوامر المحقونة في مفتاح SSH (ForceCommand injection)
-                if line.startswith("command=") and any(sh in line for sh in ("sh", "bash", "curl", "nc")):
+                for command in _forced_commands(line):
+                    suspicious = bool(_SUSPICIOUS_COMMAND.search(command))
                     findings.append(Finding(
-                        severity="critical",
-                        title=f"🚨 أمر إجباري مشبوه داخل مفتاح SSH: {kfile}:{idx}",
-                        detail=f"السطر يحتوي على أمر مقيد قد يكون باباً خلفياً: {line[:100]}",
-                        fix=f"راجع السطر واحذفه من {kfile}",
+                        severity="critical" if suspicious else "medium",
+                        title=(
+                            f"أمر إجباري مشبوه داخل مفتاح SSH: {kfile}:{idx}"
+                            if suspicious else
+                            f"أمر إجباري على مفتاح SSH: {kfile}:{idx}"
+                        ),
+                        detail=f"القيمة المستخرجة من command=: {command[:160]}",
+                        fix=f"راجع السطر في {kfile} واحذف المفتاح إذا لم يكن الأمر متوقعاً.",
                         category="persistence",
                         tags=["ssh_backdoor", "authorized_keys"],
                         attack_ids=["T1098.004"],
@@ -98,7 +146,6 @@ class ThreatHunter:
         return findings
 
     def check_shell_profiles(self) -> List[Finding]:
-        """فحص ملفات تشغيل الطرفية بحثاً عن سكريبتات تحميل تلقائي أو reverse shells."""
         findings = []
         targets = ["/etc/profile", "/etc/bash.bashrc"] + self.sys.glob("/home/*/.bashrc") + self.sys.glob("/home/*/.profile")
 
@@ -116,7 +163,7 @@ class ThreatHunter:
                 if re.search(pat, text):
                     findings.append(Finding(
                         severity="critical",
-                        title=f"🚨 نمط باب خلفي في ملف تشغيل الشيل: {target}",
+                        title=f"نمط باب خلفي في ملف تشغيل الشيل: {target}",
                         detail=f"تم رصد: {desc}",
                         fix=f"افحص الملف {target} فوراً وأزل السطر الخبيث.",
                         category="persistence",
@@ -140,7 +187,7 @@ class ThreatHunter:
                     findings.append(Finding(
                         severity="high",
                         title=f"مهمة مجدولة (Cron) تشغل مسارات مشبوهة: {fpath}",
-                        detail=f"السكريبت يشغل ملفات من /tmp أو ينفذ أوامر شبكية غير مألوفة.",
+                        detail="السكريبت يشغل ملفات من /tmp أو ينفذ أوامر شبكية غير مألوفة.",
                         fix=f"راجع محتوى {fpath} وتأكد من شرعيته.",
                         category="persistence",
                         tags=["cron", "persistence"],
