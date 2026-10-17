@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from engine.gemini_cti import LocalSnapshot, ThreatHistory, GeminiCTIError, GeminiThreatClient, ModelInfo, _is_text_research_model, markdown_report, resolve_api_key, validate_threat_feed
+from engine.gemini_cti import CTI_SEARCH_MODEL, LocalSnapshot, ThreatHistory, GeminiCTIError, GeminiThreatClient, ModelInfo, _is_text_research_model, markdown_report, resolve_api_key, validate_threat_feed
 
 
 class GeminiCTITests(unittest.TestCase):
@@ -71,6 +71,7 @@ class GeminiCTITests(unittest.TestCase):
         self.assertTrue(post.call_args.args[0].startswith("https://generativelanguage.googleapis.com/v1"))
         self.assertEqual(post.call_args.kwargs["headers"]["x-goog-api-key"], "test-key")
         self.assertEqual(post.call_args.kwargs["timeout"], (10, 45.0))
+        self.assertIn("google_search_retrieval", post.call_args.kwargs["json_data"]["tools"][0])
 
     def test_legacy_rest_text_is_still_accepted(self):
         class Response:
@@ -138,6 +139,9 @@ class GeminiCTITests(unittest.TestCase):
             models = client.discover_models()
         self.assertEqual([model.short_name for model in models], ["gemini-3.8-flash"])
         self.assertEqual(client.selected_model.short_name, "gemini-3.8-flash")
+
+    def test_cti_search_uses_free_tier_search_model(self):
+        self.assertEqual(CTI_SEARCH_MODEL, "gemini-2.5-flash-lite")
 
     def test_invalid_listed_model_stops_without_fallback_burst(self):
         class Response:

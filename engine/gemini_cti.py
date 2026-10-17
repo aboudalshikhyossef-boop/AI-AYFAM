@@ -52,8 +52,10 @@ THREAT_SCHEMA: dict[str, Any] = {
 }
 
 # Google Search grounding is available on the Gemini 2.5 Flash family in the
-# Gemini API Free tier. Gemini 3.x model inference can be free, but its Search
-# grounding requires the Paid tier.
+# Gemini API Free tier. Gemini 3.x inference can be free, but its Search
+# grounding is not available on the Free tier. Keep CTI on a separate model so
+# normal chat can continue using the configured Gemini 3.x model.
+CTI_SEARCH_MODEL = "gemini-2.5-flash-lite"
 FREE_TIER_SEARCH_MODELS = ("gemini-3.8-flash",)
 
 SYSTEM_PROMPT = """You are a cyber threat-intelligence research assistant.
@@ -272,13 +274,12 @@ class GeminiThreatClient:
         model = gemini_model_name(os.getenv("GEMINI_MODEL", DEFAULT_GEMINI_MODEL))
         payload = {"contents": [{"parts": [{"text": compact_text(prompt, 3600)}]}],
                    "systemInstruction": {"parts": [{"text": sys_instruction}]},
-                   "generationConfig": {"temperature": 0.1, "maxOutputTokens": 256}}
+                   "generationConfig": {"temperature": 0.1, "maxOutputTokens": 2048}}
         wait_for_slot(self.api_key)
         try:
             response = requests.post(f"{self.base_url}/models/{model}:generateContent",
                 headers={"x-goog-api-key": self.api_key, "Content-Type": "application/json"},
                 json_data=payload, timeout=self.timeout)
-            wait_for_slot(self.api_key)
             if response.status_code != 200:
                 raise GeminiHTTPError(response)
             body = response.json()
@@ -322,7 +323,6 @@ class GeminiThreatClient:
                 params={"pageSize": 1000},
                 timeout=(10, self.timeout),
             )
-            wait_for_slot(self.api_key)
             if response.status_code >= 400:
                 raise GeminiHTTPError(response)
             raw_models = response.json().get("models", [])
@@ -386,7 +386,7 @@ class GeminiThreatClient:
         """Send one grounded generateContent request only."""
         payload = {
             "contents": [{"parts": [{"text": compact_text(query, 5200)}]}],
-            "tools": [{"googleSearch": {}}],
+            "tools": [{_google_search_tool_type(model): {}}],
             "generationConfig": {"responseMimeType": "application/json",
                                  "responseSchema": THREAT_SCHEMA,
                                  "temperature": 0.1, "maxOutputTokens": 900},
@@ -396,7 +396,6 @@ class GeminiThreatClient:
             f"{self.base_url}/models/{model.short_name}:generateContent",
             headers={"x-goog-api-key": self.api_key, "Content-Type": "application/json"},
             json_data=payload, timeout=(10, self.timeout))
-        wait_for_slot(self.api_key)
         if response.status_code >= 400:
             raise GeminiHTTPError(response)
         try:
@@ -414,7 +413,10 @@ Return one compact JSON object with at most 5 significant items. Each item must 
 one recommendation, and at most 2 authoritative source URLs. Return [] when evidence is insufficient."""
         # Keep the operational path to one API call: model discovery is an
         # explicit settings/diagnostic action, not part of threat collection.
-        model = ModelInfo(f"models/{gemini_model_name(os.getenv('GEMINI_MODEL', DEFAULT_GEMINI_MODEL))}")
+        # Do not inherit the normal chat model here: Gemini 3.x Search
+        # grounding is unavailable on the Free tier and returns HTTP 429.
+        configured_model = os.getenv("AYFAM_GEMINI_CTI_MODEL", CTI_SEARCH_MODEL).strip()
+        model = ModelInfo(f"models/{configured_model or CTI_SEARCH_MODEL}")
         try:
             raw = self._request_with_interactions(model, query)
             return validate_threat_feed(json.loads(raw), window_hours=window_hours)
