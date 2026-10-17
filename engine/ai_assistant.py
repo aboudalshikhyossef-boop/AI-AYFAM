@@ -144,11 +144,12 @@ class GeminiAssistant:
             json_data={
                 "systemInstruction": {"parts": [{"text": instruction}]},
                 "contents": [{"role": "user", "parts": [{"text": prompt}]}],
-                "generationConfig": {"temperature": 0.1, "maxOutputTokens": 256},
+                # 256 tokens is too small for Arabic answers and can stop
+                # Gemini in the middle of a sentence.
+                "generationConfig": {"temperature": 0.1, "maxOutputTokens": 2048},
             },
             timeout=self.timeout,
         )
-        wait_for_slot(self.api_key)
         if getattr(response, "status_code", 0) != 200:
             detail = _error_message(response)
             raise AssistantError(f"Gemini request failed ({response.status_code}): {detail or 'unknown error'}")

@@ -42,8 +42,20 @@ def test_openai_response_is_parsed_without_logging_key():
 
 def test_gemini_response_is_parsed():
     response = Response(200, {"candidates": [{"content": {"parts": [{"text": "Gemini answer"}]}}]})
-    with patch("engine.ai_assistant.http_client.post", return_value=response):
+    with patch("engine.ai_assistant.http_client.post", return_value=response) as post, \
+         patch("engine.ai_assistant.wait_for_slot"):
         assert GeminiAssistant("secret").ask("Explain UFW") == "Gemini answer"
+    generation_config = post.call_args.kwargs["json_data"]["generationConfig"]
+    assert generation_config["maxOutputTokens"] == 2048
+
+
+def test_gemini_combines_all_response_parts():
+    response = Response(200, {"candidates": [{"content": {"parts": [
+        {"text": "First part."}, {"text": "Second part."}
+    ]}}]})
+    with patch("engine.ai_assistant.http_client.post", return_value=response), \
+         patch("engine.ai_assistant.wait_for_slot"):
+        assert GeminiAssistant("secret").ask("Explain UFW") == "First part.\nSecond part."
 
 
 def test_provider_error_is_actionable():
