@@ -89,7 +89,7 @@ def match_package_to_nvd(package: str, version: str, records: list) -> list:
     return matched
 
 
-def _cpe_from_cve(cve: dict) -> list:
+def cpe_from_cve(cve: dict) -> list:
     found = []
     for config in cve.get("configurations") or []:
         for node in config.get("nodes") or []:
