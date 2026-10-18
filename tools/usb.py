@@ -211,7 +211,7 @@ def _parse_lsblk_devices(payload: str, usb_only: bool = False) -> list[dict]:
         }
         # Some lsblk versions return a mounted filesystem as the block itself
         # without a children array; keep it scannable instead of dropping it.
-        if not info["partitions"] and _mountpoints(block):
+        if not info["partitions"]:
             info["partitions"] = [_partition_info(block)]
         elif len(info["partitions"]) == 1 and not info["partitions"][0].get("mountpoint") and _mountpoints(block):
             # بعض إصدارات lsblk تضع نقطة التوصيل على القرص الأب فقط.
