@@ -18,6 +18,7 @@ from PyQt6.QtWidgets import (
     QHBoxLayout, QHeaderView, QLabel, QLineEdit, QMainWindow, QMessageBox,
     QPlainTextEdit, QProgressBar, QPushButton, QSplitter, QStackedWidget,
     QTableWidget, QTableWidgetItem, QTextEdit, QVBoxLayout, QWidget, QScrollArea, QSizePolicy,
+    QInputDialog,
     QSplashScreen,
 )
 
@@ -30,7 +31,7 @@ from tools.usb import analyze_mounted_filesystem, list_usb_devices, scan_mounted
 from tools.usb_control import (
     authorize_device,
     deauthorize_device,
-    deep_scan_flash,
+    deep_scan_flash_privileged,
     eject_storage_device,
     fix_flash_issues,
 )
@@ -242,6 +243,8 @@ class UnifiedCockpitWindow(QMainWindow):
         self.chat_history: list[tuple[str, str]] = []
         self.task_buttons: list[QPushButton] = []
         self.usb_inventory_loaded = False
+        self._selected_usb_device: dict = {}
+        self._selected_usb_partition_data: dict = {}
         self.nav_buttons: list[QPushButton] = []
         self.init_ui()
         self.timer = QTimer(self)
@@ -886,6 +889,7 @@ class UnifiedCockpitWindow(QMainWindow):
         self.usb_devices_table.verticalHeader().setVisible(False)
         self.usb_devices_table.verticalHeader().setDefaultSectionSize(32)
         self.usb_devices_table.cellClicked.connect(self.show_usb_device_details)
+        self.usb_devices_table.itemSelectionChanged.connect(self._capture_usb_device_selection)
         devices_layout.addWidget(self.usb_devices_table)
         layout.addWidget(devices_group, 2)
 
@@ -930,6 +934,7 @@ class UnifiedCockpitWindow(QMainWindow):
         self.usb_drives_table.verticalHeader().setVisible(False)
         self.usb_drives_table.verticalHeader().setDefaultSectionSize(32)
         self.usb_drives_table.cellClicked.connect(self.show_usb_drive_details)
+        self.usb_drives_table.itemSelectionChanged.connect(self._capture_usb_partition_selection)
         drives_layout.addWidget(self.usb_drives_table)
         self.usb_detail = QPlainTextEdit(readOnly=True)
         self.usb_detail.setPlaceholderText("حدد جهازاً أو وحدة تخزين لعرض التفاصيل والمخاطر.")
@@ -1820,6 +1825,8 @@ class UnifiedCockpitWindow(QMainWindow):
         devices = inventory.get("devices", [])
         drives = [d for d in inventory.get("drives", []) if d.get("is_usb")]
         self.usb_inventory_loaded = True
+        self._selected_usb_device = {}
+        self._selected_usb_partition_data = {}
         self.usb_devices_table.setRowCount(0)
         for device in devices:
             row = self.usb_devices_table.rowCount()
@@ -1868,6 +1875,7 @@ class UnifiedCockpitWindow(QMainWindow):
         if not item:
             return
         device = item.data(Qt.ItemDataRole.UserRole) or {}
+        self._selected_usb_device = device
         details = [
             f"الجهاز: {device.get('product') or device.get('description') or 'غير معروف'}",
             f"الشركة: {device.get('manufacturer') or 'غير محددة'}",
@@ -1885,7 +1893,18 @@ class UnifiedCockpitWindow(QMainWindow):
         if not item:
             return
         partition = item.data(Qt.ItemDataRole.UserRole) or {}
+        self._selected_usb_partition_data = partition
         self.render_usb_drive_analysis(partition.get("analysis", {}), partition.get("mountpoint", ""))
+
+    def _capture_usb_device_selection(self) -> None:
+        row = self.usb_devices_table.currentRow()
+        item = self.usb_devices_table.item(row, 0) if row >= 0 else None
+        self._selected_usb_device = item.data(Qt.ItemDataRole.UserRole) or {} if item else {}
+
+    def _capture_usb_partition_selection(self) -> None:
+        row = self.usb_drives_table.currentRow()
+        item = self.usb_drives_table.item(row, 0) if row >= 0 else None
+        self._selected_usb_partition_data = item.data(Qt.ItemDataRole.UserRole) or {} if item else {}
 
     def render_usb_drive_analysis(self, analysis: dict, mountpoint: str) -> None:
         suspicious = analysis.get("suspicious_files", [])
@@ -1911,9 +1930,7 @@ class UnifiedCockpitWindow(QMainWindow):
         self.usb_detail.setPlainText("\n".join(lines))
 
     def control_selected_usb_device(self, allow: bool) -> None:
-        row = self.usb_devices_table.currentRow()
-        item = self.usb_devices_table.item(row, 0) if row >= 0 else None
-        device = item.data(Qt.ItemDataRole.UserRole) if item else None
+        device = self._selected_usb_device
         if not device:
             QMessageBox.information(self, "اختر جهازاً", "حدد جهاز USB من القائمة أولاً.")
             return
@@ -1927,8 +1944,11 @@ class UnifiedCockpitWindow(QMainWindow):
         if answer != QMessageBox.StandardButton.Yes:
             return
         operation = authorize_device if allow else deauthorize_device
+        password = self._ask_sudo_password("تحتاج هذه العملية إلى صلاحيات النظام.")
+        if password is None:
+            return
         self.run_background_task(
-            lambda: operation(device.get("bus", ""), device.get("device", "")),
+            lambda: operation(device.get("bus", ""), device.get("device", ""), sudo_password=password),
             f"{action} USB",
             preserve_findings=True,
             result_handler=self.complete_usb_control,
@@ -1958,11 +1978,22 @@ class UnifiedCockpitWindow(QMainWindow):
         """إرجاع بيانات القسم المحدد في جدول التخزين، أو قاموساً فارغاً."""
         row = self.usb_drives_table.currentRow()
         item = self.usb_drives_table.item(row, 0) if row >= 0 else None
-        return item.data(Qt.ItemDataRole.UserRole) or {} if item else {}
+        if item:
+            self._selected_usb_partition_data = item.data(Qt.ItemDataRole.UserRole) or {}
+        return self._selected_usb_partition_data
+
+    def _ask_sudo_password(self, message: str) -> str | None:
+        """اطلب كلمة المرور داخل الواجهة فقط ولا تحفظها في الإعدادات أو السجل."""
+        password, accepted = QInputDialog.getText(
+            self, "صلاحيات النظام", message + "\nأدخل كلمة المرور لمرة واحدة:",
+            QLineEdit.EchoMode.Password,
+        )
+        return password if accepted and password else None
 
     def _remember_usb_analysis(self, partition: dict, analysis: dict) -> None:
         """حفظ آخر نتيجة في الصف حتى لا تختفي عند إعادة عرض التفاصيل."""
         partition["analysis"] = analysis
+        self._selected_usb_partition_data = partition
         row = self.usb_drives_table.currentRow()
         item = self.usb_drives_table.item(row, 0) if row >= 0 else None
         if item:
@@ -1983,8 +2014,14 @@ class UnifiedCockpitWindow(QMainWindow):
                 f"{len(analysis.get('findings', []))} نتيجة | اكتمل"
             )
 
+        password = None if os.geteuid() == 0 else self._ask_sudo_password(
+            "الفحص العميق قد يحتاج قراءة ملفات محمية على وحدة USB."
+        )
+        if os.geteuid() != 0 and password is None:
+            return
+        scan_fn = lambda: deep_scan_flash_privileged(mountpoint, sudo_password=password)
         self.run_background_task(
-            lambda: deep_scan_flash(mountpoint),
+            scan_fn,
             "الفحص العميق لـ USB",
             preserve_findings=True,
             result_handler=handle_result,
@@ -2013,13 +2050,18 @@ class UnifiedCockpitWindow(QMainWindow):
         )
         if answer != QMessageBox.StandardButton.Yes:
             return
+        password = None if os.geteuid() == 0 else self._ask_sudo_password(
+            "الإصلاح يحتاج صلاحيات حذف بعض الملفات المحمية."
+        )
+        if os.geteuid() != 0 and password is None:
+            return
 
         def handle_result(actions: list) -> None:
             QMessageBox.information(self, "نتيجة الإصلاح", "\n".join(a.get("action", "") for a in actions) or "لم تُنفذ إجراءات.")
             QTimer.singleShot(250, self.refresh_usb_inventory)
 
         self.run_background_task(
-            lambda: fix_flash_issues(mountpoint, actionable),
+            lambda: fix_flash_issues(mountpoint, actionable, sudo_password=password),
             "الإصلاح المقيّد لـ USB",
             preserve_findings=True,
             result_handler=handle_result,
@@ -2040,8 +2082,13 @@ class UnifiedCockpitWindow(QMainWindow):
         )
         if answer != QMessageBox.StandardButton.Yes:
             return
+        password = None if os.geteuid() == 0 else self._ask_sudo_password(
+            "الإخراج الآمن قد يحتاج صلاحيات فصل وحدة التخزين."
+        )
+        if os.geteuid() != 0 and password is None:
+            return
         self.run_background_task(
-            lambda: eject_storage_device(device_path),
+            lambda: eject_storage_device(device_path, sudo_password=password),
             "الإخراج الآمن لـ USB",
             preserve_findings=True,
             result_handler=self.complete_usb_eject,

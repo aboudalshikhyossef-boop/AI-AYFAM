@@ -14,6 +14,8 @@ AI AYFAM - Full USB Control Center
 import os
 import re
 import time
+import json
+import sys
 from pathlib import Path
 from datetime import datetime
 
@@ -44,7 +46,7 @@ def _find_sysfs_path(bus: str, dev: str) -> str:
     return ""
 
 
-def authorize_device(bus: str, dev: str) -> dict:
+def authorize_device(bus: str, dev: str, sudo_password=None) -> dict:
     """السماح بجهاز USB — يكتب 1 في ملف authorized بدون أي shell."""
     if not (str(bus).isdigit() and str(dev).isdigit()):
         return {"success": False, "error": f"Bus/Dev غير صالحين: Bus={bus} Dev={dev}"}
@@ -52,11 +54,11 @@ def authorize_device(bus: str, dev: str) -> dict:
     if not path:
         return {"success": False, "error": f"لم يتم العثور على الجهاز Bus={bus} Dev={dev}"}
     auth_file = os.path.join(path, "authorized")
-    r = safe_exec.write_file_privileged(auth_file, "1")
+    r = safe_exec.write_file_privileged(auth_file, "1", sudo_password=sudo_password)
     return {"success": r.ok, "path": auth_file, "error": r.stderr}
 
 
-def deauthorize_device(bus: str, dev: str) -> dict:
+def deauthorize_device(bus: str, dev: str, sudo_password=None) -> dict:
     """حجب جهاز USB — يكتب 0 في ملف authorized بدون أي shell."""
     if not (str(bus).isdigit() and str(dev).isdigit()):
         return {"success": False, "error": f"Bus/Dev غير صالحين: Bus={bus} Dev={dev}"}
@@ -64,11 +66,11 @@ def deauthorize_device(bus: str, dev: str) -> dict:
     if not path:
         return {"success": False, "error": f"لم يتم العثور على مسار sysfs للجهاز Bus={bus} Dev={dev}"}
     auth_file = os.path.join(path, "authorized")
-    r = safe_exec.write_file_privileged(auth_file, "0")
+    r = safe_exec.write_file_privileged(auth_file, "0", sudo_password=sudo_password)
     return {"success": r.ok, "path": auth_file, "error": r.stderr}
 
 
-def eject_storage_device(device_path: str) -> dict:
+def eject_storage_device(device_path: str, sudo_password=None) -> dict:
     """إخراج آمن لجهاز تخزين — يتحقق أن المسار /dev/... صالح قبل التنفيذ."""
     ok, path_or_err = validators.validate_device_path(device_path)
     if not ok:
@@ -81,8 +83,11 @@ def eject_storage_device(device_path: str) -> dict:
     r2 = safe_exec.run(["udisksctl", "power-off", "-b", device_path], sudo=False, check_binary=False)
     steps.append({"cmd": f"power-off {device_path}", "ok": r2.ok, "out": r2.stdout})
     if not r1.ok:
-        r3 = safe_exec.run(["umount", device_path], sudo=True)
+        r3 = safe_exec.run(["umount", device_path], sudo=True, sudo_password=sudo_password)
         steps.append({"cmd": f"umount {device_path}", "ok": r3.ok, "out": r3.stdout})
+    if not r2.ok and r1.ok:
+        r4 = safe_exec.run(["udisksctl", "power-off", "-b", device_path], sudo=True, sudo_password=sudo_password, check_binary=False)
+        steps.append({"cmd": f"sudo power-off {device_path}", "ok": r4.ok, "out": r4.stdout})
     return {"success": r1.ok or r2.ok, "steps": steps}
 
 
@@ -290,6 +295,34 @@ def deep_scan_flash(mountpoint: str, ui=None) -> dict:
     return result
 
 
+def deep_scan_flash_privileged(mountpoint: str, sudo_password=None) -> dict:
+    """إعادة الفحص تحت sudo عند وجود ملفات لا يستطيع المستخدم قراءتها.
+
+    يمر المسار كوسيط مستقل إلى Python، وليس داخل shell، وتُمرّر كلمة المرور
+    مرة واحدة إلى sudo عبر stdin ولا تُعاد في النتيجة أو السجل.
+    """
+    ok_mp, mp_or_err = validators.validate_mountpoint(mountpoint)
+    if not ok_mp:
+        return {"mountpoint": mountpoint, "findings": [{"severity": "info", "title": f"مسار غير صالح: {mp_or_err}"}]}
+    code = (
+        "import json, sys; "
+        "from tools.usb_control import deep_scan_flash; "
+        "print(json.dumps(deep_scan_flash(sys.argv[1]), ensure_ascii=False))"
+    )
+    r = safe_exec.run(
+        [sys.executable, "-c", code, mp_or_err],
+        timeout=180,
+        sudo=True,
+        sudo_password=sudo_password,
+    )
+    if not r.ok:
+        return {"mountpoint": mp_or_err, "findings": [{"severity": "high", "title": "فشل الفحص بصلاحيات مرتفعة", "detail": r.stderr or r.stdout}]}
+    try:
+        return json.loads(r.stdout)
+    except (TypeError, ValueError):
+        return {"mountpoint": mp_or_err, "findings": [{"severity": "high", "title": "نتيجة الفحص غير صالحة", "detail": r.stdout[-500:]}]}
+
+
 def _shell_display(path: str) -> str:
     """اقتباس آمن للعرض فقط (shlex.quote) — حتى لو نسخ المستخدم هذا الأمر
     يدوياً في طرفيته الخاصة، لن ينكسر أو يُحقن حتى لو احتوى اسم الملف على
@@ -298,7 +331,7 @@ def _shell_display(path: str) -> str:
     return shlex.quote(path)
 
 
-def fix_flash_issues(mountpoint: str, findings: list) -> list:
+def fix_flash_issues(mountpoint: str, findings: list, sudo_password=None) -> list:
     """إصلاح تلقائي مقيَّد صارم: يحذف فقط ملفات autorun/توقيعات خبيثة
     المؤكدة، ولن يحذف أي مسار يقع خارج الفلاشة نفسها (حماية من هروب عبر
     symlink أو مسار مُتلاعَب به)."""
@@ -330,7 +363,7 @@ def fix_flash_issues(mountpoint: str, findings: list) -> list:
         except FileNotFoundError:
             actions.append({"action": f"غير موجود أصلاً: {target_path}", "ok": True})
         except PermissionError:
-            r = safe_exec.remove_path_privileged(target_path)
+            r = safe_exec.remove_path_privileged(target_path, sudo_password=sudo_password)
             actions.append({"action": f"حُذف (sudo): {target_path}", "ok": r.ok, "out": r.stderr})
         except Exception as e:
             actions.append({"action": f"❌ فشل حذف {target_path}: {e}", "ok": False})
