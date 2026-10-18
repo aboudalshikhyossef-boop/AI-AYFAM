@@ -12,10 +12,21 @@ import stat
 import tempfile
 from pathlib import Path
 
+try:
+    from dotenv import load_dotenv
+except ImportError:  # optional at import time; preflight reports it when missing
+    load_dotenv = None
+
+
+PROJECT_ENV_FILE = Path(__file__).resolve().parents[1] / ".env"
+if load_dotenv is not None:
+    # Explicit environment variables always win over the project file.
+    load_dotenv(PROJECT_ENV_FILE, override=False)
+
 
 CONFIG_DIR = Path.home() / ".ayfam"
 CONFIG_FILE = CONFIG_DIR / "config.json"
-_SECRET_KEYS = ("github_token", "shodan_key", "abuseipdb_key", "nvd_api_key", "vulners_key", "gemini_api_key", "openai_api_key")
+_SECRET_KEYS = ("github_token", "shodan_key", "abuseipdb_key", "nvd_api_key", "vulners_key", "gemini_api_key", "openai_api_key", "google_cse_key")
 
 DEFAULT_SETTINGS = {
     "language": "ar",
@@ -29,9 +40,11 @@ DEFAULT_SETTINGS = {
     "vulners_key": "",     # غير مُستخدَم حالياً — محجوز لتوسعة مستقبلية
     "gemini_api_key": "",  # Gemini Developer API — يُستخدم فقط لجلب CTI عام
     "openai_api_key": "",  # OpenAI API — يُستخدم للمساعد الأمني الاختياري
+    "google_cse_key": "",  # Google Programmable Search (اختياري): نتائج Google مباشرة بدل التأسيس عبر Gemini
+    "google_cse_cx": "f5fbcd40fda484bc7",   # معرّف محرك البحث المخصص (cx)
     "ai_provider": "auto",  # auto | openai | gemini | local
     "openai_model": "gpt-4o-mini",
-    "gemini_model": "gemini-2.5-flash",
+    "gemini_model": "gemini-3.8-flash",
     "auto_fix": False,
     "report_dir": str(Path.home() / "ayfam-reports"),
     "cve_cache_hours": 6,
@@ -75,6 +88,8 @@ class Settings:
                     if not isinstance(saved, dict):
                         raise ValueError("configuration root must be an object")
                     self._data.update(saved)
+                    if self._data.get("gemini_model") in {"gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-flash-latest"}:
+                        self._data["gemini_model"] = "gemini-3.8-flash"
             except (json.JSONDecodeError, OSError) as e:
                 # Don't silently lose user config (including github_token).
                 # Back up the bad file so the user can recover it manually.

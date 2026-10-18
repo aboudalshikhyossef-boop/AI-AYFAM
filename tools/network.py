@@ -11,6 +11,7 @@ from datetime import datetime
 from typing import Optional
 
 from utils import safe_exec, validators
+from tools import port_catalog
 
 
 def _run(cmd, timeout=30):
@@ -391,63 +392,126 @@ def scan_ports(target: str, port_range: str = "1-1024") -> dict:
         return result
     port_range = range_or_err
 
+    ports_found = []      # (port, proto, service_hint, banner)
+    notes = []
     nmap_check = safe_exec.run(["nmap", "--version"], timeout=5, check_binary=True)
     if nmap_check.ok:
         result["tool_used"] = "nmap"
         # بدون shell إطلاقاً — كل وسيطة عنصر منفصل، لا يوجد أي احتمال لحقن
-        # حتى لو كان target/port_range يحتويان على ';' أو '`' (وهو مستحيل
-        # أصلاً بعد التحقق أعلاه، لكن هذا دفاع مضاعف).
-        nmap_res = safe_exec.run(
-            ["nmap", "-sV", "--open", f"-p{port_range}", target],
-            timeout=120,
-        )
-        out = nmap_res.stdout
-        dangerous = {21: "FTP", 23: "Telnet", 445: "SMB", 3389: "RDP",
-                     5900: "VNC", 4444: "Metasploit", 1337: "Hacker Port"}
-        for line in out.split("\n"):
-            if "/tcp" in line or "/udp" in line:
-                parts = line.split()
-                if len(parts) >= 3 and parts[1] == "open":
-                    port_num = int(parts[0].split("/")[0])
-                    service = " ".join(parts[2:])
-                    risk = "critical" if port_num in SUSPICIOUS_PORTS else "high" if port_num in dangerous else "low"
-                    entry = {"port": parts[0], "state": "open", "service": service, "risk": risk}
-                    result["open_ports"].append(entry)
-                    if risk in ("critical", "high"):
-                        result["findings"].append({
-                            "severity": risk,
-                            "title": f"منفذ خطير مفتوح: {dangerous.get(port_num, service)} ({port_num})",
-                            "detail": f"الخدمة: {service}",
-                            "fix": f"أوقف الخدمة أو أغلق المنفذ: sudo ufw deny {port_num}",
-                        })
+        nmap_res = safe_exec.run(["nmap", "-sV", "--open", f"-p{port_range}", target], timeout=180)
+        for line in nmap_res.stdout.split("\n"):
+            parts = line.split()
+            if len(parts) >= 3 and parts[1] == "open" and "/" in parts[0]:
+                try:
+                    ports_found.append((int(parts[0].split("/")[0]), parts[0].split("/")[1], " ".join(parts[2:]), ""))
+                except ValueError:
+                    continue
     else:
         result["tool_used"] = "python-socket"
         import concurrent.futures
         start, end = map(int, port_range.split("-")) if "-" in port_range else (int(port_range), int(port_range))
+        limit = 5000
+        if end - start + 1 > limit:
+            notes.append(f"النطاق {start}-{end} أكبر من حد الفاحص المدمج؛ فُحصت المنافذ {start}-{start + limit - 1} فقط. ثبّت nmap لفحص كامل: sudo apt install nmap")
+            end = start + limit - 1
+        local = _is_local_ip(target) or target in ("localhost",)
+        timeout = 0.35 if local else 0.8
 
         def check(port):
             try:
-                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                s.settimeout(0.4)
-                r = s.connect_ex((target, port))
-                s.close()
-                return port, r == 0
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                    sock.settimeout(timeout)
+                    if sock.connect_ex((target, port)) != 0:
+                        return None
+                    return port, _grab_banner(sock, port)
             except Exception:
-                return port, False
+                return None
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=150) as ex:
-            for port, is_open in ex.map(check, range(start, min(end + 1, start + 1000))):
-                if is_open:
-                    risk = "critical" if port in SUSPICIOUS_PORTS else "medium"
-                    result["open_ports"].append({"port": f"{port}/tcp", "state": "open", "service": "?", "risk": risk})
+        with concurrent.futures.ThreadPoolExecutor(max_workers=200) as ex:
+            for hit in ex.map(check, range(start, end + 1)):
+                if hit:
+                    ports_found.append((hit[0], "tcp", "", hit[1]))
 
-    def _port_key(x):
-        try:
-            return int(str(x.get("port","0")).split("/")[0])
-        except (ValueError, AttributeError):
-            return 99999
-    result["open_ports"].sort(key=_port_key)
+    bindings = _local_bindings() if (_is_local_ip(target) or target == "localhost") else {}
+    for port, proto, hint, banner in sorted(ports_found):
+        info = port_catalog.describe(port, hint.split()[0] if hint else "")
+        service = info["service"] if info["known"] or not hint else hint
+        risk = info["risk"]
+        exposure = ""
+        addrs = bindings.get(port)
+        if addrs:
+            if all(a.startswith("127.") or a in ("::1", "localhost") for a in addrs):
+                risk, exposure = "info", "مربوط بالحلقة المحلية فقط (127.0.0.1) فلا يُرى من الشبكة."
+            else:
+                exposure = "يستمع على جميع الواجهات فيراه كل من في شبكتك."
+        entry = {"port": f"{port}/{proto}", "state": "open", "service": service, "risk": risk, "banner": banner, "why": info["why"], "exposure": exposure}
+        result["open_ports"].append(entry)
+        detail = [f"الخدمة: {service}" + (f" | الشعار: {banner}" if banner else ""), info["why"]]
+        if exposure:
+            detail.append(exposure)
+        result["findings"].append({
+            "severity": risk,
+            "title": f"منفذ مفتوح: {service} ({port}/{proto})",
+            "category": "ports",
+            "confidence": 0.95,
+            "detail": "\n".join(detail),
+            "fix": info["fix"] if risk != "info" else "لا إجراء: الخدمة محلية فقط.",
+            "evidence": {"target": target, "port": port, "banner": banner or None, "bindings": sorted(addrs) if addrs else None},
+        })
+    for note in notes:
+        result["findings"].append({"severity": "info", "title": "فحص جزئي: النطاق مقتطع", "category": "ports", "detail": note, "fix": "sudo apt install nmap"})
+    if not ports_found:
+        result["findings"].append({
+            "severity": "info", "title": f"لا منافذ مفتوحة في النطاق {port_range}", "category": "ports", "confidence": 0.8,
+            "detail": "لم يستجب أي منفذ في النطاق المفحوص. الجدار قد يُخفي المنافذ (filtered) بدل أن يُغلقها.",
+            "fix": "لا إجراء. يمكن توسيع النطاق أو استخدام nmap للتأكد.",
+        })
+
+    result["open_ports"].sort(key=lambda x: int(str(x["port"]).split("/")[0]))
     return result
+
+
+_BANNER_PROBES = {80: b"HEAD / HTTP/1.0\r\n\r\n", 8080: b"HEAD / HTTP/1.0\r\n\r\n", 8000: b"HEAD / HTTP/1.0\r\n\r\n", 8888: b"HEAD / HTTP/1.0\r\n\r\n"}
+
+
+def _grab_banner(sock, port) -> str:
+    """شعار الخدمة (إن وُجد) بحدّ أقصى 80 حرفاً؛ لا يرسل شيئاً سوى HEAD للمنافذ الويب."""
+    try:
+        sock.settimeout(0.6)
+        probe = _BANNER_PROBES.get(port)
+        if probe:
+            sock.sendall(probe)
+        data = sock.recv(160)
+    except Exception:
+        return ""
+    text = data.decode("latin-1", "ignore")
+    for line in text.splitlines():
+        line = "".join(ch for ch in line if 32 <= ord(ch) < 127).strip()
+        if line.lower().startswith("server:"):
+            return line[7:].strip()[:80]
+        if line:
+            first = line
+            break
+    else:
+        return ""
+    return first[:80]
+
+
+def _local_bindings() -> dict:
+    """منفذ ← العناوين التي يستمع عليها (من ss) لمعرفة هل الخدمة محلية فقط أم مكشوفة."""
+    out = {}
+    try:
+        res = safe_exec.run(["ss", "-H", "-ltn"], timeout=5)
+        for line in res.stdout.splitlines():
+            cols = line.split()
+            if len(cols) < 4:
+                continue
+            addr, _, port = cols[3].rpartition(":")
+            if port.isdigit():
+                out.setdefault(int(port), set()).add(addr.strip("[]") or "*")
+    except Exception:
+        return {}
+    return out
 
 
 def get_wifi_networks():

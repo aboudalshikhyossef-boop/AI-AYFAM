@@ -3,6 +3,7 @@ import {
   Component,
   computed,
   inject,
+  OnDestroy,
   signal,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
@@ -23,8 +24,10 @@ import {
   templateUrl: './app.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class App {
+export class App implements OnDestroy {
   readonly state = inject(SecurityStateService);
+  private readonly googleCseTimer: ReturnType<typeof setInterval>;
+  private googleCseRendered = false;
 
   // Search & Filter controls
   readonly findingFilter = signal<'all' | 'critical' | 'high' | 'medium' | 'low'>('all');
@@ -72,6 +75,10 @@ export class App {
   readonly activePlaybook = signal<Playbook | null>(null);
 
   constructor() {
+    // The tools view is created with Angular control flow, so Google CSE needs
+    // explicit rendering after its host element appears in the DOM.
+    this.googleCseTimer = setInterval(() => this.renderGoogleCse(), 250);
+
     // Set default selected items
     const docs = this.state.knowledgeBase();
     if (docs.length > 0) {
@@ -85,6 +92,26 @@ export class App {
     if (playbooks.length > 0) {
       this.activePlaybook.set(playbooks[0]);
     }
+  }
+
+  ngOnDestroy(): void {
+    clearInterval(this.googleCseTimer);
+  }
+
+  private renderGoogleCse(): void {
+    if (typeof window === 'undefined') return;
+    const host = document.getElementById('ayfam-google-cse');
+    if (!host) {
+      this.googleCseRendered = false;
+      return;
+    }
+    if (this.googleCseRendered) return;
+    const cse = (window as Window & {
+      google?: { search?: { cse?: { element?: { render?: (options: { div: string }) => void } } } };
+    }).google?.search?.cse?.element;
+    if (!host || !cse?.render) return;
+    cse.render({ div: 'ayfam-google-cse' });
+    this.googleCseRendered = true;
   }
 
   // Quick Action: Send chat

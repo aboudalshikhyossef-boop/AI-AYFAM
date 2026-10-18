@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from typing import Any, Mapping, Protocol
 
 from utils import http_client
+from engine.gemini_rate_limit import DEFAULT_GEMINI_MODEL, compact_text, gemini_model_name, wait_for_slot
 
 
 class AssistantError(RuntimeError):
@@ -31,7 +32,7 @@ class AssistantConfig:
     openai_api_key: str = ""
     openai_model: str = "gpt-4o-mini"
     gemini_api_key: str = ""
-    gemini_model: str = "gemini-2.5-flash"
+    gemini_model: str = DEFAULT_GEMINI_MODEL
     timeout: float = 30.0
 
 
@@ -80,6 +81,8 @@ class OpenAIAssistant:
                 "content": (
                     "You are AI AYFAM, a senior cybersecurity assistant for Linux Mint and Ubuntu. "
                     "Give safe, concise, actionable advice. Never claim that a command was executed. "
+                    "For every finding, explain the evidence, impact, confidence/limitations, and safest next step. "
+                    "Distinguish observed facts from hypotheses and never call an open port or filename malicious without evidence. "
                     "When suggesting shell commands, explain that the user must review them first. "
                     "Answer in the user's language."
                     + (f"\nContext: {system_context}" if system_context else "")
@@ -113,9 +116,9 @@ class OpenAIAssistant:
 class GeminiAssistant:
     name = "gemini"
 
-    def __init__(self, api_key: str, model: str = "gemini-2.5-flash", timeout: float = 30.0):
+    def __init__(self, api_key: str, model: str = DEFAULT_GEMINI_MODEL, timeout: float = 30.0):
         self.api_key = _text(api_key)
-        self.model = _text(model) or "gemini-2.5-flash"
+        self.model = gemini_model_name(model)
         self.timeout = timeout
         if not self.api_key:
             raise AssistantError("Gemini API key is missing")
@@ -123,19 +126,27 @@ class GeminiAssistant:
     def ask(self, prompt: str, *, system_context: str = "") -> str:
         if not _text(prompt):
             raise AssistantError("Prompt is empty")
+        prompt = compact_text(prompt, 3600)
+        context = compact_text(system_context, 600)
         instruction = (
             "You are AI AYFAM, a senior cybersecurity assistant for Linux Mint and Ubuntu. "
             "Give safe, concise, actionable advice. Never claim that a command was executed. "
+            "Explain evidence, impact, confidence/limitations, and safest next step. "
+            "Distinguish observed facts from hypotheses and do not overstate scanner results. "
             "Answer in the user's language."
         )
-        if system_context:
-            instruction += f"\nContext: {system_context}"
+        if context:
+            instruction += f"\nContext: {context}"
+        wait_for_slot(self.api_key)
         response = http_client.post(
             f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent",
             headers={"x-goog-api-key": self.api_key, "Content-Type": "application/json"},
             json_data={
                 "systemInstruction": {"parts": [{"text": instruction}]},
                 "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+                # 256 tokens is too small for Arabic answers and can stop
+                # Gemini in the middle of a sentence.
+                "generationConfig": {"temperature": 0.1, "maxOutputTokens": 2048},
             },
             timeout=self.timeout,
         )

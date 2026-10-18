@@ -12,6 +12,15 @@ import {
 } from '../models/security.model';
 import { AiAssistantService } from './ai-assistant.service';
 
+interface ScanResponse {
+  ok: boolean;
+  findings: Finding[];
+  profile: string;
+  source: string;
+  elapsedMs: number;
+  counts: Record<string, number>;
+}
+
 @Injectable({
   providedIn: 'root',
 })
@@ -531,6 +540,8 @@ AI AYFAM Countermeasures:
   readonly scanProgress = signal<number>(0);
   readonly isScanning = signal<boolean>(false);
   readonly scanPhaseText = signal<string>('');
+  readonly scanError = signal<string | null>(null);
+  readonly scanSource = signal<'local-scanners' | 'demo-data'>('demo-data');
 
   // Derived Computed Stats
   readonly findingsCount = computed(() => {
@@ -587,8 +598,8 @@ AI AYFAM Countermeasures:
       id: `fix-${Date.now()}`,
       timestamp: new Date().toLocaleTimeString(),
       level: 'FIX',
-      message: `تم تطبيق الإصلاح الأمني بنجاح: ${title}`,
-      messageEn: `Security fix successfully applied: ${titleEn}`,
+      message: `تم تعليم النتيجة كمراجعة محلية فقط (لم يُنفذ أمر النظام): ${title}`,
+      messageEn: `Finding marked as locally reviewed only (no system command executed): ${titleEn}`,
       category: 'auto_fix',
     });
   }
@@ -603,8 +614,8 @@ AI AYFAM Countermeasures:
       id: `fix-all-${Date.now()}`,
       timestamp: new Date().toLocaleTimeString(),
       level: 'ACTION',
-      message: 'تم تشغيل المعالج التلقائي الشامل — تطبيق جميع معايير التحصين والسياسات الموصى بها',
-      messageEn: 'Comprehensive Auto-Reactor executed — all hardening baselines and recommended rules applied',
+      message: 'تم تعليم النتائج كمراجعة محلية فقط — لم تُنفذ أوامر على النظام',
+      messageEn: 'Findings marked as locally reviewed only — no system commands were executed',
       category: 'autoreactor',
     });
   }
@@ -626,8 +637,8 @@ AI AYFAM Countermeasures:
             id: `usb-auth-${Date.now()}`,
             timestamp: new Date().toLocaleTimeString(),
             level: nextAuth ? 'ACTION' : 'WARN',
-            message: `تم تغيير حالة جهاز USB [${device.name}]: ${statusAr}`,
-            messageEn: `USB device [${device.nameEn}] status changed: ${statusEn}`,
+              message: `تم تحديث حالة العرض المحلية لجهاز USB [${device.name}]: ${statusAr} — لم يُنفذ أمر USBGuard`,
+              messageEn: `Local USB device review changed for [${device.nameEn}]: ${statusEn} — no USBGuard command was executed`,
             category: 'usb_control',
           });
           return { ...device, authorized: nextAuth };
@@ -652,10 +663,11 @@ AI AYFAM Countermeasures:
     );
   }
 
-  // Execute full security scan simulation
-  runSecurityScan(scanType: string): void {
+  // Execute real local security checks through the protected Python bridge.
+  async runSecurityScan(scanType: string, profile: 'full' | 'network' | 'system' | 'logs' = 'full', target = '127.0.0.1'): Promise<void> {
     if (this.isScanning()) return;
     this.isScanning.set(true);
+    this.scanError.set(null);
     this.scanProgress.set(10);
     this.scanPhaseText.set(
       this.locale() === 'ar' ? 'فحص النواة والمنافذ المفتوحة...' : 'Scanning kernel & network sockets...'
@@ -670,37 +682,46 @@ AI AYFAM Countermeasures:
       category: 'scanner',
     });
 
-    const phases = [
-      { progress: 30, ar: 'تدقيق إعدادات جدار الحماية وسياسات الوصول...', en: 'Auditing firewall rules and perimeter ACLs...' },
-      { progress: 55, ar: 'فحص ملفات SUID وتطبيقات GTFOBins المشبوهة...', en: 'Analyzing SUID binaries against GTFOBins database...' },
-      { progress: 80, ar: 'فحص تسريب المفاتيح في السجلات والمتغيرات...', en: 'Scanning shell history and env vars for leaked secrets...' },
-      { progress: 100, ar: 'اكتمال الفحص وتحديث درجة الوضع الأمني', en: 'Audit complete. Security posture score updated.' },
-    ];
-
-    let stepIndex = 0;
-    const interval = setInterval(() => {
-      if (stepIndex < phases.length) {
-        const p = phases[stepIndex];
-        this.scanProgress.set(p.progress);
-        this.scanPhaseText.set(this.locale() === 'ar' ? p.ar : p.en);
-        stepIndex++;
-      } else {
-        clearInterval(interval);
-        this.isScanning.set(false);
-        this.telemetry.update((t) => ({
-          ...t,
-          lastAuditTime: new Date().toLocaleTimeString(),
-        }));
-        this.addAuditEvent({
-          id: `scan-done-${Date.now()}`,
-          timestamp: new Date().toLocaleTimeString(),
-          level: 'INFO',
-          message: 'انتهى التدقيق الأمني الشامل بنجاح. جميع النتائج جاهزة للاستعراض والإصلاح.',
-          messageEn: 'Full security audit finished. All findings recorded and ready for review.',
-          category: 'scanner',
-        });
+    try {
+      this.scanProgress.set(35);
+      this.scanPhaseText.set(this.locale() === 'ar' ? 'تشغيل فحوص النظام والشبكة الفعلية...' : 'Running real system and network checks...');
+      const response = await fetch('/api/scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ profile, target }),
+      });
+      const payload = (await response.json().catch(() => ({}))) as Partial<ScanResponse> & { error?: string };
+      if (!response.ok || !payload.ok || !Array.isArray(payload.findings)) {
+        throw new Error(payload.error || `scan_failed_${response.status}`);
       }
-    }, 700);
+      this.scanProgress.set(90);
+      this.findings.set(payload.findings);
+      this.scanSource.set('local-scanners');
+      this.telemetry.update((t) => ({ ...t, lastAuditTime: new Date().toLocaleTimeString(), status: 'idle' }));
+      this.addAuditEvent({
+        id: `scan-done-${Date.now()}`,
+        timestamp: new Date().toLocaleTimeString(),
+        level: 'INFO',
+        message: `اكتمل الفحص الفعلي: ${payload.findings.length} نتيجة، خلال ${payload.elapsedMs ?? 0} مللي ثانية.`,
+        messageEn: `Real scan completed: ${payload.findings.length} findings in ${payload.elapsedMs ?? 0} ms.`,
+        category: 'scanner',
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'تعذر تنفيذ الفحص';
+      this.scanError.set(message);
+      this.addAuditEvent({
+        id: `scan-error-${Date.now()}`,
+        timestamp: new Date().toLocaleTimeString(),
+        level: 'WARN',
+        message: 'تعذر الوصول إلى الفاحص المحلي؛ لم يتم استبدال النتائج الحالية ببيانات وهمية.',
+        messageEn: 'Local scanner unavailable; existing findings were kept and no simulated result was inserted.',
+        category: 'scanner',
+      });
+    } finally {
+      this.scanProgress.set(100);
+      this.isScanning.set(false);
+      this.scanPhaseText.set(this.locale() === 'ar' ? 'انتهى الفحص' : 'Scan complete');
+    }
   }
 
   // Send Chat Prompt to AI Security Assistant
@@ -716,8 +737,10 @@ AI AYFAM Countermeasures:
     };
     this.chatMessages.update((msgs) => [...msgs, userMsg]);
 
-    const remoteReply = await this.assistant.ask(query);
-    if (remoteReply) {
+    const context = this.findings().filter((finding) => !finding.fixed).slice(0, 12)
+      .map((finding) => `${finding.severity}: ${finding.title} — ${finding.detail}`).join('\n');
+    const remoteReply = await this.assistant.ask(`${query}\n\nنتائج الفحص الحالية (استخدمها كدليل ولا تفترض ما ليس فيها):\n${context || 'لا توجد نتائج نشطة.'}`);
+    if (remoteReply && 'answer' in remoteReply) {
       const agentMsg: ChatMessage = {
         id: `a-${Date.now()}`,
         sender: 'agent',
