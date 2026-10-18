@@ -1,10 +1,12 @@
-"""Loader for ui/gui_app.py from many small chunks."""
+"""Loader for ui/gui_app.py — decompresses 21 chunks and writes full GUI source."""
 import zlib, base64
 from pathlib import Path
+
 parts = []
 for i in range(21):
     mod = __import__(f"tools._gui_p{i}", fromlist=[f"P{i}"])
     parts.append(getattr(mod, f"P{i}"))
+
 _src = zlib.decompress(base64.b64decode("".join(parts)))
 _target = Path(__file__).resolve().parent.parent / "ui" / "gui_app.py"
 _target.parent.mkdir(parents=True, exist_ok=True)
