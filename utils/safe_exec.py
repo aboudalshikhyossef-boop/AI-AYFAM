@@ -51,7 +51,7 @@ def _needs_sudo(sudo: bool) -> bool:
         return bool(sudo)
 
 
-def run(args, timeout=30, sudo=False, input_data=None, check_binary=True):
+def run(args, timeout=30, sudo=False, input_data=None, check_binary=True, sudo_password=None):
     """
     نفّذ أمراً بدون أي تفسير shell إطلاقاً.
     `args` يجب أن تكون قائمة (list)، مثل: ["nmap", "-p", port_range, target]
@@ -70,7 +70,14 @@ def run(args, timeout=30, sudo=False, input_data=None, check_binary=True):
     if check_binary and shutil.which(args[0]) is None:
         return ExecResult(False, "", f"الأداة غير مثبتة أو غير موجودة في PATH: {args[0]}")
 
-    final_args = (["sudo"] + args) if _needs_sudo(sudo) else args
+    needs_sudo = _needs_sudo(sudo)
+    if needs_sudo and sudo_password is not None:
+        # -S forces sudo to read the one-time credential from stdin instead of
+        # requiring a terminal. Never include the password in logs or errors.
+        final_args = ["sudo", "-S", "-p", ""] + args
+        input_data = f"{sudo_password}\n" + (input_data or "")
+    else:
+        final_args = (["sudo"] + args) if needs_sudo else args
     try:
         r = subprocess.run(
             final_args, capture_output=True, text=True, timeout=timeout,
@@ -101,23 +108,33 @@ def run_trusted_shell(cmd: str, timeout=30):
         return ExecResult(False, "", str(e))
 
 
-def write_file_privileged(path: str, content: str, timeout=30, append=False):
+def write_file_privileged(path: str, content: str, timeout=30, append=False, sudo_password=None):
     """كتابة إلى ملف يملكه root بدون أي shell — عبر `sudo tee` مع تمرير
     المحتوى من stdin مباشرة (بدون echo/pipe عبر shell)."""
-    args = ["sudo", "tee"] + (["-a"] if append else []) + [path]
+    args = ["tee"] + (["-a"] if append else []) + [path]
     try:
+        if sudo_password is not None and _needs_sudo(True):
+            args = ["sudo", "-S", "-p", ""] + args
+            content = f"{sudo_password}\n{content}"
+        elif _needs_sudo(True):
+            args = ["sudo"] + args
         r = subprocess.run(args, input=content, capture_output=True, text=True, timeout=timeout)
         return ExecResult(r.returncode == 0, r.stdout.strip(), r.stderr.strip(), r.returncode)
     except Exception as e:
         return ExecResult(False, "", str(e))
 
 
-def remove_path_privileged(path: str, timeout=30, sudo=True):
+def remove_path_privileged(path: str, timeout=30, sudo=True, sudo_password=None):
     """حذف مسار بأمان — يستخدم `--` لمنع تفسير مسار يبدأ بـ '-' كخيار أمر."""
     base = ["rm", "-f", "--", path]
-    args = (["sudo"] + base) if _needs_sudo(sudo) else base
+    if _needs_sudo(sudo) and sudo_password is not None:
+        args = ["sudo", "-S", "-p", ""] + base
+        input_data = f"{sudo_password}\n"
+    else:
+        args = (["sudo"] + base) if _needs_sudo(sudo) else base
+        input_data = None
     try:
-        r = subprocess.run(args, capture_output=True, text=True, timeout=timeout)
+        r = subprocess.run(args, input=input_data, capture_output=True, text=True, timeout=timeout)
         return ExecResult(r.returncode == 0, r.stdout.strip(), r.stderr.strip(), r.returncode)
     except Exception as e:
         return ExecResult(False, "", str(e))
