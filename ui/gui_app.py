@@ -27,7 +27,13 @@ from brain import library, relevance_engine
 from engine.live_recon import LiveReconEngine
 from engine.risk import RiskEngine
 from tools.usb import analyze_mounted_filesystem, list_usb_devices, scan_mounted_drives
-from tools.usb_control import authorize_device, deauthorize_device
+from tools.usb_control import (
+    authorize_device,
+    deauthorize_device,
+    deep_scan_flash,
+    eject_storage_device,
+    fix_flash_issues,
+)
 from tools.websearch import DEFAULT_GOOGLE_CSE_CX
 from ui.terminal import TerminalUI
 from ui.icons import framed_icon, glyph_icon
@@ -893,7 +899,21 @@ class UnifiedCockpitWindow(QMainWindow):
         self.usb_scan_button = QPushButton("تحليل التخزين")
         self.usb_scan_button.setObjectName("primary")
         self.usb_scan_button.clicked.connect(self.scan_selected_usb_storage)
-        for button in (self.usb_allow_button, self.usb_block_button, self.usb_scan_button):
+        self.usb_deep_scan_button = QPushButton("فحص عميق")
+        self.usb_deep_scan_button.setObjectName("primary")
+        self.usb_deep_scan_button.setToolTip("فحص الملفات والـ Autorun والأنماط الخبيثة وClamAV إن كان متوفراً")
+        self.usb_deep_scan_button.clicked.connect(self.deep_scan_selected_usb_storage)
+        self.usb_fix_button = QPushButton("إصلاح المحدد")
+        self.usb_fix_button.setObjectName("danger")
+        self.usb_fix_button.setToolTip("حذف Autorun والملفات ذات السلوك الخبيث المؤكد فقط بعد التأكيد")
+        self.usb_fix_button.clicked.connect(self.fix_selected_usb_storage)
+        self.usb_eject_button = QPushButton("إخراج آمن")
+        self.usb_eject_button.setToolTip("فصل وحدة التخزين وإيقاف طاقتها بأمان")
+        self.usb_eject_button.clicked.connect(self.eject_selected_usb_storage)
+        for button in (
+            self.usb_allow_button, self.usb_block_button, self.usb_scan_button,
+            self.usb_deep_scan_button, self.usb_fix_button, self.usb_eject_button,
+        ):
             self.task_buttons.append(button)
             actions.addWidget(button)
         layout.addLayout(actions)
@@ -1870,13 +1890,19 @@ class UnifiedCockpitWindow(QMainWindow):
     def render_usb_drive_analysis(self, analysis: dict, mountpoint: str) -> None:
         suspicious = analysis.get("suspicious_files", [])
         autorun = analysis.get("autorun_files", [])
+        malware_hits = analysis.get("malware_hits", [])
         lines = [
             f"نقطة التوصيل: {mountpoint or 'غير موصولة'}",
-            f"الملفات المفحوصة: {analysis.get('total_files_checked', 0)}",
+            f"الملفات المفحوصة: {analysis.get('total_files_checked', analysis.get('total_files', 0))}",
             f"التنفيذية: {analysis.get('executable_count', 0)}",
             f"المشبوهة: {len(suspicious)}",
             f"التشغيل التلقائي: {len(autorun)}",
+            f"المؤشرات الخبيثة: {len(malware_hits)}",
         ]
+        if "score" in analysis:
+            lines.append(f"درجة الخطورة: {analysis.get('score', 0)}")
+        if "clamav_used" in analysis:
+            lines.append(f"فحص ClamAV: {'مستخدم' if analysis.get('clamav_used') else 'غير مثبت أو غير مستخدم'}")
         for finding in analysis.get("findings", []):
             lines.extend(["", f"[{finding.get('severity', 'info').upper()}] {finding.get('title', '')}",
                           str(finding.get("detail") or ""), f"التوصية: {finding.get('fix') or 'لا توجد'}"])
@@ -1916,9 +1942,7 @@ class UnifiedCockpitWindow(QMainWindow):
             QMessageBox.warning(self, "فشل", result.get("error") or "لم يتمكن النظام من تحديث حالة الجهاز.")
 
     def scan_selected_usb_storage(self) -> None:
-        row = self.usb_drives_table.currentRow()
-        item = self.usb_drives_table.item(row, 0) if row >= 0 else None
-        partition = item.data(Qt.ItemDataRole.UserRole) if item else None
+        partition = self._selected_usb_partition()
         mountpoint = partition.get("mountpoint") if partition else ""
         if not mountpoint:
             QMessageBox.information(self, "لا توجد وحدة موصولة", "اختر قسماً موصولاً قبل بدء التحليل.")
@@ -1929,6 +1953,107 @@ class UnifiedCockpitWindow(QMainWindow):
             preserve_findings=True,
             result_handler=lambda analysis: self.render_usb_drive_analysis(analysis, mountpoint),
         )
+
+    def _selected_usb_partition(self) -> dict:
+        """إرجاع بيانات القسم المحدد في جدول التخزين، أو قاموساً فارغاً."""
+        row = self.usb_drives_table.currentRow()
+        item = self.usb_drives_table.item(row, 0) if row >= 0 else None
+        return item.data(Qt.ItemDataRole.UserRole) or {} if item else {}
+
+    def _remember_usb_analysis(self, partition: dict, analysis: dict) -> None:
+        """حفظ آخر نتيجة في الصف حتى لا تختفي عند إعادة عرض التفاصيل."""
+        partition["analysis"] = analysis
+        row = self.usb_drives_table.currentRow()
+        item = self.usb_drives_table.item(row, 0) if row >= 0 else None
+        if item:
+            item.setData(Qt.ItemDataRole.UserRole, partition)
+
+    def deep_scan_selected_usb_storage(self) -> None:
+        partition = self._selected_usb_partition()
+        mountpoint = partition.get("mountpoint", "")
+        if not mountpoint:
+            QMessageBox.information(self, "لا توجد وحدة موصولة", "اختر قسماً موصولاً قبل بدء الفحص العميق.")
+            return
+
+        def handle_result(analysis: dict) -> None:
+            self._remember_usb_analysis(partition, analysis)
+            self.render_usb_drive_analysis(analysis, mountpoint)
+            self.usb_status.setText(
+                f"[فحص عميق] {analysis.get('total_files', 0)} ملف | "
+                f"{len(analysis.get('findings', []))} نتيجة | اكتمل"
+            )
+
+        self.run_background_task(
+            lambda: deep_scan_flash(mountpoint),
+            "الفحص العميق لـ USB",
+            preserve_findings=True,
+            result_handler=handle_result,
+        )
+
+    def fix_selected_usb_storage(self) -> None:
+        partition = self._selected_usb_partition()
+        mountpoint = partition.get("mountpoint", "")
+        analysis = partition.get("analysis") or {}
+        findings = analysis.get("findings", [])
+        actionable = [
+            finding for finding in findings
+            if finding.get("target_path") and finding.get("severity") in ("critical", "high")
+        ]
+        if not mountpoint or not findings:
+            QMessageBox.information(self, "لا توجد نتيجة", "شغّل الفحص العميق أولاً وحدد وحدة تخزين موصولة.")
+            return
+        if not actionable:
+            QMessageBox.information(self, "لا يوجد إصلاح تلقائي", "لم يجد الفحص ملفات Autorun أو سلوكاً خبيثاً مؤكداً قابلاً للإزالة.")
+            return
+        answer = QMessageBox.warning(
+            self, "تأكيد الإصلاح المقيّد",
+            f"سيتم حذف {len(actionable)} ملف مؤكد الخطورة داخل الفلاشة فقط.\nلا يمكن التراجع عن الحذف. هل تريد المتابعة؟",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+
+        def handle_result(actions: list) -> None:
+            QMessageBox.information(self, "نتيجة الإصلاح", "\n".join(a.get("action", "") for a in actions) or "لم تُنفذ إجراءات.")
+            QTimer.singleShot(250, self.refresh_usb_inventory)
+
+        self.run_background_task(
+            lambda: fix_flash_issues(mountpoint, actionable),
+            "الإصلاح المقيّد لـ USB",
+            preserve_findings=True,
+            result_handler=handle_result,
+        )
+
+    def eject_selected_usb_storage(self) -> None:
+        partition = self._selected_usb_partition()
+        drive = partition.get("drive") or {}
+        device_name = drive.get("name") or partition.get("name", "")
+        device_path = device_name if str(device_name).startswith("/dev/") else f"/dev/{device_name}"
+        if not device_name:
+            QMessageBox.information(self, "اختر وحدة تخزين", "حدد وحدة تخزين من الجدول أولاً.")
+            return
+        answer = QMessageBox.question(
+            self, "تأكيد الإخراج الآمن", f"هل تريد إخراج {device_path} بأمان؟",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        self.run_background_task(
+            lambda: eject_storage_device(device_path),
+            "الإخراج الآمن لـ USB",
+            preserve_findings=True,
+            result_handler=self.complete_usb_eject,
+        )
+
+    def complete_usb_eject(self, result: dict) -> None:
+        if result.get("success"):
+            QMessageBox.information(self, "اكتمل", "تم إخراج وحدة USB بأمان.")
+            QTimer.singleShot(250, self.refresh_usb_inventory)
+        else:
+            steps = "\n".join(str(step.get("out") or step.get("cmd")) for step in result.get("steps", []))
+            QMessageBox.warning(self, "فشل الإخراج", result.get("error") or steps or "تعذر إخراج الوحدة بأمان.")
 
     # ═══════════════════════════════════════════════════════════════════════════
     #  FINDINGS DISPLAY
