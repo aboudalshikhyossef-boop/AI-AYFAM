@@ -264,6 +264,7 @@ class UnifiedCockpitWindow(QMainWindow):
         self.usb_inventory_loaded = False
         self._selected_usb_device: dict = {}
         self._selected_usb_partition_data: dict = {}
+        self._usb_selection_source = "none"
         self.nav_buttons: list[QPushButton] = []
         self.init_ui()
         self.timer = QTimer(self)
@@ -1846,6 +1847,7 @@ class UnifiedCockpitWindow(QMainWindow):
         self.usb_inventory_loaded = True
         self._selected_usb_device = {}
         self._selected_usb_partition_data = {}
+        self._usb_selection_source = "none"
         self.usb_devices_table.setRowCount(0)
         for device in devices:
             row = self.usb_devices_table.rowCount()
@@ -1906,6 +1908,9 @@ class UnifiedCockpitWindow(QMainWindow):
             f"المؤشرات: {'؛ '.join(device.get('flags', [])) or 'لا توجد'}",
             f"التوصيات: {'؛ '.join(device.get('recommendations', [])) or 'لا توجد'}",
         ]
+        if not self._usb_device_is_storage(device):
+            details.extend(["", "حالة الفحص: هذا جهاز طرفي وليس وحدة تخزين قابلة للفحص العميق.",
+                            "حدد قسمًا موصولًا من جدول وحدات التخزين أدناه."])
         self.usb_detail.setPlainText("\n".join(details))
 
     def show_usb_drive_details(self, row: int, _column: int) -> None:
@@ -1914,19 +1919,31 @@ class UnifiedCockpitWindow(QMainWindow):
             return
         partition = item.data(Qt.ItemDataRole.UserRole) or {}
         self._selected_usb_partition_data = partition
+        self._usb_selection_source = "partition"
         self.render_usb_drive_analysis(partition.get("analysis", {}), partition.get("mountpoint", ""))
 
     def _capture_usb_device_selection(self) -> None:
         row = self.usb_devices_table.currentRow()
         item = self.usb_devices_table.item(row, 0) if row >= 0 else None
         self._selected_usb_device = item.data(Qt.ItemDataRole.UserRole) or {} if item else {}
-        if self._selected_usb_device and self.usb_drives_table.rowCount() == 1:
+        self._usb_selection_source = "device"
+        if self._selected_usb_device and self._usb_device_is_storage(self._selected_usb_device) and self.usb_drives_table.rowCount() == 1:
             self.usb_drives_table.selectRow(0)
+        elif self.usb_drives_table.selectionModel():
+            self.usb_drives_table.clearSelection()
+            self.usb_drives_table.setCurrentCell(-1, -1)
+            self._selected_usb_partition_data = {}
+
+    @staticmethod
+    def _usb_device_is_storage(device: dict) -> bool:
+        text = " ".join(str(device.get(key) or "") for key in ("product", "description", "class_name", "device_class")).lower()
+        return any(token in text for token in ("mass storage", "storage", "flash", "sd/mmc", "card reader", "disk"))
 
     def _capture_usb_partition_selection(self) -> None:
         row = self.usb_drives_table.currentRow()
         item = self.usb_drives_table.item(row, 0) if row >= 0 else None
         self._selected_usb_partition_data = item.data(Qt.ItemDataRole.UserRole) or {} if item else {}
+        self._usb_selection_source = "partition" if self._selected_usb_partition_data else "none"
 
     def render_usb_drive_analysis(self, analysis: dict, mountpoint: str) -> None:
         suspicious = analysis.get("suspicious_files", [])
@@ -1998,6 +2015,8 @@ class UnifiedCockpitWindow(QMainWindow):
 
     def _selected_usb_partition(self) -> dict:
         """إرجاع بيانات القسم المحدد في جدول التخزين، أو قاموساً فارغاً."""
+        if self._usb_selection_source != "partition":
+            return {}
         row = self.usb_drives_table.currentRow()
         item = self.usb_drives_table.item(row, 0) if row >= 0 else None
         if item:
@@ -2042,7 +2061,14 @@ class UnifiedCockpitWindow(QMainWindow):
         partition = self._selected_usb_partition()
         mountpoint = partition.get("mountpoint", "")
         if not mountpoint:
-            QMessageBox.information(self, "لا توجد وحدة موصولة", "اختر قسماً موصولاً قبل بدء الفحص العميق.")
+            device_name = self._selected_usb_device.get("product") or self._selected_usb_device.get("description")
+            if device_name and not self._usb_device_is_storage(self._selected_usb_device):
+                message = f"الجهاز المحدد «{device_name}» ليس وحدة تخزين قابلة للفحص.\nحدد قسمًا موصولًا من جدول «وحدات التخزين وتحليلها» السفلي."
+            elif partition:
+                message = f"القسم «{partition.get('name') or 'المحدد'}» موجود لكنه غير موصول بنقطة تركيب.\nافتحه من النظام ثم اضغط تحديث، أو اختر قسمًا موصولًا."
+            else:
+                message = "حدد قسمًا موصولًا من جدول «وحدات التخزين وتحليلها» السفلي، وليس جهازًا من الجدول العلوي."
+            QMessageBox.information(self, "لا توجد وحدة تخزين قابلة للفحص", message)
             return
 
         def handle_result(analysis: dict) -> None:
