@@ -48,6 +48,7 @@ from ui.theme import (
     SP_XS, SP_SM, SP_MD, SP_LG, SP_XL, SP_2XL,
     CARD_ACCENTS, alpha, severity_color, severity_bg,
 )
+from utils import safe_exec
 from utils.preflight import check_requirements, root_error, is_root
 
 
@@ -1900,6 +1901,8 @@ class UnifiedCockpitWindow(QMainWindow):
         row = self.usb_devices_table.currentRow()
         item = self.usb_devices_table.item(row, 0) if row >= 0 else None
         self._selected_usb_device = item.data(Qt.ItemDataRole.UserRole) or {} if item else {}
+        if self._selected_usb_device and self.usb_drives_table.rowCount() == 1:
+            self.usb_drives_table.selectRow(0)
 
     def _capture_usb_partition_selection(self) -> None:
         row = self.usb_drives_table.currentRow()
@@ -1980,15 +1983,32 @@ class UnifiedCockpitWindow(QMainWindow):
         item = self.usb_drives_table.item(row, 0) if row >= 0 else None
         if item:
             self._selected_usb_partition_data = item.data(Qt.ItemDataRole.UserRole) or {}
+        elif not self._selected_usb_partition_data and self.usb_drives_table.rowCount() == 1:
+            # كثير من المستخدمين يحددون جهاز USB في الجدول العلوي؛ إذا كان له
+            # قسم تخزين واحد فقط، اربطه تلقائياً بدلاً من إظهار رسالة مضللة.
+            self.usb_drives_table.selectRow(0)
+            item = self.usb_drives_table.item(0, 0)
+            self._selected_usb_partition_data = item.data(Qt.ItemDataRole.UserRole) or {} if item else {}
         return self._selected_usb_partition_data
 
     def _ask_sudo_password(self, message: str) -> str | None:
-        """اطلب كلمة المرور داخل الواجهة فقط ولا تحفظها في الإعدادات أو السجل."""
-        password, accepted = QInputDialog.getText(
-            self, "صلاحيات النظام", message + "\nأدخل كلمة المرور لمرة واحدة:",
-            QLineEdit.EchoMode.Password,
-        )
-        return password if accepted and password else None
+        """اطلب كلمة المرور وتحقق منها فعلياً عبر sudo قبل بدء أي عملية."""
+        # بعض الأنظمة تستخدم NOPASSWD أو جلسة sudo صالحة؛ تحقق أولاً حتى لا
+        # تبدو الواجهة وكأنها تقبل أي كلمة مرور بينما النظام لا يحتاجها أصلاً.
+        if safe_exec.run(["true"], sudo=True, check_binary=False).ok:
+            return ""
+        for _attempt in range(3):
+            password, accepted = QInputDialog.getText(
+                self, "صلاحيات النظام", message + "\nأدخل كلمة مرور sudo لمرة واحدة:",
+                QLineEdit.EchoMode.Password,
+            )
+            if not accepted:
+                return None
+            result = safe_exec.validate_sudo_password(password)
+            if result.ok:
+                return password
+            QMessageBox.warning(self, "كلمة المرور مرفوضة", "كلمة المرور ليست صالحة لـ sudo أو لا يملك المستخدم صلاحية sudo.")
+        return None
 
     def _remember_usb_analysis(self, partition: dict, analysis: dict) -> None:
         """حفظ آخر نتيجة في الصف حتى لا تختفي عند إعادة عرض التفاصيل."""

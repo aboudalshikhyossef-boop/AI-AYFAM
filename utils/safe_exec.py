@@ -51,6 +51,24 @@ def _needs_sudo(sudo: bool) -> bool:
         return bool(sudo)
 
 
+def validate_sudo_password(password: str, timeout=15) -> ExecResult:
+    """تحقق فعلي من كلمة مرور sudo دون تنفيذ أمر نظام.
+
+    -k يمنع الاعتماد على جلسة sudo مخزنة، و-S يقرأ كلمة المرور من stdin.
+    لا تُعاد كلمة المرور في النتيجة أو في أي رسالة خطأ.
+    """
+    if not password:
+        return ExecResult(False, "", "لم تُدخل كلمة مرور")
+    try:
+        r = subprocess.run(
+            ["sudo", "-k", "-S", "-p", "", "-v"],
+            input=f"{password}\n", capture_output=True, text=True, timeout=timeout,
+        )
+        return ExecResult(r.returncode == 0, "", r.stderr.strip(), r.returncode)
+    except Exception as e:
+        return ExecResult(False, "", str(e))
+
+
 def run(args, timeout=30, sudo=False, input_data=None, check_binary=True, sudo_password=None):
     """
     نفّذ أمراً بدون أي تفسير shell إطلاقاً.
