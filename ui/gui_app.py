@@ -205,6 +205,24 @@ def prepare_table(table: QTableWidget, row_height: int = 38) -> None:
     table.horizontalHeader().setHighlightSections(False)
 
 
+def _storage_size_text(value, size_bytes=None) -> str:
+    """عرض حجم lsblk سواء أعاده كنص مقروء أو كعدد بايتات."""
+    raw = str(value or "").strip()
+    try:
+        number = int(size_bytes if size_bytes not in (None, "") else raw)
+    except (TypeError, ValueError):
+        return raw if raw and raw not in {"0", "0B", "0 bytes"} else "غير معروف"
+    if number <= 0:
+        return raw if raw and raw not in {"0", "0B", "0 bytes"} else "غير معروف"
+    units = ("B", "KB", "MB", "GB", "TB")
+    amount = float(number)
+    unit = 0
+    while amount >= 1024 and unit < len(units) - 1:
+        amount /= 1024
+        unit += 1
+    return f"{amount:.1f} {units[unit]}"
+
+
 def table_cell(text, color: str | None = None, center: bool = False, bold: bool = False, tip: str | None = None) -> QTableWidgetItem:
     item = QTableWidgetItem(str(text))
     if color:
@@ -1859,7 +1877,8 @@ class UnifiedCockpitWindow(QMainWindow):
                 mountpoint = partition.get("mountpoint") or "غير موصول"
                 values = [drive.get("name", "—") + (f" / {partition.get('name')}" if partition.get("name") else ""),
                           " ".join(str(p) for p in (drive.get("vendor"), drive.get("model")) if p) or "غير محدد",
-                          partition.get("size") or drive.get("size", "—"), mountpoint]
+                          _storage_size_text(partition.get("size"), partition.get("size_bytes") or drive.get("size_bytes")),
+                          mountpoint]
                 partition_data = {**partition, "drive": drive}
                 for column, value in enumerate(values):
                     item = QTableWidgetItem(str(value))

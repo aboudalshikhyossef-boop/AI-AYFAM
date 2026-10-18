@@ -143,50 +143,112 @@ def _analyze_usb_device(dev):
     return dev
 
 
+def _truthy_block_value(value) -> bool:
+    """توحيد قيم lsblk التي قد تصل Boolean أو رقمًا أو نصًا."""
+    if isinstance(value, bool):
+        return value
+    return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _mountpoints(block: dict) -> list[str]:
+    """قراءة MOUNTPOINT وMOUNTPOINTS من إصدارات lsblk المختلفة."""
+    values = block.get("mountpoints")
+    if values is None:
+        values = block.get("mountpoint")
+    if isinstance(values, str):
+        values = [values]
+    if not isinstance(values, (list, tuple)):
+        return []
+    return [str(value).strip() for value in values if value and str(value).strip()]
+
+
+def _block_is_usb(block: dict) -> bool:
+    transport = str(block.get("tran") or "").strip().lower()
+    return transport == "usb" or _truthy_block_value(block.get("hotplug"))
+
+
+def _partition_info(block: dict) -> dict:
+    mounts = _mountpoints(block)
+    name = str(block.get("name") or "")
+    dev_name = name.removeprefix("/dev/")
+    part = {
+        "name": name,
+        "path": f"/dev/{dev_name}",
+        "size": str(block.get("size") or ""),
+        "size_bytes": block.get("size_bytes"),
+        "mountpoint": mounts[0] if mounts else "",
+        "mountpoints": mounts,
+    }
+    if mounts:
+        part["analysis"] = analyze_mounted_filesystem(mounts[0])
+    return part
+
+
+def _parse_lsblk_devices(payload: str, usb_only: bool = False) -> list[dict]:
+    data = json.loads(payload)
+    drives = []
+    for block in data.get("blockdevices", []):
+        is_usb = _block_is_usb(block)
+        if usb_only and not is_usb:
+            continue
+        if not (is_usb or block.get("type") in ("disk",)):
+            continue
+        children = block.get("children") or []
+        name = str(block.get("name") or "")
+        dev_name = name.removeprefix("/dev/")
+        info = {
+            "name": name,
+            "path": f"/dev/{dev_name}",
+            "size": str(block.get("size") or ""),
+            "size_bytes": block.get("size_bytes"),
+            "type": block.get("type", ""),
+            "vendor": str(block.get("vendor") or "").strip(),
+            "model": str(block.get("model") or "").strip(),
+            "transport": str(block.get("tran") or "").strip(),
+            "is_usb": is_usb,
+            "partitions": [_partition_info(child) for child in children],
+            "findings": [],
+        }
+        # Some lsblk versions return a mounted filesystem as the block itself
+        # without a children array; keep it scannable instead of dropping it.
+        if not info["partitions"] and _mountpoints(block):
+            info["partitions"] = [_partition_info(block)]
+        elif len(info["partitions"]) == 1 and not info["partitions"][0].get("mountpoint") and _mountpoints(block):
+            # بعض إصدارات lsblk تضع نقطة التوصيل على القرص الأب فقط.
+            parent_mount = _mountpoints(block)[0]
+            info["partitions"][0]["mountpoint"] = parent_mount
+            info["partitions"][0]["mountpoints"] = [parent_mount]
+            info["partitions"][0]["analysis"] = analyze_mounted_filesystem(parent_mount)
+        drives.append(info)
+    return drives
+
+
 def scan_mounted_drives(usb_only: bool = False):
     drives = []
-    out, _ = _run("lsblk -J -o NAME,SIZE,TYPE,MOUNTPOINT,VENDOR,MODEL,TRAN,HOTPLUG 2>/dev/null")
+    # MOUNTPOINTS and --tree are important: MOUNTPOINT may be empty or omit
+    # one of several mount points, and children are not guaranteed otherwise.
+    out, _ = _run("lsblk -J -b --tree -o NAME,SIZE,TYPE,MOUNTPOINTS,VENDOR,MODEL,TRAN,HOTPLUG 2>/dev/null")
     try:
-        data = json.loads(out)
-        for block in data.get("blockdevices", []):
-            is_usb = block.get("tran") == "usb" or block.get("hotplug") == "1"
-            if usb_only and not is_usb:
-                continue
-            if is_usb or block.get("type") in ("disk",):
-                info = {
-                    "name": block.get("name", ""),
-                    "size": block.get("size", ""),
-                    "type": block.get("type", ""),
-                    "vendor": block.get("vendor", ""),
-                    "model": block.get("model", ""),
-                    "transport": block.get("tran", ""),
-                    "is_usb": is_usb,
-                    "partitions": [],
-                    "findings": [],
-                }
-                for child in block.get("children", []):
-                    part = {
-                        "name": child.get("name", ""),
-                        "size": child.get("size", ""),
-                        "mountpoint": child.get("mountpoint", ""),
-                    }
-                    if child.get("mountpoint"):
-                        part["analysis"] = analyze_mounted_filesystem(child["mountpoint"])
-                    info["partitions"].append(part)
-                drives.append(info)
-    except Exception:
+        drives = _parse_lsblk_devices(out, usb_only=usb_only)
+    except (TypeError, ValueError, KeyError):
+        drives = []
+
+    if not drives:
         out2, _ = _run("df -h 2>/dev/null")
         for line in out2.split("\n")[1:]:
             parts = line.split()
-            if len(parts) >= 6:
-                device = parts[0]
-                mount = parts[5]
-                if "/media/" in mount or "/mnt/" in mount:
-                    drives.append({
-                        "name": device, "size": parts[1], "mountpoint": mount,
-                        "is_usb": True, "findings": [],
-                        "analysis": analyze_mounted_filesystem(mount),
-                    })
+            if len(parts) < 6:
+                continue
+            device, mount = parts[0], parts[5]
+            if any(prefix in mount for prefix in ("/media/", "/mnt/", "/run/media/", "/Volumes/")):
+                drives.append({
+                    "name": device.removeprefix("/dev/"), "path": device, "size": parts[1],
+                    "size_bytes": None, "mountpoint": mount, "is_usb": True, "findings": [],
+                    "partitions": [{"name": device.removeprefix("/dev/"), "path": device,
+                                    "size": parts[1], "size_bytes": None, "mountpoint": mount,
+                                    "mountpoints": [mount], "analysis": analyze_mounted_filesystem(mount)}],
+                    "analysis": analyze_mounted_filesystem(mount),
+                })
     return drives
 
 
