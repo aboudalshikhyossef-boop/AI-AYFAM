@@ -16,6 +16,7 @@ import re
 import time
 import json
 import sys
+import stat
 from pathlib import Path
 from datetime import datetime
 
@@ -71,24 +72,84 @@ def deauthorize_device(bus: str, dev: str, sudo_password=None) -> dict:
 
 
 def eject_storage_device(device_path: str, sudo_password=None) -> dict:
-    """إخراج آمن لجهاز تخزين — يتحقق أن المسار /dev/... صالح قبل التنفيذ."""
+    """إخراج آمن لجهاز تخزين — يتحقق أن المسار /dev/... صالح، يُفرغ التخزين المؤقت،
+    ويفصل جميع الأقسام التابعة بأمان قبل إيقاف طاقة الجهاز."""
     ok, path_or_err = validators.validate_device_path(device_path)
     if not ok:
         return {"success": False, "steps": [], "error": path_or_err}
     device_path = path_or_err
 
     steps = []
-    r1 = safe_exec.run(["udisksctl", "unmount", "-b", device_path], sudo=False, check_binary=False)
-    steps.append({"cmd": f"unmount {device_path}", "ok": r1.ok, "out": r1.stdout})
-    r2 = safe_exec.run(["udisksctl", "power-off", "-b", device_path], sudo=False, check_binary=False)
-    steps.append({"cmd": f"power-off {device_path}", "ok": r2.ok, "out": r2.stdout})
-    if not r1.ok:
-        r3 = safe_exec.run(["umount", device_path], sudo=True, sudo_password=sudo_password)
-        steps.append({"cmd": f"umount {device_path}", "ok": r3.ok, "out": r3.stdout})
-    if not r2.ok and r1.ok:
-        r4 = safe_exec.run(["udisksctl", "power-off", "-b", device_path], sudo=True, sudo_password=sudo_password, check_binary=False)
-        steps.append({"cmd": f"sudo power-off {device_path}", "ok": r4.ok, "out": r4.stdout})
-    return {"success": r1.ok or r2.ok, "steps": steps}
+
+    # 1. إفراغ التخزين المؤقت (sync) لضمان كتابة كافة البيانات ومنع تلف نظام الملفات
+    r_sync = safe_exec.run(["sync"])
+    steps.append({"cmd": "sync", "ok": r_sync.ok, "out": r_sync.stdout})
+
+    # 2. تحديد الأقسام الموصولة التابعة لهذا القرص أو القسم
+    partitions_to_unmount = []
+    r_lsblk = safe_exec.run(["lsblk", "-ln", "-o", "NAME,MOUNTPOINT", device_path], check_binary=False)
+    if r_lsblk.ok and r_lsblk.stdout:
+        for line in r_lsblk.stdout.splitlines():
+            parts = line.strip().split(None, 1)
+            if len(parts) >= 2 and parts[1]:  # لها نقطة توصيل نشطة
+                part_dev = f"/dev/{parts[0]}"
+                if part_dev not in partitions_to_unmount:
+                    partitions_to_unmount.append(part_dev)
+
+    if not partitions_to_unmount:
+        partitions_to_unmount.append(device_path)
+
+    # 3. فصل كل قسم بأمان
+    all_unmounted = True
+    for part in partitions_to_unmount:
+        r1 = safe_exec.run(["udisksctl", "unmount", "-b", part], sudo=False, check_binary=False)
+        steps.append({"cmd": f"unmount {part}", "ok": r1.ok, "out": r1.stdout or r1.stderr})
+        if not r1.ok:
+            r3 = safe_exec.run(["umount", part], sudo=True, sudo_password=sudo_password)
+            steps.append({"cmd": f"sudo umount {part}", "ok": r3.ok, "out": r3.stdout or r3.stderr})
+            if not r3.ok:
+                all_unmounted = False
+
+    # 4. إيقاف الطاقة عن القرص الأب
+    parent_device = device_path
+    m_disk = re.match(r"^(/dev/[a-zA-Z]+)\d+$", device_path)
+    if m_disk:
+        parent_device = m_disk.group(1)
+
+    r2 = safe_exec.run(["udisksctl", "power-off", "-b", parent_device], sudo=False, check_binary=False)
+    steps.append({"cmd": f"power-off {parent_device}", "ok": r2.ok, "out": r2.stdout or r2.stderr})
+    if not r2.ok and all_unmounted:
+        r4 = safe_exec.run(["udisksctl", "power-off", "-b", parent_device], sudo=True, sudo_password=sudo_password, check_binary=False)
+        steps.append({"cmd": f"sudo power-off {parent_device}", "ok": r4.ok, "out": r4.stdout or r4.stderr})
+
+    success = any(s.get("ok") for s in steps if "unmount" in s.get("cmd", "") or "power-off" in s.get("cmd", ""))
+    return {"success": success, "steps": steps}
+
+
+def mount_storage_device_readonly(device_path: str, mount_dir: str = None, sudo_password=None) -> dict:
+    """توصيل وحدة تخزين USB للقراءة فقط وبأعلى معايير الأمان (ro,noexec,nosuid,nodev) للفحص الجنائي."""
+    ok_dev, dev_clean = validators.validate_device_path(device_path)
+    if not ok_dev:
+        return {"success": False, "error": dev_clean, "mountpoint": ""}
+
+    if mount_dir:
+        ok_mp, mp_clean = validators.validate_mountpoint(mount_dir)
+        if not ok_mp:
+            return {"success": False, "error": mp_clean, "mountpoint": ""}
+    else:
+        dev_base = os.path.basename(dev_clean)
+        mp_clean = f"/run/media/readonly_{dev_base}"
+
+    try:
+        os.makedirs(mp_clean, exist_ok=True)
+    except Exception as e:
+        return {"success": False, "error": f"تعذر إنشاء مجلد التوصيل: {e}", "mountpoint": mp_clean}
+
+    mount_opts = "ro,noexec,nosuid,nodev"
+    r = safe_exec.run(["mount", "-o", mount_opts, dev_clean, mp_clean], sudo=True, sudo_password=sudo_password)
+    if r.ok:
+        return {"success": True, "mountpoint": mp_clean, "options": mount_opts, "error": ""}
+    return {"success": False, "mountpoint": mp_clean, "error": r.stderr or r.stdout}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -191,6 +252,13 @@ def deep_scan_flash(mountpoint: str, ui=None) -> dict:
                 if os.path.islink(fpath):
                     continue
 
+                try:
+                    st = os.lstat(fpath)
+                    if not stat.S_ISREG(st.st_mode):
+                        continue
+                except (OSError, PermissionError):
+                    continue
+
                 result["total_files"] += 1
                 flower = fname.lower()
                 rel = fpath.replace(mountpoint, "")
@@ -205,6 +273,22 @@ def deep_scan_flash(mountpoint: str, ui=None) -> dict:
                         "target_path": fpath,
                     })
                     result["score"] += 50
+
+                # كشف التمويه بالامتداد المزدوج (Double Extension Masquerading)
+                name_parts = fname.rsplit(".", 2)
+                if len(name_parts) == 3:
+                    inner_ext = f".{name_parts[1].lower()}"
+                    outer_ext = f".{name_parts[2].lower()}"
+                    if outer_ext in SUSPICIOUS_EXTENSIONS and inner_ext in {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".jpg", ".png", ".txt"}:
+                        result["suspicious_files"].append({"file": rel, "ext": outer_ext, "masquerade": inner_ext})
+                        result["findings"].append({
+                            "severity": "critical",
+                            "title": f"⚠️ ملف متنكّر بامتداد مزدوج: {fname}",
+                            "detail": f"الملف {rel} يتظاهر بأنه {inner_ext} بينما هو في الواقع تنفيذي {outer_ext}.",
+                            "fix": f"احذر من تشغيله! افحصه أو احذفه: rm -f -- {_shell_display(fpath)}",
+                            "target_path": fpath,
+                        })
+                        result["score"] += 80
 
                 ext = os.path.splitext(flower)[1]
                 if ext in SUSPICIOUS_EXTENSIONS:
