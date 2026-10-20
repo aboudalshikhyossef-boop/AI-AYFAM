@@ -39,6 +39,7 @@ from tools.websearch import DEFAULT_GOOGLE_CSE_CX
 from ui.terminal import TerminalUI
 from ui.icons import framed_icon, glyph_icon
 from ui.widgets import AccentLine, AmbientSurface, ChatView, HoverController, NavIndicator
+from ui.intro_splash import AyfamIntroSplash, SystemOverviewDialog
 from ui.theme import (
     QSS, get_qss, ACCENT, ACCENT_SOFT, ACCENT_HUES, BG_BASE, BG_SURFACE, BG_ELEVATED, BG_HOVER,
     BORDER, BORDER_FOCUS, TEXT_PRIMARY, TEXT_SECONDARY, TEXT_MUTED,
@@ -390,6 +391,19 @@ class UnifiedCockpitWindow(QMainWindow):
         header_layout.addLayout(title_box)
         header_layout.addStretch()
 
+        # Quick System Guide & Intro preview buttons
+        self.guide_btn = QPushButton("✨ دليل المنظومة")
+        self.guide_btn.setObjectName("pillButton")
+        self.guide_btn.setToolTip("عرض هيكلية ومكونات المنظومة الأمنية")
+        self.guide_btn.clicked.connect(self.show_system_overview)
+        header_layout.addWidget(self.guide_btn)
+
+        self.intro_btn = QPushButton("🚀 عرض الترحيب")
+        self.intro_btn.setObjectName("pillButton")
+        self.intro_btn.setToolTip("إعادة عرض شاشة المقدمة وتسلسل الإقلاع التشخيصي")
+        self.intro_btn.clicked.connect(self.show_intro_splash)
+        header_layout.addWidget(self.intro_btn)
+
         # Activity lamp
         self.activity_lamp = QFrame(objectName="activityLamp")
         self.activity_lamp.setFixedSize(10, 10)
@@ -573,20 +587,30 @@ class UnifiedCockpitWindow(QMainWindow):
         mission_layout.setSpacing(SP_LG)
         mission_copy = QVBoxLayout()
         mission_copy.setSpacing(SP_XS)
-        mission_kicker = QLabel("حالة البيئة  /  LOCAL DEFENSE POSTURE")
+        mission_kicker = QLabel("🛡️ حالة الدفاع التكتيكية  •  LOCAL DEFENSE POSTURE: ACTIVE & SECURED")
         mission_kicker.setObjectName("eyebrow")
         mission_copy.addWidget(mission_kicker)
-        mission_title = QLabel("اعرف ما يحدث قبل أن تتصرف")
+        mission_title = QLabel("مركز المراقبة والتحكم الأمني المتقدم")
         mission_title.setObjectName("missionTitle")
         mission_copy.addWidget(mission_title)
+        mission_sub = QLabel("رصد مباشر للشبكة والعمليات • حماية الوسائط المتصلة USB Sentry • استجابة ذكية للتهديدات")
+        mission_sub.setStyleSheet(f"color: {TEXT_SECONDARY}; font-size: 12px;")
+        mission_copy.addWidget(mission_sub)
         mission_layout.addLayout(mission_copy, 1)
+
         mission_actions = QHBoxLayout()
         mission_actions.setSpacing(SP_SM)
-        quick_scan = QPushButton("بدء فحص شامل")
+        quick_scan = QPushButton("⚡ بدء فحص شامل")
         quick_scan.setObjectName("primary")
         quick_scan.clicked.connect(lambda: self.run_background_task(self.agent._full_scan, "الفحص الشامل"))
         mission_actions.addWidget(quick_scan)
-        ask_ai = QPushButton("اسأل المساعد")
+
+        quick_usb = QPushButton("🛡️ فحص الأجهزة")
+        quick_usb.setObjectName("quietAction")
+        quick_usb.clicked.connect(lambda: self.switch_page("usb"))
+        mission_actions.addWidget(quick_usb)
+
+        ask_ai = QPushButton("🤖 المستشار الذكي")
         ask_ai.setObjectName("quietAction")
         ask_ai.clicked.connect(lambda: self.switch_page("chat"))
         mission_actions.addWidget(ask_ai)
@@ -599,22 +623,37 @@ class UnifiedCockpitWindow(QMainWindow):
         metrics.setVerticalSpacing(SP_MD)
         self.metric_labels: dict[str, QLabel] = {}
         metric_data = [
-            ("connections", "اتصالات نشطة", "مقابس الشبكة النشطة", SEV_LOW),
-            ("processes", "عمليات مراقبة", "أعلى العمليات استهلاكاً", CARD_ACCENTS["processes"]),
-            ("findings", "نتائج الفحص", "في آخر فحص مكتمل", SEV_MEDIUM),
-            ("score", "الدرجة الأمنية", "مؤشر المخاطر العام", SEV_SAFE),
+            ("connections", "🌐 اتصالات الشبكة", "مقابس الشبكة النشطة والمراقبة", SEV_LOW),
+            ("processes", "⚙️ العمليات الحية", "أعلى العمليات استهلاكاً للموارد", CARD_ACCENTS["processes"]),
+            ("findings", "⚠️ الثغرات المكتشفة", "في آخر فحص مكتمل للمنظومة", SEV_MEDIUM),
+            ("score", "🛡️ الجاهزية الأمنية", "مؤشر تقييم خطوط الدفاع العام", SEV_SAFE),
         ]
         for col, (key, label, note, accent) in enumerate(metric_data):
             card = QFrame(objectName="card")
-            card.setMinimumHeight(96)
-            card.setStyleSheet(f"QFrame#card {{ border: 1px solid {alpha(accent, 150)}; }}")
+            card.setMinimumHeight(104)
+            card.setStyleSheet(f"QFrame#card {{ border: 1px solid {alpha(accent, 140)}; }}")
             box = QVBoxLayout(card)
             box.setContentsMargins(SP_LG, SP_MD, SP_LG, SP_MD)
             box.setSpacing(SP_XS)
 
+            header_row = QHBoxLayout()
             lbl = QLabel(label)
             lbl.setObjectName("metricLabel")
-            box.addWidget(lbl)
+            header_row.addWidget(lbl)
+            header_row.addStretch()
+
+            tag = QLabel("نشط")
+            tag.setStyleSheet(f"""
+                color: {accent};
+                background: {alpha(accent, 25)};
+                border: 1px solid {alpha(accent, 80)};
+                border-radius: 8px;
+                padding: 2px 6px;
+                font-size: 10px;
+                font-weight: 700;
+            """)
+            header_row.addWidget(tag)
+            box.addLayout(header_row)
 
             val = QLabel("—")
             val.setObjectName("metricValue")
@@ -629,6 +668,53 @@ class UnifiedCockpitWindow(QMainWindow):
             metrics.addWidget(card, 0, col)
             metrics.setColumnStretch(col, 1)
         layout.addLayout(metrics)
+
+        # ── Quick Tactical Hub ──
+        hub_group = QGroupBox("ترسانة العمليات التكتيكية السريعة")
+        hub_layout = QHBoxLayout(hub_group)
+        hub_layout.setSpacing(SP_MD)
+        hub_layout.setContentsMargins(SP_MD, SP_MD, SP_MD, SP_MD)
+
+        quick_ops = [
+            ("⚡ فحص شامل للثغرات", "مسح متقدم للمنافذ وأمان النظام", lambda: self.run_background_task(self.agent._full_scan, "الفحص الشامل")),
+            ("🔍 رادار الشبكة المباشر", "تحديث فوري لجدول المقابس النشطة", self.update_live_telemetry),
+            ("🛡️ درع أجهزة USB", "كشف الأجهزة وفحص التخزين الآمن", lambda: self.switch_page("usb")),
+            ("📄 توليد تقرير تنفيذي", "حفظ وتصدير ملخص الحالة الأمنية", lambda: self.switch_page("reports")),
+        ]
+
+        for op_title, op_desc, op_fn in quick_ops:
+            op_card = QFrame()
+            op_card.setStyleSheet(f"""
+                QFrame {{
+                    background: qlineargradient(x1:0,y1:0,x2:1,y2:1, stop:0 #112033, stop:1 #0b1522);
+                    border: 1px solid {alpha(BORDER, 120)};
+                    border-radius: 12px;
+                }}
+                QFrame:hover {{
+                    border-color: {ACCENT};
+                    background: qlineargradient(x1:0,y1:0,x2:1,y2:1, stop:0 #15273e, stop:1 #0e1a2b);
+                }}
+            """)
+            op_box = QVBoxLayout(op_card)
+            op_box.setContentsMargins(12, 10, 12, 10)
+            op_box.setSpacing(4)
+
+            t_lbl = QLabel(op_title)
+            t_lbl.setStyleSheet(f"color: {TEXT_PRIMARY}; font-size: 13px; font-weight: 700;")
+            op_box.addWidget(t_lbl)
+
+            d_lbl = QLabel(op_desc)
+            d_lbl.setStyleSheet(f"color: {TEXT_MUTED}; font-size: 11px;")
+            op_box.addWidget(d_lbl)
+
+            act_btn = QPushButton("تنفيذ الإجراء ➔")
+            act_btn.setObjectName("quietAction")
+            act_btn.clicked.connect(op_fn)
+            op_box.addWidget(act_btn)
+
+            hub_layout.addWidget(op_card)
+
+        layout.addWidget(hub_group)
 
         # ── Live Data Splitter ──
         self.dashboard_splitter = QSplitter(Qt.Orientation.Vertical)
@@ -1460,6 +1546,15 @@ class UnifiedCockpitWindow(QMainWindow):
         day = self.AR_DAYS.get(now.strftime("%A"), now.strftime("%A"))
         month = self.AR_MONTHS.get(now.month, now.strftime("%B"))
         self.clock_date_label.setText(f"{day}، {now.day} {month} {now.year}")
+
+    def show_system_overview(self) -> None:
+        dlg = SystemOverviewDialog(self)
+        dlg.exec()
+
+    def show_intro_splash(self) -> None:
+        self._demo_splash = AyfamIntroSplash(self, auto_close=False)
+        self._demo_splash.ready_to_launch.connect(lambda: None)
+        self._demo_splash.show()
 
     # ═══════════════════════════════════════════════════════════════════════════
     #  ACCENT HUE CYCLER (pulsing colors across the UI)

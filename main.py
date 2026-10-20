@@ -27,6 +27,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--gui", action="store_true", help="تشغيل تطبيق سطح المكتب (الوضع الوحيد)")
     parser.add_argument("--check", action="store_true", help="فحص المتطلبات قبل تشغيل التطبيق")
+    parser.add_argument("--no-splash", action="store_true", help="تخطي شاشة الترحيب والمقدمة والدخول المباشر")
     parser.add_argument("--version", action="version", version="AI AYFAM v5.2.0 (Linux Mint Desktop)")
     return parser.parse_args()
 
@@ -75,7 +76,7 @@ def prepare_gui_environment() -> None:
             os.environ["XDG_RUNTIME_DIR"] = f"/run/user/{sudo_uid}"
 
 
-def run_gui() -> int:
+def run_gui(no_splash: bool = False) -> int:
     prepare_gui_environment()
     log_dir = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state")) / "ayfam"
     log_file = log_dir / "gui.log"
@@ -91,6 +92,7 @@ def run_gui() -> int:
     try:
         from PyQt6.QtWidgets import QApplication
         from ui.gui_app import UnifiedCockpitWindow
+        from ui.intro_splash import AyfamIntroSplash
     except ImportError as exc:
         print(f"[!] PyQt6 غير مثبت أو مكتبات الواجهة ناقصة: {exc}", file=sys.stderr)
         print("[*] ثبّت التطبيق عبر setup.sh أو: python3 -m pip install PyQt6", file=sys.stderr)
@@ -103,8 +105,16 @@ def run_gui() -> int:
             app = QApplication(sys.argv)
             app.setApplicationName("AI AYFAM")
             app.setDesktopFileName("ai-ayfam")
+
         window = UnifiedCockpitWindow()
-        window.show()
+
+        if not no_splash:
+            splash = AyfamIntroSplash(auto_close=True)
+            splash.ready_to_launch.connect(window.show)
+            splash.show()
+        else:
+            window.show()
+
         return app.exec()
     except Exception as exc:
         log_failure(exc)
@@ -120,7 +130,7 @@ def main() -> int:
         print(results.text())
         if not results.ok:
             return 1
-    return run_gui()
+    return run_gui(no_splash=args.no_splash)
 
 
 if __name__ == "__main__":

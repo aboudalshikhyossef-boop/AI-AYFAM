@@ -79,4 +79,10 @@ check("navigation has 9 items", len(NAV_ITEMS) == 9)
 check("dashboard is first nav item", NAV_ITEMS[0][0] == "dashboard")
 check("settings is last nav item", NAV_ITEMS[-1][0] == "settings")
 
+print("\n[6] Intro splash and system overview")
+from ui.intro_splash import AyfamIntroSplash, SystemOverviewDialog
+check("AyfamIntroSplash class is loadable", hasattr(AyfamIntroSplash, "BOOT_STEPS"))
+check("boot sequence defines 5 stages", len(AyfamIntroSplash.BOOT_STEPS) == 5)
+check("SystemOverviewDialog class is loadable", issubclass(SystemOverviewDialog, object))
+
 print(f"\nTOTAL GUI TESTS: {passed} passed, {failed} failed")
