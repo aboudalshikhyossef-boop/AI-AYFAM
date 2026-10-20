@@ -41,7 +41,7 @@ from ui.icons import framed_icon, glyph_icon
 from ui.widgets import AccentLine, AmbientSurface, ChatView, HoverController, NavIndicator
 from ui.intro_splash import AyfamIntroSplash, SystemOverviewDialog
 from ui.theme import (
-    QSS, get_qss, ACCENT, ACCENT_SOFT, ACCENT_HUES, BG_BASE, BG_SURFACE, BG_ELEVATED, BG_HOVER,
+    QSS, get_qss, ACCENT, ACCENT_SECONDARY, ACCENT_SOFT, ACCENT_HUES, BG_BASE, BG_SURFACE, BG_ELEVATED, BG_HOVER,
     BORDER, BORDER_FOCUS, TEXT_PRIMARY, TEXT_SECONDARY, TEXT_MUTED,
     SEV_CRITICAL, SEV_HIGH, SEV_MEDIUM, SEV_LOW, SEV_INFO, SEV_SAFE,
     STATUS_OK, STATUS_ERROR, STATUS_IDLE,
