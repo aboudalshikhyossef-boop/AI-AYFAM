@@ -1,6 +1,9 @@
 import json
+import os
 import sys
 import tempfile
+
+os.environ.setdefault("AYFAM_GEMINI_MIN_INTERVAL", "0")
 import unittest
 from pathlib import Path
 from unittest.mock import patch

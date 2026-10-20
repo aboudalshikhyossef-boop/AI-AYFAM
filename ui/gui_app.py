@@ -503,6 +503,14 @@ class UnifiedCockpitWindow(QMainWindow):
         super().showEvent(event)
         QTimer.singleShot(60, self._place_nav_indicator)
 
+    def closeEvent(self, event) -> None:
+        if hasattr(self, "worker") and self.worker and self.worker.isRunning():
+            self.worker.quit()
+            if not self.worker.wait(1500):
+                self.worker.terminate()
+                self.worker.wait(500)
+        super().closeEvent(event)
+
     def switch_page(self, key: str) -> None:
         page_map = {
             "dashboard": self.page_dashboard, "scans": self.page_scans,
