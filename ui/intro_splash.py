@@ -124,7 +124,7 @@ class AyfamIntroSplash(QWidget):
         top_bar = QHBoxLayout()
         top_bar.setSpacing(10)
 
-        sys_badge = QLabel("🛡️  منظومة العمليات والأمان السيبراني  |  SOC 2026")
+        sys_badge = QLabel("منظومة العمليات والأمان السيبراني  |  SOC 2026")
         sys_badge.setStyleSheet(f"""
             color: {ACCENT};
             font-size: 11px;
@@ -137,7 +137,7 @@ class AyfamIntroSplash(QWidget):
         top_bar.addWidget(sys_badge)
         top_bar.addStretch()
 
-        skip_btn = QPushButton("دخول فوري ➔")
+        skip_btn = QPushButton("دخول فوري  →")
         skip_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         skip_btn.setStyleSheet(f"""
             QPushButton {{
@@ -183,8 +183,8 @@ class AyfamIntroSplash(QWidget):
             pix = QIcon(str(icon_path)).pixmap(56, 56)
             icon_label.setPixmap(pix)
         else:
-            icon_label.setText("🛡️")
-            icon_label.setStyleSheet("font-size: 32px;")
+            icon_label.setText("AYFAM")
+            icon_label.setStyleSheet(f"font-size: 18px; font-weight: 900; color: {ACCENT};")
         icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         icon_layout.addWidget(icon_label)
         brand_row.addWidget(icon_frame)
@@ -310,7 +310,7 @@ class AyfamIntroSplash(QWidget):
         self.enter_btn.setStyleSheet(f"""
             QPushButton {{
                 background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-                    stop:0 #0284c7, stop:1 #059669);
+                    stop:0 #14b8a6, stop:1 #0f766e);
                 color: #ffffff;
                 font-size: 12px;
                 font-weight: 700;
@@ -320,7 +320,7 @@ class AyfamIntroSplash(QWidget):
             }}
             QPushButton:hover {{
                 background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-                    stop:0 #0ea5e9, stop:1 #10b981);
+                    stop:0 #5eead4, stop:1 #14b8a6);
                 border-color: #ffffff;
             }}
         """)
@@ -419,10 +419,10 @@ class SystemOverviewDialog(QDialog):
 
         # Pillars Grid
         pillars = [
-            ("🛰️ رادار الشبكة والاتصالات", "مراقبة مباشرة للمقابس المفتوحة، العمليات المتصلة، وتحليل الاتصالات غير المعتادة لحظياً."),
-            ("🛡️ درع الأجهزة الذكي USB Sentry", "كشف دقيق للأجهزة التخزينية والواجهات الهجينة مع دعم الإخراج الآمن والتوصيل للقراءة فقط."),
-            ("🤖 المساعد والمحلل الأمني الذكي", "محرك ذكاء اصطناعي محلي 100% لتحليل السجلات، صياغة تقارير الحوادث، وتقديم التوصيات."),
-            ("🎯 ترسانة الأدوات وفحص الثغرات", "تكامل مرن مع أدوات الفحص المتقدمة (فحص المنافذ، الثغرات، أذونات النظام، وملفات التكوين)."),
+            ("رادار الشبكة والاتصالات", "مراقبة مباشرة للمقابس المفتوحة، العمليات المتصلة، وتحليل الاتصالات غير المعتادة لحظياً."),
+            ("درع الأجهزة الذكي USB Sentry", "كشف دقيق للأجهزة التخزينية والواجهات الهجينة مع دعم الإخراج الآمن والتوصيل للقراءة فقط."),
+            ("المساعد والمحلل الأمني الذكي", "محرك ذكاء اصطناعي محلي 100% لتحليل السجلات، صياغة تقارير الحوادث، وتقديم التوصيات."),
+            ("ترسانة الأدوات وفحص الثغرات", "تكامل مرن مع أدوات الفحص المتقدمة (فحص المنافذ، الثغرات، أذونات النظام، وملفات التكوين)."),
         ]
 
         for p_title, p_desc in pillars:
@@ -459,7 +459,7 @@ class SystemOverviewDialog(QDialog):
         close_btn = QPushButton("إغلاق والعودة للكابينة")
         close_btn.setStyleSheet(f"""
             QPushButton {{
-                background: qlineargradient(x1:0,y1:0,x2:1,y2:1, stop:0 #0284c7, stop:1 #0f766e);
+                background: qlineargradient(x1:0,y1:0,x2:1,y2:1, stop:0 #14b8a6, stop:1 #0f766e);
                 color: #ffffff;
                 font-weight: 700;
                 padding: 8px 24px;
@@ -467,7 +467,7 @@ class SystemOverviewDialog(QDialog):
                 border: 1px solid {ACCENT};
             }}
             QPushButton:hover {{
-                background: #0284c7;
+                background: #0f766e;
             }}
         """)
         close_btn.clicked.connect(self.accept)

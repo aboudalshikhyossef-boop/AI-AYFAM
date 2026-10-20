@@ -244,6 +244,7 @@ class UnifiedCockpitWindow(QMainWindow):
 
     def __init__(self) -> None:
         super().__init__()
+        self.setObjectName("cockpitWindow")
         self.setWindowTitle("AI AYFAM — Security Operations Center")
         self.resize(1400, 880)
         self.setMinimumSize(1000, 680)
@@ -293,7 +294,7 @@ class UnifiedCockpitWindow(QMainWindow):
     #  LAYOUT: Sidebar + Header + Stacked Content
     # ═══════════════════════════════════════════════════════════════════════════
     def init_ui(self) -> None:
-        central = QWidget()
+        central = QWidget(objectName="appRoot")
         root = QHBoxLayout(central)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
@@ -392,14 +393,16 @@ class UnifiedCockpitWindow(QMainWindow):
         header_layout.addStretch()
 
         # Quick System Guide & Intro preview buttons
-        self.guide_btn = QPushButton("✨ دليل المنظومة")
+        self.guide_btn = QPushButton("دليل المنظومة")
         self.guide_btn.setObjectName("pillButton")
+        self.guide_btn.setIcon(glyph_icon("library", ACCENT, 16))
         self.guide_btn.setToolTip("عرض هيكلية ومكونات المنظومة الأمنية")
         self.guide_btn.clicked.connect(self.show_system_overview)
         header_layout.addWidget(self.guide_btn)
 
-        self.intro_btn = QPushButton("🚀 عرض الترحيب")
+        self.intro_btn = QPushButton("عرض الترحيب")
         self.intro_btn.setObjectName("pillButton")
+        self.intro_btn.setIcon(glyph_icon("dashboard", ACCENT_SECONDARY, 16))
         self.intro_btn.setToolTip("إعادة عرض شاشة المقدمة وتسلسل الإقلاع التشخيصي")
         self.intro_btn.clicked.connect(self.show_intro_splash)
         header_layout.addWidget(self.intro_btn)
@@ -499,7 +502,6 @@ class UnifiedCockpitWindow(QMainWindow):
         footer = QLabel(f"  {os.uname().nodename}  |  AI AYFAM v8  |  التنفيذ محلي")
         footer.setObjectName("footer")
         footer.setFixedHeight(26)
-        footer.setStyleSheet("background: #90122333; border-top: 1px solid #5538bdf8; padding: 3px 12px;")
         main_layout.addWidget(footer)
 
         root.addWidget(main_area)
@@ -587,7 +589,7 @@ class UnifiedCockpitWindow(QMainWindow):
         mission_layout.setSpacing(SP_LG)
         mission_copy = QVBoxLayout()
         mission_copy.setSpacing(SP_XS)
-        mission_kicker = QLabel("🛡️ حالة الدفاع التكتيكية  •  LOCAL DEFENSE POSTURE: ACTIVE & SECURED")
+        mission_kicker = QLabel("حالة الدفاع التكتيكية  •  LOCAL DEFENSE POSTURE: ACTIVE & SECURED")
         mission_kicker.setObjectName("eyebrow")
         mission_copy.addWidget(mission_kicker)
         mission_title = QLabel("مركز المراقبة والتحكم الأمني المتقدم")
@@ -600,18 +602,21 @@ class UnifiedCockpitWindow(QMainWindow):
 
         mission_actions = QHBoxLayout()
         mission_actions.setSpacing(SP_SM)
-        quick_scan = QPushButton("⚡ بدء فحص شامل")
+        quick_scan = QPushButton("بدء فحص شامل")
         quick_scan.setObjectName("primary")
+        quick_scan.setIcon(glyph_icon("scans", "#ffffff", 18))
         quick_scan.clicked.connect(lambda: self.run_background_task(self.agent._full_scan, "الفحص الشامل"))
         mission_actions.addWidget(quick_scan)
 
-        quick_usb = QPushButton("🛡️ فحص الأجهزة")
+        quick_usb = QPushButton("فحص الأجهزة")
         quick_usb.setObjectName("quietAction")
+        quick_usb.setIcon(glyph_icon("usb", ACCENT, 18))
         quick_usb.clicked.connect(lambda: self.switch_page("usb"))
         mission_actions.addWidget(quick_usb)
 
-        ask_ai = QPushButton("🤖 المستشار الذكي")
+        ask_ai = QPushButton("المستشار الذكي")
         ask_ai.setObjectName("quietAction")
+        ask_ai.setIcon(glyph_icon("chat", ACCENT_SECONDARY, 18))
         ask_ai.clicked.connect(lambda: self.switch_page("chat"))
         mission_actions.addWidget(ask_ai)
         mission_layout.addLayout(mission_actions)
@@ -623,10 +628,10 @@ class UnifiedCockpitWindow(QMainWindow):
         metrics.setVerticalSpacing(SP_MD)
         self.metric_labels: dict[str, QLabel] = {}
         metric_data = [
-            ("connections", "🌐 اتصالات الشبكة", "مقابس الشبكة النشطة والمراقبة", SEV_LOW),
-            ("processes", "⚙️ العمليات الحية", "أعلى العمليات استهلاكاً للموارد", CARD_ACCENTS["processes"]),
-            ("findings", "⚠️ الثغرات المكتشفة", "في آخر فحص مكتمل للمنظومة", SEV_MEDIUM),
-            ("score", "🛡️ الجاهزية الأمنية", "مؤشر تقييم خطوط الدفاع العام", SEV_SAFE),
+            ("connections", "اتصالات الشبكة", "مقابس الشبكة النشطة والمراقبة", SEV_LOW),
+            ("processes", "العمليات الحية", "أعلى العمليات استهلاكاً للموارد", CARD_ACCENTS["processes"]),
+            ("findings", "الثغرات المكتشفة", "في آخر فحص مكتمل للمنظومة", SEV_MEDIUM),
+            ("score", "الجاهزية الأمنية", "مؤشر تقييم خطوط الدفاع العام", SEV_SAFE),
         ]
         for col, (key, label, note, accent) in enumerate(metric_data):
             card = QFrame(objectName="card")
@@ -676,10 +681,10 @@ class UnifiedCockpitWindow(QMainWindow):
         hub_layout.setContentsMargins(SP_MD, SP_MD, SP_MD, SP_MD)
 
         quick_ops = [
-            ("⚡ فحص شامل للثغرات", "مسح متقدم للمنافذ وأمان النظام", lambda: self.run_background_task(self.agent._full_scan, "الفحص الشامل")),
-            ("🔍 رادار الشبكة المباشر", "تحديث فوري لجدول المقابس النشطة", self.update_live_telemetry),
-            ("🛡️ درع أجهزة USB", "كشف الأجهزة وفحص التخزين الآمن", lambda: self.switch_page("usb")),
-            ("📄 توليد تقرير تنفيذي", "حفظ وتصدير ملخص الحالة الأمنية", lambda: self.switch_page("reports")),
+            ("فحص شامل للثغرات", "مسح متقدم للمنافذ وأمان النظام", lambda: self.run_background_task(self.agent._full_scan, "الفحص الشامل")),
+            ("رادار الشبكة المباشر", "تحديث فوري لجدول المقابس النشطة", self.update_live_telemetry),
+            ("درع أجهزة USB", "كشف الأجهزة وفحص التخزين الآمن", lambda: self.switch_page("usb")),
+            ("توليد تقرير تنفيذي", "حفظ وتصدير ملخص الحالة الأمنية", lambda: self.switch_page("reports")),
         ]
 
         for op_title, op_desc, op_fn in quick_ops:
@@ -2549,7 +2554,7 @@ class AuroraSplash(QSplashScreen):
         p.setBrush(base)
         p.drawRoundedRect(panel, 28, 28)
         # Moving light gives life without hiding text.
-        for i, color in enumerate(("#38bdf8", "#34d399", "#f59e0b")):
+        for i, color in enumerate(("#2dd4bf", "#a78bfa", "#f59e0b")):
             cx = w * (0.25 + 0.25 * i) + 40 * math.sin(t * 0.9 + i * 2)
             glow = QRadialGradient(cx, h * 0.28, 150)
             c = QColor(color)
@@ -2585,8 +2590,8 @@ class AuroraSplash(QSplashScreen):
         p.drawRoundedRect(QRectF(bx, by, bw, 7), 3.5, 3.5)
         prog = (self._t % 180) / 180
         bar = QLinearGradient(bx, 0, bx + bw, 0)
-        bar.setColorAt(0, QColor("#38bdf8"))
-        bar.setColorAt(1, QColor("#34d399"))
+        bar.setColorAt(0, QColor("#2dd4bf"))
+        bar.setColorAt(1, QColor("#a78bfa"))
         p.setBrush(bar)
         p.drawRoundedRect(QRectF(bx, by, max(8, bw * prog), 7), 3.5, 3.5)
         p.setPen(QColor(TEXT_MUTED))

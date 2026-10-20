@@ -37,7 +37,7 @@ class AmbientSurface(QWidget):
         p.fillRect(self.rect(), QColor(BG_BASE))
         w, h = self.width(), self.height()
         # Diffuse light has no solid circles or opaque shapes.
-        for color, cx, cy in (("#2387ca", 0.22, 0.1), ("#24a678", 0.94, 0.76)):
+        for color, cx, cy in (("#159e9a", 0.22, 0.1), ("#6941c6", 0.94, 0.76)):
             center = QPointF(w * (cx + 0.06 * math.sin(self._phase)), h * cy)
             g = QRadialGradient(center, max(w, h) * 0.8)
             c = QColor(color)
@@ -49,18 +49,18 @@ class AmbientSurface(QWidget):
         # One moving, very faint diagonal light band.
         g = QLinearGradient(0, 0, w, h)
         t = 0.5 + 0.18 * math.sin(self._phase * 0.6)
-        g.setColorAt(0, QColor(56, 189, 248, 0))
-        g.setColorAt(max(0, t - 0.15), QColor(56, 189, 248, 0))
-        g.setColorAt(t, QColor(56, 189, 248, 5))
-        g.setColorAt(min(1, t + 0.15), QColor(52, 211, 153, 0))
-        g.setColorAt(1, QColor(52, 211, 153, 0))
+        g.setColorAt(0, QColor(45, 212, 191, 0))
+        g.setColorAt(max(0, t - 0.15), QColor(45, 212, 191, 0))
+        g.setColorAt(t, QColor(45, 212, 191, 5))
+        g.setColorAt(min(1, t + 0.15), QColor(167, 139, 250, 0))
+        g.setColorAt(1, QColor(167, 139, 250, 0))
         p.fillRect(self.rect(), g)
 
 
 class AccentLine(QWidget):
-    """Thin animated palette sweep under the header: blue, green, orange, red."""
+    """Thin animated palette sweep under the header using the brand signal colors."""
 
-    COLORS = ("#3b82f6", "#38bdf8", "#22c55e", "#34d399", "#f59e0b", "#ef4444", "#3b82f6")
+    COLORS = ("#2dd4bf", "#5eead4", "#34d399", "#a78bfa", "#f59e0b", "#f43f5e", "#2dd4bf")
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -115,8 +115,8 @@ class NavIndicator(QWidget):
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         gradient = QLinearGradient(0, 0, 0, max(1, self.height()))
-        gradient.setColorAt(0, QColor("#7dd3fc"))
-        gradient.setColorAt(1, QColor("#34d399"))
+        gradient.setColorAt(0, QColor("#5eead4"))
+        gradient.setColorAt(1, QColor("#a78bfa"))
         p.setPen(Qt.PenStyle.NoPen)
         p.setBrush(gradient)
         p.drawRoundedRect(QRectF(self.rect()), 2.5, 2.5)
@@ -153,15 +153,15 @@ class HaloOverlay(QWidget):
         light.setColorAt(1, QColor(125, 211, 252, 0))
         p.fillPath(path, light)
         rim = QLinearGradient(0, 0, self.width(), self.height())
-        rim.setColorAt(0, QColor(56, 189, 248, int(200 * self.strength)))
+        rim.setColorAt(0, QColor(45, 212, 191, int(200 * self.strength)))
         rim.setColorAt(0.5 + 0.12 * math.sin(self.phase), QColor(185, 235, 255, int(210 * self.strength)))
-        rim.setColorAt(1, QColor(52, 211, 153, int(160 * self.strength)))
+        rim.setColorAt(1, QColor(167, 139, 250, int(160 * self.strength)))
         p.setPen(QPen(rim, 1.6))
         p.drawPath(path)
 
 
 FLOW_PAIRS = {
-    "blue": ("#38bdf8", "#34d399"), "green": ("#34d399", "#38bdf8"),
+    "blue": ("#2dd4bf", "#a78bfa"), "green": ("#34d399", "#2dd4bf"),
     "orange": ("#fb923c", "#f87171"), "red": ("#f87171", "#fb923c"),
 }
 
@@ -410,9 +410,9 @@ class MessageBody(QTextEdit):
 
 
 SYSTEM_KINDS = {
-    "بدء": ("بدء المهمة", "#38bdf8"), "اكتمل": ("اكتملت المهمة", "#34d399"),
-    "خطأ": ("خطأ", "#f87171"), "خطأ عرض": ("خطأ عرض", "#f87171"), "النظام": ("النظام", "#38bdf8"),
-    "INFO": ("معلومة", "#38bdf8"), "SUCCESS": ("نجاح", "#34d399"), "DEBUG": ("تفصيل", "#8fb3d1"),
+    "بدء": ("بدء المهمة", "#2dd4bf"), "اكتمل": ("اكتملت المهمة", "#34d399"),
+    "خطأ": ("خطأ", "#f87171"), "خطأ عرض": ("خطأ عرض", "#f87171"), "النظام": ("النظام", "#2dd4bf"),
+    "INFO": ("معلومة", "#2dd4bf"), "SUCCESS": ("نجاح", "#34d399"), "DEBUG": ("تفصيل", "#8fb3d1"),
     "WARN": ("تنبيه", "#fb923c"), "WARNING": ("تنبيه", "#fb923c"), "ERROR": ("خطأ", "#f87171"),
 }
 
@@ -425,7 +425,7 @@ class ChatBubble(QFrame):
         self.setObjectName({"user": "chatUser", "assistant": "chatAssistant", "system": "chatSystem"}[role])
         self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred)
         if role == "system":
-            title, color = SYSTEM_KINDS.get(tag or "النظام", ("النظام", "#38bdf8"))
+            title, color = SYSTEM_KINDS.get(tag or "النظام", ("النظام", "#2dd4bf"))
             self.setStyleSheet(
                 f"QFrame#chatSystem {{ background: {alpha(color, 30)}; border: 1px solid {alpha(color, 150)}; border-radius: 14px; }}")
             row = QHBoxLayout(self)
@@ -477,12 +477,12 @@ class ChatBubble(QFrame):
         self.setFixedWidth(int(min(limit, max(270 if self.role == "system" else 280, desired))))
 
 
-ENGINE_COLORS = {"google": "#38bdf8", "google-cse": "#38bdf8", "wikipedia-ar": "#34d399", "wikipedia-en": "#34d399", "duckduckgo": "#fb923c", "bing-rss": "#a855f7"}
-BUTTON_KINDS = {"primary": "#34d399", "danger": "#f87171", "": "#38bdf8"}
+ENGINE_COLORS = {"google": "#2dd4bf", "google-cse": "#2dd4bf", "wikipedia-ar": "#34d399", "wikipedia-en": "#34d399", "duckduckgo": "#fb923c", "bing-rss": "#a78bfa"}
+BUTTON_KINDS = {"primary": "#34d399", "danger": "#f87171", "": "#2dd4bf"}
 
 
 def _action_button(label, kind=""):
-    color = BUTTON_KINDS.get(kind, "#38bdf8")
+    color = BUTTON_KINDS.get(kind, "#2dd4bf")
     button = QPushButton(label)
     button.setCursor(Qt.CursorShape.PointingHandCursor)
     button.setMinimumHeight(32)
@@ -595,7 +595,7 @@ class ResultsCard(QFrame):
         callback()
 
     def _hit_card(self, index, hit):
-        color = ENGINE_COLORS.get(hit.engine, "#38bdf8")
+        color = ENGINE_COLORS.get(hit.engine, "#2dd4bf")
         card = QFrame()
         card.setObjectName("resultCard")
         card.setStyleSheet(
