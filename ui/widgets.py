@@ -60,7 +60,7 @@ class AmbientSurface(QWidget):
 class AccentLine(QWidget):
     """Thin animated palette sweep under the header using the brand signal colors."""
 
-    COLORS = ("#2dd4bf", "#5eead4", "#34d399", "#a78bfa", "#f59e0b", "#f43f5e", "#2dd4bf")
+    COLORS = ("#1b8f88", "#2dd4bf", "#5eead4", "#2dd4bf", "#1b8f88", "#2dd4bf", "#1b8f88")
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -161,7 +161,7 @@ class HaloOverlay(QWidget):
 
 
 FLOW_PAIRS = {
-    "blue": ("#2dd4bf", "#a78bfa"), "green": ("#34d399", "#2dd4bf"),
+    "blue": ("#2dd4bf", "#5eead4"), "green": ("#34d399", "#2dd4bf"),
     "orange": ("#fb923c", "#f87171"), "red": ("#f87171", "#fb923c"),
 }
 

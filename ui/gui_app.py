@@ -691,13 +691,13 @@ class UnifiedCockpitWindow(QMainWindow):
             op_card = QFrame()
             op_card.setStyleSheet(f"""
                 QFrame {{
-                    background: qlineargradient(x1:0,y1:0,x2:1,y2:1, stop:0 #112033, stop:1 #0b1522);
-                    border: 1px solid {alpha(BORDER, 120)};
-                    border-radius: 12px;
+                    background: #0d2028;
+                    border: 1px solid #1b3b44;
+                    border-radius: 10px;
                 }}
                 QFrame:hover {{
-                    border-color: {ACCENT};
-                    background: qlineargradient(x1:0,y1:0,x2:1,y2:1, stop:0 #15273e, stop:1 #0e1a2b);
+                    border-color: #2c7776;
+                    background: #102a31;
                 }}
             """)
             op_box = QVBoxLayout(op_card)

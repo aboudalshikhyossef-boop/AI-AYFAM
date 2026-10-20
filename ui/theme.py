@@ -110,9 +110,8 @@ QScrollArea > QWidget > QWidget {{
 
 /* ── الشريط الجانبي الفخم ── */
 QFrame#sidebar {{
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-        stop:0 #0b2029, stop:0.42 #08171f, stop:1 #061017);
-    border-right: 1px solid #21434d;
+    background: #08171e;
+    border-right: 1px solid #19353d;
 }}
 
 QPushButton#navButton {{
@@ -128,15 +127,14 @@ QPushButton#navButton {{
 
 QPushButton#navButton:hover {{
     color: {TEXT_PRIMARY};
-    background: {alpha(ACCENT, 24)};
-    border-color: {alpha(ACCENT, 90)};
+    background: #102a32;
+    border-color: #27505a;
 }}
 
 QPushButton#navButton:checked {{
     color: #ffffff;
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-        stop:0 {alpha(ACCENT, 66)}, stop:0.82 {alpha(ACCENT_SECONDARY, 38)}, stop:1 transparent);
-    border: 1px solid {alpha(ACCENT, 170)};
+    background: #123139;
+    border: 1px solid #2c7776;
     font-weight: 700;
 }}
 
@@ -168,9 +166,8 @@ QPushButton#assistantNavButton:hover {{
 
 /* ── الشريط العلوي ── */
 QFrame#headerBar {{
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-        stop:0 #102833, stop:0.48 #0d1f29, stop:1 #08151d);
-    border-bottom: 1px solid #21434d;
+    background: #0a1b22;
+    border-bottom: 1px solid #193b43;
 }}
 
 QLabel#eyebrow {{
@@ -202,14 +199,15 @@ QLabel#clockDate {{
 
 /* ── بانر المهمة التكتيكي ── */
 QFrame#missionBanner {{
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-        stop:0 #12313a, stop:0.52 #0d2029, stop:1 #0a171f);
-    border: 1px solid {alpha(ACCENT, 110)};
+    background: #0d232b;
+    border: 1px solid #24515a;
+    border-right: 3px solid {ACCENT};
     border-radius: 18px;
 }}
 
 QFrame#missionBanner:hover {{
-    border-color: {alpha(ACCENT_HOVER, 170)};
+    border-color: #35767a;
+    border-right-color: {ACCENT_HOVER};
 }}
 
 QLabel#missionTitle {{
@@ -220,23 +218,20 @@ QLabel#missionTitle {{
 
 /* ── بطاقات العمليات والحاويات ── */
 QFrame#card {{
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-        stop:0 #102731, stop:1 #0a1822);
-    border: 1px solid {alpha(ACCENT, 65)};
-    border-radius: 16px;
+    background: #0d2028;
+    border: 1px solid #1b3b44;
+    border-radius: 12px;
 }}
 
 QFrame#card:hover {{
-    border-color: {alpha(ACCENT, 160)};
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-        stop:0 #15343d, stop:1 #0e202a);
+    border-color: #2c7776;
+    background: #102a31;
 }}
 
 QGroupBox {{
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-        stop:0 #0d202a, stop:1 #09161f);
-    border: 1px solid {alpha(BORDER, 140)};
-    border-radius: 16px;
+    background: #0b1c24;
+    border: 1px solid #1b3b44;
+    border-radius: 12px;
     margin-top: 0;
     padding: 38px 16px 16px;
     font-weight: 700;
@@ -259,8 +254,7 @@ QGroupBox:hover {{
 
 /* ── الأزرار الفاخرة ── */
 QPushButton {{
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-        stop:0 #15303a, stop:1 #0d2029);
+    background: #112a32;
     color: {TEXT_PRIMARY};
     border: 1px solid {alpha(ACCENT, 70)};
     border-radius: 11px;
@@ -270,14 +264,13 @@ QPushButton {{
 }}
 
 QPushButton:hover {{
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-        stop:0 #1b3e47, stop:1 #12303a);
+    background: #173943;
     border-color: {ACCENT};
     color: #ffffff;
 }}
 
 QPushButton:pressed {{
-    background: {alpha(ACCENT_SECONDARY, 80)};
+    background: #184a4d;
     border-color: {SEV_SAFE};
 }}
 
@@ -286,8 +279,7 @@ QPushButton:focus {{
 }}
 
 QPushButton#primary {{
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-        stop:0 #14b8a6, stop:0.5 #0f766e, stop:1 #115e59);
+    background: #0f766e;
     color: #ffffff;
     border: 1px solid {alpha('#ffffff', 90)};
     font-weight: 700;
@@ -295,8 +287,7 @@ QPushButton#primary {{
 }}
 
 QPushButton#primary:hover {{
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-        stop:0 #5eead4, stop:0.5 #14b8a6, stop:1 #0f766e);
+    background: #149b8e;
     border-color: #ffffff;
 }}
 
@@ -361,7 +352,7 @@ QLineEdit:hover, QComboBox:hover, QPlainTextEdit:hover, QTextEdit:hover {{
 
 QLineEdit:focus, QComboBox:focus, QPlainTextEdit:focus, QTextEdit:focus {{
     border-color: {ACCENT};
-    background: #0c2028;
+    background: #0e252b;
 }}
 
 QComboBox::drop-down {{
@@ -379,7 +370,7 @@ QComboBox QAbstractItemView {{
 
 /* ── الجداول التكتيكية ── */
 QTableWidget {{
-    background: {alpha(BG_SURFACE, 180)};
+    background: #0a1b22;
     color: {TEXT_PRIMARY};
     alternate-background-color: {alpha(BG_ELEVATED, 100)};
     gridline-color: transparent;
@@ -405,7 +396,7 @@ QTableWidget::item:selected {{
 }}
 
 QHeaderView::section {{
-    background: #102730;
+    background: #102a31;
     color: {TEXT_SECONDARY};
     padding: 10px 8px;
     border: none;
