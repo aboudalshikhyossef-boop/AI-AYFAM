@@ -38,7 +38,7 @@ from tools.usb_control import (
 from tools.websearch import DEFAULT_GOOGLE_CSE_CX
 from ui.terminal import TerminalUI
 from ui.icons import framed_icon, glyph_icon
-from ui.widgets import AccentLine, AmbientSurface, ChatView, HoverController, NavIndicator
+from ui.widgets import AccentLine, AmbientSurface, ChatView, HoverController, NavIndicator, PressFeedbackController
 from ui.intro_splash import AyfamIntroSplash, SystemOverviewDialog
 from ui.theme import (
     QSS, get_qss, ACCENT, ACCENT_SECONDARY, ACCENT_SOFT, ACCENT_HUES, BG_BASE, BG_SURFACE, BG_ELEVATED, BG_HOVER,
@@ -268,6 +268,7 @@ class UnifiedCockpitWindow(QMainWindow):
         self._selected_usb_partition_data: dict = {}
         self._usb_selection_source = "none"
         self.nav_buttons: list[QPushButton] = []
+        self.page_veil_animation: QPropertyAnimation | None = None
         self.init_ui()
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update_live_telemetry)
@@ -282,6 +283,7 @@ class UnifiedCockpitWindow(QMainWindow):
                 prepare_table(table)
         self.hover_controller = HoverController(self)
         self.chat_display.hover_controller = self.hover_controller
+        self.press_feedback = PressFeedbackController(self)
         self._busy_cursor_owned = False
 
         self.update_live_telemetry()
@@ -495,6 +497,9 @@ class UnifiedCockpitWindow(QMainWindow):
         # AmbientSurface paints behind the layout, never occupies a layout slot.
         scroll.viewport().setAutoFillBackground(False)
         self.content_scroll = scroll
+        self.transition_veil = QFrame(scroll.viewport(), objectName="transitionVeil")
+        self.transition_veil.setGeometry(scroll.viewport().rect())
+        self.transition_veil.hide()
 
         main_layout.addWidget(scroll, 1)
 
@@ -547,6 +552,7 @@ class UnifiedCockpitWindow(QMainWindow):
             changed = self.stack.currentWidget() is not widget
             self.stack.setCurrentWidget(widget)
             if changed:
+                self._run_page_transition()
                 if hasattr(self, "page_animation"):
                     self.page_animation.stop()
                 effect = QGraphicsOpacityEffect(self.stack)
@@ -573,6 +579,31 @@ class UnifiedCockpitWindow(QMainWindow):
             QTimer.singleShot(0, self._place_nav_indicator)
             if key == "usb" and not self.usb_inventory_loaded:
                 self.refresh_usb_inventory()
+
+    def _run_page_transition(self) -> None:
+        """Reveal the new page through a short, calm veil instead of a hard swap."""
+        veil = self.transition_veil
+        if self.page_veil_animation is not None:
+            self.page_veil_animation.stop()
+        veil.setGeometry(self.content_scroll.viewport().rect())
+        veil.show()
+        veil.raise_()
+        effect = QGraphicsOpacityEffect(veil)
+        effect.setOpacity(0.76)
+        veil.setGraphicsEffect(effect)
+        animation = QPropertyAnimation(effect, b"opacity", self)
+        animation.setDuration(220)
+        animation.setStartValue(0.76)
+        animation.setEndValue(0.0)
+        animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+
+        def finish() -> None:
+            veil.hide()
+            veil.setGraphicsEffect(None)
+
+        animation.finished.connect(finish)
+        self.page_veil_animation = animation
+        animation.start()
 
     # ═══════════════════════════════════════════════════════════════════════════
     #  DASHBOARD PAGE

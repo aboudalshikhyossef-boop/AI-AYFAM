@@ -6,10 +6,10 @@ import math
 import re
 from datetime import datetime
 
-from PyQt6.QtCore import QEasingCurve, QObject, QPointF, QPropertyAnimation, QRect, QRectF, Qt, QTimer, QUrl
+from PyQt6.QtCore import QEasingCurve, QEvent, QObject, QPointF, QPropertyAnimation, QRect, QRectF, Qt, QTimer, QUrl
 from PyQt6.QtGui import QColor, QConicalGradient, QCursor, QDesktopServices, QGuiApplication, QRegion, QTextBlockFormat, QTextCursor, QLinearGradient, QPainter, QPainterPath, QPen, QRadialGradient, QTextOption
 from PyQt6.QtWidgets import (
-    QAbstractSpinBox, QApplication, QComboBox, QFrame, QGroupBox, QHBoxLayout, QLabel, QLineEdit,
+    QAbstractSpinBox, QApplication, QComboBox, QFrame, QGraphicsOpacityEffect, QGroupBox, QHBoxLayout, QLabel, QLineEdit,
     QPlainTextEdit, QPushButton, QScrollArea, QSizePolicy, QTableWidget, QTextEdit,
     QVBoxLayout, QWidget,
 )
@@ -120,6 +120,69 @@ class NavIndicator(QWidget):
         p.setPen(Qt.PenStyle.NoPen)
         p.setBrush(gradient)
         p.drawRoundedRect(QRectF(self.rect()), 2.5, 2.5)
+
+
+class PressFeedbackController(QObject):
+    """Short, low-cost tactile response for mouse and keyboard button presses."""
+
+    def __init__(self, root):
+        super().__init__(root)
+        self.effects = {}
+        self.animations = {}
+        for button in root.findChildren(QPushButton):
+            self.attach(button)
+
+    def attach(self, button):
+        if button in self.effects:
+            return
+        effect = QGraphicsOpacityEffect(button)
+        effect.setOpacity(1.0)
+        button.setGraphicsEffect(effect)
+        button.installEventFilter(self)
+        self.effects[button] = effect
+        button.destroyed.connect(lambda _=None, key=button: self._forget(key))
+
+    def _forget(self, button):
+        self.effects.pop(button, None)
+        animation = self.animations.pop(button, None)
+        if animation is not None:
+            animation.stop()
+
+    @staticmethod
+    def _repolish(button):
+        button.style().unpolish(button)
+        button.style().polish(button)
+        button.update()
+
+    def _animate(self, button, target, duration):
+        effect = self.effects.get(button)
+        if effect is None:
+            return
+        animation = self.animations.get(button)
+        if animation is None:
+            animation = QPropertyAnimation(effect, b"opacity", self)
+            self.animations[button] = animation
+        animation.stop()
+        animation.setDuration(duration)
+        animation.setStartValue(effect.opacity())
+        animation.setEndValue(target)
+        animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+        animation.start()
+
+    def eventFilter(self, watched, event):
+        if watched not in self.effects:
+            return super().eventFilter(watched, event)
+        pressed = event.type() in (QEvent.Type.MouseButtonPress, QEvent.Type.KeyPress)
+        released = event.type() in (QEvent.Type.MouseButtonRelease, QEvent.Type.KeyRelease)
+        if pressed:
+            watched.setProperty("pressingFx", True)
+            self._repolish(watched)
+            self._animate(watched, 0.82, 85)
+        elif released:
+            watched.setProperty("pressingFx", False)
+            self._repolish(watched)
+            self._animate(watched, 1.0, 150)
+        return super().eventFilter(watched, event)
 
 
 class HaloOverlay(QWidget):

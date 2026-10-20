@@ -274,6 +274,12 @@ QPushButton:pressed {{
     border-color: {SEV_SAFE};
 }}
 
+QPushButton[pressingFx="true"] {{
+    background: #1a4b4e;
+    border-color: {ACCENT_HOVER};
+    color: #ffffff;
+}}
+
 QPushButton:focus {{
     border: 2px solid {ACCENT};
 }}
@@ -598,6 +604,11 @@ QFrame#chatSystem {{
     background: #251d18;
     border: 1px solid {alpha(SEV_HIGH, 130)};
     border-radius: 12px;
+}}
+
+QFrame#transitionVeil {{
+    background: #061017;
+    border: none;
 }}
 """
 
