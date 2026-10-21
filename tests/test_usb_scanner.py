@@ -11,6 +11,7 @@ from tools.usb import (
     _flatten_leaf_partitions,
     _list_usb_devices_sysfs,
     analyze_mounted_filesystem,
+    scan_mounted_drives,
 )
 from tools.usb_control import (
     eject_storage_device,
@@ -20,6 +21,23 @@ from tools.usb_control import (
 
 
 class UsbScannerParsingTests(unittest.TestCase):
+    @patch("tools.usb.safe_exec.run")
+    def test_scan_does_not_classify_ordinary_mount_as_usb(self, mock_run):
+        payload = {"blockdevices": [{
+            "name": "sda", "size": "100000000000", "type": "disk",
+            "tran": "sata", "hotplug": False,
+            "children": [{"name": "sda1", "type": "part", "mountpoints": ["/media/data"]}],
+        }]}
+        mock_run.return_value = MagicMock(ok=True, stdout=json.dumps(payload), stderr="")
+        self.assertEqual(scan_mounted_drives(usb_only=True), [])
+        self.assertEqual(mock_run.call_count, 1)
+
+    @patch("tools.usb.safe_exec.run")
+    def test_scan_does_not_use_df_as_usb_fallback(self, mock_run):
+        mock_run.return_value = MagicMock(ok=False, stdout="", stderr="lsblk missing")
+        self.assertEqual(scan_mounted_drives(usb_only=True), [])
+        self.assertEqual(mock_run.call_count, 1)
+
     def test_boolean_hotplug_and_mountpoints_are_supported(self):
         payload = {
             "blockdevices": [{
@@ -189,16 +207,24 @@ class UsbControlSafetyTests(unittest.TestCase):
     @patch("utils.safe_exec.run")
     def test_eject_unmounts_all_partitions_and_powers_off(self, mock_run):
         """التحقق من أن دالة الإخراج تفصل كافة الأقسام التابعة وتطفئ القرص الأب."""
-        mock_lsblk_out = MagicMock(ok=True, stdout="sdb1 /run/media/p1\nsdb2 /run/media/p2\n")
         mock_sync_out = MagicMock(ok=True, stdout="")
         mock_unmount_out = MagicMock(ok=True, stdout="unmounted")
         mock_poweroff_out = MagicMock(ok=True, stdout="powered off")
+        mount_queries = 0
 
         def side_effect(cmd, **kwargs):
             if cmd[0] == "sync":
                 return mock_sync_out
             elif cmd[0] == "lsblk":
-                return mock_lsblk_out
+                nonlocal mount_queries
+                columns = cmd[3]
+                if columns == "PKNAME":
+                    return MagicMock(ok=True, stdout="sdb\n")
+                if columns == "RM,TRAN,TYPE":
+                    return MagicMock(ok=True, stdout="1 usb disk\n")
+                mount_queries += 1
+                mounts = "sdb1 /run/media/p1\nsdb2 /run/media/p2\n" if mount_queries == 1 else ""
+                return MagicMock(ok=True, stdout=mounts)
             elif "unmount" in cmd:
                 return mock_unmount_out
             elif "power-off" in cmd:
@@ -212,6 +238,33 @@ class UsbControlSafetyTests(unittest.TestCase):
         # Verify sync was executed
         commands_run = [call_args[0][0][0] for call_args in mock_run.call_args_list]
         self.assertIn("sync", commands_run)
+
+    @patch("utils.safe_exec.run")
+    def test_eject_rejects_non_removable_disk(self, mock_run):
+        def side_effect(cmd, **kwargs):
+            if cmd[0] == "lsblk" and cmd[3] == "PKNAME":
+                return MagicMock(ok=True, stdout="sda\n")
+            if cmd[0] == "lsblk" and cmd[3] == "RM,TRAN,TYPE":
+                return MagicMock(ok=True, stdout="0 sata disk\n")
+            return MagicMock(ok=True, stdout="")
+        mock_run.side_effect = side_effect
+        result = eject_storage_device("/dev/sda1")
+        self.assertFalse(result["success"])
+        self.assertIn("قابلة للإزالة", result["error"])
+
+    @patch("utils.safe_exec.run")
+    def test_eject_fails_when_power_off_fails(self, mock_run):
+        def side_effect(cmd, **kwargs):
+            if cmd[0] == "lsblk" and cmd[3] == "PKNAME":
+                return MagicMock(ok=True, stdout="sdb\n")
+            if cmd[0] == "lsblk" and cmd[3] == "RM,TRAN,TYPE":
+                return MagicMock(ok=True, stdout="1 usb disk\n")
+            if cmd[0] == "udisksctl" and "power-off" in cmd:
+                return MagicMock(ok=False, stdout="", stderr="power denied")
+            return MagicMock(ok=True, stdout="")
+        mock_run.side_effect = side_effect
+        result = eject_storage_device("/dev/sdb1")
+        self.assertFalse(result["success"])
 
 
 if __name__ == "__main__":

@@ -449,32 +449,23 @@ def _parse_lsblk_devices(payload: str, usb_only: bool = False, analyze: bool = T
 
 
 def scan_mounted_drives(usb_only: bool = False):
+    """Return block devices discovered by lsblk.
+
+    A mounted path is not evidence that a device is USB.  In particular,
+    ``df`` cannot distinguish ordinary system mounts under /media or /mnt
+    from removable media, so it is deliberately not used as a USB fallback.
+    """
     drives = []
-    # MOUNTPOINTS و --tree مهمان: إضافة FSTYPE و LABEL و UUID لتحسين التعرف الأمني
-    out, _ = _run("lsblk -J -b --tree -o NAME,SIZE,TYPE,MOUNTPOINTS,VENDOR,MODEL,TRAN,HOTPLUG,FSTYPE,LABEL,UUID 2>/dev/null")
+    lsblk_result = safe_exec.run([
+        "lsblk", "-J", "-b", "--tree",
+        "-o", "NAME,SIZE,TYPE,MOUNTPOINTS,VENDOR,MODEL,TRAN,HOTPLUG,FSTYPE,LABEL,UUID",
+    ], check_binary=False)
+    out = lsblk_result.stdout if lsblk_result.ok else ""
     try:
-        drives = _parse_lsblk_devices(out, usb_only=usb_only)
+        if out:
+            drives = _parse_lsblk_devices(out, usb_only=usb_only)
     except (TypeError, ValueError, KeyError):
         drives = []
-
-    if not drives:
-        out2, _ = _run("df -h 2>/dev/null")
-        for line in out2.splitlines()[1:]:
-            parts = line.split()
-            if len(parts) < 6:
-                continue
-            device, mount = parts[0], parts[5]
-            if any(prefix in mount for prefix in ("/media/", "/mnt/", "/run/media/", "/Volumes/")):
-                dev_name = device.removeprefix("/dev/")
-                analysis = analyze_mounted_filesystem(mount)
-                drives.append({
-                    "name": dev_name, "path": device, "size": parts[1],
-                    "size_bytes": None, "mountpoint": mount, "is_usb": True, "findings": [],
-                    "partitions": [{"name": dev_name, "path": device,
-                                    "size": parts[1], "size_bytes": None, "mountpoint": mount,
-                                    "mountpoints": [mount], "analysis": analysis}],
-                    "analysis": analysis,
-                })
     return drives
 
 

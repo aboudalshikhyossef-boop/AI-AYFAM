@@ -276,7 +276,7 @@ class UnifiedCockpitWindow(QMainWindow):
         self.nav_buttons: list[QPushButton] = []
         self.page_veil_animation: QPropertyAnimation | None = None
         self._telemetry_history = {
-            "الجاهزية الأمنية (%)": [82, 84, 83, 86, 88, 87, 90, 91, 90, 92, 93, 92],
+            "الجاهزية الأمنية (%)": [],
             "النشاط التشغيلي (%)": [46, 51, 49, 56, 54, 61, 58, 64, 60, 67, 65, 70],
         }
         self.init_ui()
@@ -666,9 +666,9 @@ class UnifiedCockpitWindow(QMainWindow):
         mission_layout.setSpacing(SP_LG)
         mission_copy = QVBoxLayout()
         mission_copy.setSpacing(SP_XS)
-        mission_kicker = QLabel("حالة الدفاع التكتيكية  •  LOCAL DEFENSE POSTURE: ACTIVE & SECURED")
-        mission_kicker.setObjectName("eyebrow")
-        mission_copy.addWidget(mission_kicker)
+        self.mission_kicker = QLabel("حالة الدفاع التكتيكية  •  LOCAL DEFENSE POSTURE: AWAITING FIRST SCAN")
+        self.mission_kicker.setObjectName("eyebrow")
+        mission_copy.addWidget(self.mission_kicker)
         mission_title = QLabel("مركز المراقبة والتحكم الأمني المتقدم")
         mission_title.setObjectName("missionTitle")
         mission_copy.addWidget(mission_title)
@@ -748,7 +748,7 @@ class UnifiedCockpitWindow(QMainWindow):
             for index, (label, values) in enumerate(self._telemetry_history.items())
         })
         self.security_gauge = SecurityGauge()
-        self.security_gauge.set_value(self._telemetry_history["الجاهزية الأمنية (%)"][-1])
+        self.security_gauge.set_pending()
         analytics_row.addWidget(self.telemetry_chart, 3)
         analytics_row.addWidget(self.security_gauge, 1)
         layout.addLayout(analytics_row)
@@ -1695,13 +1695,7 @@ class UnifiedCockpitWindow(QMainWindow):
             listening = sum(1 for c in conns if str(c.get("state", "")).upper() == "LISTEN")
             self.connection_summary.setText(
                 f"{len(conns)} اتصال  |  {external} خارجي  |  {listening} منصت  |  تحديث كل 3 ثوانٍ")
-            peak_cpu = max((float(p.get("cpu", 0) or 0) for p in procs), default=0.0)
-            # External sockets are a signal, not an automatic failure: cap their
-            # contribution so a busy workstation does not render a false 0% score.
-            external_penalty = min(18.0, external * 0.35)
-            health = max(0.0, min(100.0, 96.0 - external_penalty - max(0.0, peak_cpu - 55.0) * 0.18))
             activity = max(0.0, min(100.0, len(procs) * 2.6 + len(conns) * 0.7))
-            self._telemetry_history["الجاهزية الأمنية (%)"].append(health)
             self._telemetry_history["النشاط التشغيلي (%)"].append(activity)
             for values in self._telemetry_history.values():
                 del values[:-24]
@@ -1710,8 +1704,6 @@ class UnifiedCockpitWindow(QMainWindow):
                     "الجاهزية الأمنية (%)": (self._telemetry_history["الجاهزية الأمنية (%)"], "#2dd4bf"),
                     "النشاط التشغيلي (%)": (self._telemetry_history["النشاط التشغيلي (%)"], "#a78bfa"),
                 })
-                self.security_gauge.set_value(health)
-                self.metric_labels["score"].setText(f"{health:.0f}%")
         except Exception as exc:
             self.chat_display.append(f"[تحذير الرادار] {exc}")
 
@@ -2434,10 +2426,19 @@ class UnifiedCockpitWindow(QMainWindow):
     def _update_score(self, findings: list) -> None:
         evaluation = RiskEngine.evaluate(findings)
         self.metric_labels["findings"].setText(str(len(findings)))
-        self.metric_labels["score"].setText(f"{evaluation.get('score', 100)}/100")
         score = evaluation.get('score', 100)
         grade = evaluation.get('grade', 'A+')
+        self.metric_labels["score"].setText(f"{score}/100")
         self.score_badge.setText(f"الدرجة: {score}/100 ({grade})")
+        self.mission_kicker.setText("حالة الدفاع التكتيكية  •  LOCAL DEFENSE POSTURE: ASSESSED")
+        self.security_gauge.set_value(score)
+        self._telemetry_history["الجاهزية الأمنية (%)"].append(float(score))
+        del self._telemetry_history["الجاهزية الأمنية (%)"][:-24]
+        if hasattr(self, "telemetry_chart"):
+            self.telemetry_chart.set_data({
+                "الجاهزية الأمنية (%)": (self._telemetry_history["الجاهزية الأمنية (%)"], "#2dd4bf"),
+                "النشاط التشغيلي (%)": (self._telemetry_history["النشاط التشغيلي (%)"], "#a78bfa"),
+            })
         # Color the score badge based on score
         score_color = SEV_SAFE if score >= 85 else SEV_MEDIUM if score >= 70 else SEV_HIGH if score >= 50 else SEV_CRITICAL
         self.score_badge.setStyleSheet(

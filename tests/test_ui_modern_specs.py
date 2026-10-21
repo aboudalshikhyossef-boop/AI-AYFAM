@@ -66,6 +66,19 @@ class TestModernUiSpecs(unittest.TestCase):
         self.assertIn("guide_btn", code)
         self.assertIn("intro_btn", code)
 
+    def test_score_is_pending_until_a_scan_completes(self):
+        with open(ROOT_DIR / "ui/gui_app.py", "r", encoding="utf-8") as f:
+            code = f.read()
+        self.assertIn("AWAITING FIRST SCAN", code)
+        self.assertIn("self.security_gauge.set_pending()", code)
+        self.assertNotIn("96.0 - external_penalty", code)
+        self.assertNotIn("ACTIVE & SECURED", code)
+
+        with open(ROOT_DIR / "ui/widgets.py", "r", encoding="utf-8") as f:
+            widgets_code = f.read()
+        self.assertIn("def set_pending(self)", widgets_code)
+        self.assertIn('"—" if self.pending', widgets_code)
+
     def test_main_cli_splash_flag(self):
         import argparse
         from main import parse_args

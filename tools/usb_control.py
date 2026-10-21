@@ -71,6 +71,49 @@ def deauthorize_device(bus: str, dev: str, sudo_password=None) -> dict:
     return {"success": r.ok, "path": auth_file, "error": r.stderr}
 
 
+def _lsblk_query(device_path: str, columns: str):
+    result = safe_exec.run(["lsblk", "-ln", "-o", columns, device_path], check_binary=False)
+    if not result.ok:
+        return False, []
+    return True, [line.strip() for line in result.stdout.splitlines() if line.strip()]
+
+
+def _lsblk_lines(device_path: str, columns: str):
+    return _lsblk_query(device_path, columns)[1]
+
+
+def _resolve_parent_device(device_path: str) -> str:
+    """Resolve a partition to its parent disk using lsblk, including NVMe names."""
+    lines = _lsblk_lines(device_path, "PKNAME")
+    if lines and lines[0] and "/" not in lines[0] and " " not in lines[0]:
+        return f"/dev/{lines[0]}"
+    # Conservative fallback for environments where lsblk cannot expose PKNAME.
+    name = os.path.basename(device_path)
+    match = re.match(r"^(nvme\d+n\d+|mmcblk\d+|sd[a-z]+|hd[a-z]+|vd[a-z]+|xvd[a-z]+)p?\d+$", name)
+    return f"/dev/{match.group(1)}" if match else device_path
+
+
+def _removable_transport(device_path: str):
+    """Return (is_removable, evidence) from lsblk, never from mountpoint names."""
+    parent = _resolve_parent_device(device_path)
+    lines = _lsblk_lines(parent, "RM,TRAN,TYPE")
+    if lines:
+        fields = lines[0].split()
+        removable = fields[0] == "1" if fields else False
+        transport = fields[1].lower() if len(fields) > 1 else ""
+        device_type = fields[2].lower() if len(fields) > 2 else ""
+        return (removable or transport == "usb"), {
+            "parent": parent, "removable": removable, "transport": transport, "type": device_type,
+        }
+    block_name = os.path.basename(parent)
+    removable_file = f"/sys/class/block/{block_name}/removable"
+    try:
+        removable = Path(removable_file).read_text(encoding="utf-8").strip() == "1"
+    except OSError:
+        removable = False
+    return removable, {"parent": parent, "removable": removable, "transport": "sysfs", "type": ""}
+
+
 def eject_storage_device(device_path: str, sudo_password=None) -> dict:
     """إخراج آمن لجهاز تخزين — يتحقق أن المسار /dev/... صالح، يُفرغ التخزين المؤقت،
     ويفصل جميع الأقسام التابعة بأمان قبل إيقاف طاقة الجهاز."""
@@ -81,23 +124,38 @@ def eject_storage_device(device_path: str, sudo_password=None) -> dict:
 
     steps = []
 
+    is_removable, evidence = _removable_transport(device_path)
+    steps.append({"cmd": "verify removable USB", "ok": is_removable, "out": evidence})
+    if not is_removable:
+        return {
+            "success": False,
+            "steps": steps,
+            "error": "رُفض الإخراج: الجهاز ليس وحدة تخزين قابلة للإزالة/USB حسب lsblk",
+            "parent_device": evidence.get("parent", device_path),
+        }
+    parent_device = evidence.get("parent", device_path)
+
     # 1. إفراغ التخزين المؤقت (sync) لضمان كتابة كافة البيانات ومنع تلف نظام الملفات
     r_sync = safe_exec.run(["sync"])
     steps.append({"cmd": "sync", "ok": r_sync.ok, "out": r_sync.stdout})
 
     # 2. تحديد الأقسام الموصولة التابعة لهذا القرص أو القسم
     partitions_to_unmount = []
-    r_lsblk = safe_exec.run(["lsblk", "-ln", "-o", "NAME,MOUNTPOINT", device_path], check_binary=False)
-    if r_lsblk.ok and r_lsblk.stdout:
-        for line in r_lsblk.stdout.splitlines():
+    mount_query_ok, mounted_lines = _lsblk_query(parent_device, "NAME,MOUNTPOINT")
+    if not mount_query_ok:
+        return {
+            "success": False,
+            "steps": steps,
+            "error": "تعذر التحقق من الأقسام المركبة عبر lsblk؛ تم إلغاء الإخراج بأمان",
+            "parent_device": parent_device,
+        }
+    if mounted_lines:
+        for line in mounted_lines:
             parts = line.strip().split(None, 1)
             if len(parts) >= 2 and parts[1]:  # لها نقطة توصيل نشطة
                 part_dev = f"/dev/{parts[0]}"
                 if part_dev not in partitions_to_unmount:
                     partitions_to_unmount.append(part_dev)
-
-    if not partitions_to_unmount:
-        partitions_to_unmount.append(device_path)
 
     # 3. فصل كل قسم بأمان
     all_unmounted = True
@@ -110,20 +168,33 @@ def eject_storage_device(device_path: str, sudo_password=None) -> dict:
             if not r3.ok:
                 all_unmounted = False
 
-    # 4. إيقاف الطاقة عن القرص الأب
-    parent_device = device_path
-    m_disk = re.match(r"^(/dev/[a-zA-Z]+)\d+$", device_path)
-    if m_disk:
-        parent_device = m_disk.group(1)
+    # 4. تحقق مستقل من عدم بقاء أي نقطة تركيب قبل power-off
+    verify_query_ok, verify_lines = _lsblk_query(parent_device, "NAME,MOUNTPOINT")
+    remaining_mounts = [
+        line for line in verify_lines
+        if len(line.split(None, 1)) >= 2 and line.split(None, 1)[1].strip()
+    ]
+    if not verify_query_ok:
+        all_unmounted = False
+        steps.append({"cmd": "verify unmount", "ok": False, "out": "lsblk query failed"})
+    if remaining_mounts:
+        all_unmounted = False
+        steps.append({"cmd": "verify unmount", "ok": False, "out": "\n".join(remaining_mounts)})
+
+    if not all_unmounted:
+        steps.append({"cmd": f"power-off {parent_device}", "ok": False, "out": "skipped: mounted partitions remain"})
+        return {"success": False, "steps": steps, "parent_device": parent_device}
 
     r2 = safe_exec.run(["udisksctl", "power-off", "-b", parent_device], sudo=False, check_binary=False)
     steps.append({"cmd": f"power-off {parent_device}", "ok": r2.ok, "out": r2.stdout or r2.stderr})
+    power_off_ok = r2.ok
     if not r2.ok and all_unmounted:
         r4 = safe_exec.run(["udisksctl", "power-off", "-b", parent_device], sudo=True, sudo_password=sudo_password, check_binary=False)
         steps.append({"cmd": f"sudo power-off {parent_device}", "ok": r4.ok, "out": r4.stdout or r4.stderr})
+        power_off_ok = r4.ok
 
-    success = any(s.get("ok") for s in steps if "unmount" in s.get("cmd", "") or "power-off" in s.get("cmd", ""))
-    return {"success": success, "steps": steps}
+    success = all_unmounted and power_off_ok
+    return {"success": success, "steps": steps, "parent_device": parent_device}
 
 
 def mount_storage_device_readonly(device_path: str, mount_dir: str = None, sudo_password=None) -> dict:

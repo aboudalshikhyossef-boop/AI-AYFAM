@@ -307,13 +307,21 @@ class SecurityGauge(QFrame):
         super().__init__(parent)
         self.title = title
         self.value = 0
+        self.pending = True
         self.setObjectName("securityGauge")
         self.setMinimumSize(210, 220)
         self.setMouseTracking(True)
 
     def set_value(self, value: float) -> None:
         self.value = max(0, min(100, float(value)))
+        self.pending = False
         self.setToolTip(f"{self.title}: {self.value:.0f}% — يتحدث مع القياسات الحية")
+        self.update()
+
+    def set_pending(self) -> None:
+        """Show that no completed security scan exists yet; never imply a score."""
+        self.pending = True
+        self.setToolTip(f"{self.title}: لم يُجرَ فحص بعد")
         self.update()
 
     def paintEvent(self, event):
@@ -327,15 +335,17 @@ class SecurityGauge(QFrame):
         base = QRectF(center.x() - radius, center.y() - radius, radius * 2, radius * 2)
         p.setPen(QPen(QColor("#1b3b44"), 12, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
         p.drawArc(base, 225 * 16, -270 * 16)
-        color = QColor("#34d399" if self.value >= 70 else "#f59e0b" if self.value >= 40 else "#f87171")
+        color = QColor("#6d8a91" if self.pending else "#34d399" if self.value >= 70 else "#f59e0b" if self.value >= 40 else "#f87171")
         p.setPen(QPen(color, 12, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
-        p.drawArc(base, 225 * 16, int(-270 * 16 * self.value / 100))
+        if not self.pending:
+            p.drawArc(base, 225 * 16, int(-270 * 16 * self.value / 100))
         p.setPen(QColor("#f2fbfa")); p.setFont(p.font())
-        p.drawText(QRectF(0, center.y() - 18, self.width(), 34), Qt.AlignmentFlag.AlignCenter, f"{self.value:.0f}%")
+        p.drawText(QRectF(0, center.y() - 18, self.width(), 34), Qt.AlignmentFlag.AlignCenter, "—" if self.pending else f"{self.value:.0f}%")
         p.setPen(QColor(TEXT_SECONDARY))
         p.drawText(QRectF(12, 16, self.width() - 24, 22), Qt.AlignmentFlag.AlignRight, self.title)
         p.setPen(QColor(TEXT_MUTED))
-        p.drawText(QRectF(12, self.height() - 34, self.width() - 24, 18), Qt.AlignmentFlag.AlignCenter, "تقييم لحظي لخطوط الدفاع")
+        footer = "لم يُجرَ فحص بعد" if self.pending else "تقييم خطوط الدفاع بعد آخر فحص"
+        p.drawText(QRectF(12, self.height() - 34, self.width() - 24, 18), Qt.AlignmentFlag.AlignCenter, footer)
 
 
 class SoundUX(QObject):
