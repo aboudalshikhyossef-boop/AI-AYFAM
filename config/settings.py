@@ -46,6 +46,7 @@ DEFAULT_SETTINGS = {
     "openai_model": "gpt-4o-mini",
     "gemini_model": "gemini-3.8-flash",
     "auto_fix": False,
+    "sound_ux": True,
     "report_dir": str(Path.home() / "ayfam-reports"),
     "cve_cache_hours": 6,
     "max_scan_threads": 50,

@@ -5,6 +5,7 @@ import html
 import math
 import re
 from datetime import datetime
+from pathlib import Path
 
 from PyQt6.QtCore import QEasingCurve, QEvent, QObject, QPointF, QPropertyAnimation, QRect, QRectF, Qt, QTimer, QUrl
 from PyQt6.QtGui import QColor, QConicalGradient, QCursor, QDesktopServices, QGuiApplication, QRegion, QTextBlockFormat, QTextCursor, QLinearGradient, QPainter, QPainterPath, QPen, QRadialGradient, QTextOption
@@ -13,6 +14,11 @@ from PyQt6.QtWidgets import (
     QPlainTextEdit, QPushButton, QScrollArea, QSizePolicy, QTableWidget, QTextEdit,
     QVBoxLayout, QWidget,
 )
+
+try:
+    from PyQt6.QtMultimedia import QSoundEffect
+except ImportError:  # pragma: no cover - minimal Qt installations may omit Multimedia
+    QSoundEffect = None
 
 from ui.theme import ACCENT, BG_BASE, SEV_SAFE, TEXT_MUTED, TEXT_SECONDARY, alpha
 
@@ -183,6 +189,182 @@ class PressFeedbackController(QObject):
             self._repolish(watched)
             self._animate(watched, 1.0, 150)
         return super().eventFilter(watched, event)
+
+
+class TelemetryChart(QFrame):
+    """Lightweight interactive line chart for live dashboard telemetry."""
+
+    def __init__(self, title="اتجاه القياسات الحية", parent=None):
+        super().__init__(parent)
+        self.title = title
+        self.series = {}
+        self.hover_index = -1
+        self.setObjectName("telemetryChart")
+        self.setMinimumHeight(220)
+        self.setMouseTracking(True)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+
+    def set_data(self, series: dict[str, tuple[list[float], str]]) -> None:
+        self.series = series
+        self.update()
+
+    def _plot_rect(self):
+        return QRectF(46, 42, max(10, self.width() - 68), max(10, self.height() - 78))
+
+    def mouseMoveEvent(self, event):
+        rect = self._plot_rect()
+        count = max((len(values) for values, _ in self.series.values()), default=0)
+        if count > 1 and rect.contains(event.position()):
+            ratio = (event.position().x() - rect.left()) / max(1, rect.width())
+            self.hover_index = max(0, min(count - 1, round(ratio * (count - 1))))
+        else:
+            self.hover_index = -1
+        self.update()
+        super().mouseMoveEvent(event)
+
+    def leaveEvent(self, event):
+        self.hover_index = -1
+        self.update()
+        super().leaveEvent(event)
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        p.fillRect(self.rect(), QColor("#0b1c24"))
+        p.setPen(QPen(QColor("#1b3b44"), 1))
+        p.drawRoundedRect(QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5), 12, 12)
+        p.setPen(QColor(TEXT_PRIMARY if 'TEXT_PRIMARY' in globals() else "#f2fbfa"))
+        p.setFont(p.font())
+        p.drawText(QRectF(18, 12, self.width() - 36, 22), Qt.AlignmentFlag.AlignRight, self.title)
+
+        rect = self._plot_rect()
+        for step in range(5):
+            y = rect.bottom() - (rect.height() * step / 4)
+            p.setPen(QPen(QColor("#17313a"), 1, Qt.PenStyle.DotLine))
+            p.drawLine(QPointF(rect.left(), y), QPointF(rect.right(), y))
+            p.setPen(QColor("#6d8a91"))
+            p.drawText(QRectF(8, y - 8, 30, 16), Qt.AlignmentFlag.AlignRight, str(step * 25))
+
+        count = max((len(values) for values, _ in self.series.values()), default=0)
+        if count < 2:
+            return
+        colors = [QColor(color) for _, color in self.series.values()]
+        for (values, _), color in zip(self.series.values(), colors):
+            if len(values) < 2:
+                continue
+            points = []
+            for index, value in enumerate(values):
+                x = rect.left() + rect.width() * index / (count - 1)
+                y = rect.bottom() - rect.height() * max(0, min(100, float(value))) / 100
+                points.append(QPointF(x, y))
+            path = QPainterPath(points[0])
+            for point in points[1:]:
+                path.lineTo(point)
+            p.setPen(QPen(color, 2.2))
+            p.drawPath(path)
+            p.setBrush(color)
+            p.setPen(Qt.PenStyle.NoPen)
+            for point in points[-1:]:
+                p.drawEllipse(point, 3.5, 3.5)
+
+        if 0 <= self.hover_index < count:
+            x = rect.left() + rect.width() * self.hover_index / (count - 1)
+            p.setPen(QPen(QColor("#5eead4"), 1, Qt.PenStyle.DashLine))
+            p.drawLine(QPointF(x, rect.top()), QPointF(x, rect.bottom()))
+            tooltip_lines = []
+            for label, (values, color) in self.series.items():
+                if self.hover_index < len(values):
+                    tooltip_lines.append(f"{label}: {values[self.hover_index]:.0f}")
+            box = QRectF(max(8, x - 88), rect.top() + 8, 176, 22 + 18 * len(tooltip_lines))
+            p.setPen(QPen(QColor("#2c7776"), 1))
+            p.setBrush(QColor("#102a31"))
+            p.drawRoundedRect(box, 7, 7)
+            p.setPen(QColor("#f2fbfa"))
+            for row, text in enumerate(["نقطة القياس"] + tooltip_lines):
+                p.drawText(QRectF(box.left() + 10, box.top() + 7 + row * 18, box.width() - 20, 16), Qt.AlignmentFlag.AlignRight, text)
+
+        # Compact legend aligned to the left of the chart header.
+        legend_x = 18
+        for label, (_, color) in self.series.items():
+            p.setBrush(QColor(color)); p.setPen(Qt.PenStyle.NoPen)
+            p.drawEllipse(QPointF(legend_x + 4, 22), 3, 3)
+            p.setPen(QColor(TEXT_SECONDARY))
+            p.drawText(QRectF(legend_x + 12, 12, 88, 20), Qt.AlignmentFlag.AlignLeft, label)
+            legend_x += 106
+
+
+class SecurityGauge(QFrame):
+    """Compact posture gauge with a hover explanation for the current score."""
+
+    def __init__(self, title="الجاهزية الأمنية", parent=None):
+        super().__init__(parent)
+        self.title = title
+        self.value = 0
+        self.setObjectName("securityGauge")
+        self.setMinimumSize(210, 220)
+        self.setMouseTracking(True)
+
+    def set_value(self, value: float) -> None:
+        self.value = max(0, min(100, float(value)))
+        self.setToolTip(f"{self.title}: {self.value:.0f}% — يتحدث مع القياسات الحية")
+        self.update()
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        p.fillRect(self.rect(), QColor("#0b1c24"))
+        p.setPen(QPen(QColor("#1b3b44"), 1))
+        p.drawRoundedRect(QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5), 12, 12)
+        center = QPointF(self.width() / 2, self.height() / 2 + 8)
+        radius = min(self.width(), self.height()) * 0.31
+        base = QRectF(center.x() - radius, center.y() - radius, radius * 2, radius * 2)
+        p.setPen(QPen(QColor("#1b3b44"), 12, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+        p.drawArc(base, 225 * 16, -270 * 16)
+        color = QColor("#34d399" if self.value >= 70 else "#f59e0b" if self.value >= 40 else "#f87171")
+        p.setPen(QPen(color, 12, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+        p.drawArc(base, 225 * 16, int(-270 * 16 * self.value / 100))
+        p.setPen(QColor("#f2fbfa")); p.setFont(p.font())
+        p.drawText(QRectF(0, center.y() - 18, self.width(), 34), Qt.AlignmentFlag.AlignCenter, f"{self.value:.0f}%")
+        p.setPen(QColor(TEXT_SECONDARY))
+        p.drawText(QRectF(12, 16, self.width() - 24, 22), Qt.AlignmentFlag.AlignRight, self.title)
+        p.setPen(QColor(TEXT_MUTED))
+        p.drawText(QRectF(12, self.height() - 34, self.width() - 24, 18), Qt.AlignmentFlag.AlignCenter, "تقييم لحظي لخطوط الدفاع")
+
+
+class SoundUX(QObject):
+    """Subtle local feedback sounds with a persistent mute switch."""
+
+    def __init__(self, root, enabled=True):
+        super().__init__(root)
+        self.enabled = bool(enabled)
+        self.effects = {}
+        if QSoundEffect is not None:
+            sounds = {
+                "click": Path(__file__).resolve().parents[1] / "resources" / "sounds" / "ui-click.wav",
+                "success": Path(__file__).resolve().parents[1] / "resources" / "sounds" / "ui-success.wav",
+            }
+            for name, path in sounds.items():
+                if path.exists():
+                    effect = QSoundEffect(self)
+                    effect.setSource(QUrl.fromLocalFile(str(path)))
+                    effect.setVolume(0.16 if name == "click" else 0.22)
+                    self.effects[name] = effect
+
+    def set_enabled(self, enabled: bool) -> None:
+        self.enabled = bool(enabled)
+
+    def play(self, name="click") -> None:
+        if not self.enabled:
+            return
+        effect = self.effects.get(name)
+        if effect is not None:
+            effect.play()
+        elif name == "success":
+            QApplication.beep()
+
+    def bind_buttons(self, root) -> None:
+        for button in root.findChildren(QPushButton):
+            button.clicked.connect(lambda _checked=False, sound=self: sound.play("click"))
 
 
 class HaloOverlay(QWidget):

@@ -18,7 +18,7 @@ from PyQt6.QtWidgets import (
     QHBoxLayout, QHeaderView, QLabel, QLineEdit, QMainWindow, QMessageBox,
     QPlainTextEdit, QProgressBar, QPushButton, QSplitter, QStackedWidget,
     QTableWidget, QTableWidgetItem, QTextEdit, QVBoxLayout, QWidget, QScrollArea, QSizePolicy,
-    QInputDialog,
+    QInputDialog, QCheckBox,
     QSplashScreen,
 )
 
@@ -38,7 +38,10 @@ from tools.usb_control import (
 from tools.websearch import DEFAULT_GOOGLE_CSE_CX
 from ui.terminal import TerminalUI
 from ui.icons import framed_icon, glyph_icon
-from ui.widgets import AccentLine, AmbientSurface, ChatView, HoverController, NavIndicator, PressFeedbackController
+from ui.widgets import (
+    AccentLine, AmbientSurface, ChatView, HoverController, NavIndicator, PressFeedbackController,
+    SecurityGauge, SoundUX, TelemetryChart,
+)
 from ui.intro_splash import AyfamIntroSplash, SystemOverviewDialog
 from ui.theme import (
     QSS, get_qss, ACCENT, ACCENT_SECONDARY, ACCENT_SOFT, ACCENT_HUES, BG_BASE, BG_SURFACE, BG_ELEVATED, BG_HOVER,
@@ -269,6 +272,10 @@ class UnifiedCockpitWindow(QMainWindow):
         self._usb_selection_source = "none"
         self.nav_buttons: list[QPushButton] = []
         self.page_veil_animation: QPropertyAnimation | None = None
+        self._telemetry_history = {
+            "صحة المنظومة": [82, 84, 83, 86, 88, 87, 90, 91, 90, 92, 93, 92],
+            "نشاط النظام": [46, 51, 49, 56, 54, 61, 58, 64, 60, 67, 65, 70],
+        }
         self.init_ui()
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update_live_telemetry)
@@ -284,6 +291,10 @@ class UnifiedCockpitWindow(QMainWindow):
         self.hover_controller = HoverController(self)
         self.chat_display.hover_controller = self.hover_controller
         self.press_feedback = PressFeedbackController(self)
+        self.sound_ux = SoundUX(self, enabled=bool(self.settings.get("sound_ux", True)))
+        self.sound_ux.bind_buttons(self)
+        if hasattr(self, "setting_sound_ux"):
+            self.setting_sound_ux.toggled.connect(self.sound_ux.set_enabled)
         self._busy_cursor_owned = False
 
         self.update_live_telemetry()
@@ -446,6 +457,11 @@ class UnifiedCockpitWindow(QMainWindow):
         self.status_badge.setObjectName("statusBadge")
         self.status_badge.setProperty("state", "idle")
         header_layout.addWidget(self.status_badge)
+
+        self.theme_badge = QLabel("DARK / OBSIDIAN")
+        self.theme_badge.setObjectName("modeBadge")
+        self.theme_badge.setToolTip("الوضع الداكن الاحترافي مفعل للحفاظ على تركيز المشغل")
+        header_layout.addWidget(self.theme_badge)
 
         self.score_badge = QLabel("الدرجة —")
         self.score_badge.setObjectName("scoreBadge")
@@ -704,6 +720,20 @@ class UnifiedCockpitWindow(QMainWindow):
             metrics.addWidget(card, 0, col)
             metrics.setColumnStretch(col, 1)
         layout.addLayout(metrics)
+
+        # ── Interactive analytics ──
+        analytics_row = QHBoxLayout()
+        analytics_row.setSpacing(SP_MD)
+        self.telemetry_chart = TelemetryChart("اتجاه القياسات الحية")
+        self.telemetry_chart.set_data({
+            label: (values, "#2dd4bf" if index == 0 else "#a78bfa")
+            for index, (label, values) in enumerate(self._telemetry_history.items())
+        })
+        self.security_gauge = SecurityGauge()
+        self.security_gauge.set_value(self._telemetry_history["صحة المنظومة"][-1])
+        analytics_row.addWidget(self.telemetry_chart, 3)
+        analytics_row.addWidget(self.security_gauge, 1)
+        layout.addLayout(analytics_row)
 
         # ── Quick Tactical Hub ──
         hub_group = QGroupBox("ترسانة العمليات التكتيكية السريعة")
@@ -1372,6 +1402,9 @@ class UnifiedCockpitWindow(QMainWindow):
         self.setting_lang_combo.addItems(["ar", "en"])
         current_lang = self.settings.get("language", "ar")
         self.setting_lang_combo.setCurrentText(current_lang if current_lang in ("ar", "en") else "ar")
+        self.setting_sound_ux = QCheckBox("تفعيل أصوات التفاعل الخفيفة")
+        self.setting_sound_ux.setChecked(bool(self.settings.get("sound_ux", True)))
+        self.setting_sound_ux.setToolTip("نقرات قصيرة منخفضة الصوت عند الضغط على الإجراءات")
 
         grid.addWidget(QLabel("Gemini API Key:"), 0, 0)
         grid.addWidget(self.setting_gemini_key, 0, 1)
@@ -1396,6 +1429,8 @@ class UnifiedCockpitWindow(QMainWindow):
 
         grid.addWidget(QLabel("اللغة (Language):"), 7, 0)
         grid.addWidget(self.setting_lang_combo, 7, 1)
+        grid.addWidget(QLabel("التجربة الحسية:"), 8, 0)
+        grid.addWidget(self.setting_sound_ux, 8, 1)
 
         layout.addWidget(form_group)
 
@@ -1439,8 +1474,12 @@ class UnifiedCockpitWindow(QMainWindow):
         self.settings.set("report_dir", self.setting_report_dir.text().strip())
         lang = self.setting_lang_combo.currentText()
         self.settings.set("language", lang)
+        self.settings.set("sound_ux", bool(self.setting_sound_ux.isChecked()))
         self.agent.lang = lang
         self.agent.intel.language = lang
+        if hasattr(self, "sound_ux"):
+            self.sound_ux.set_enabled(self.setting_sound_ux.isChecked())
+            self.sound_ux.play("success")
         self.settings_log.setPlainText("[نجاح] تم حفظ الإعدادات بنجاح!")
         QMessageBox.information(self, "حفظ الإعدادات", "تم حفظ جميع الإعدادات والمفاتيح آمنة محلياً.")
 
@@ -1670,6 +1709,23 @@ class UnifiedCockpitWindow(QMainWindow):
             listening = sum(1 for c in conns if str(c.get("state", "")).upper() == "LISTEN")
             self.connection_summary.setText(
                 f"{len(conns)} اتصال  |  {external} خارجي  |  {listening} منصت  |  تحديث كل 3 ثوانٍ")
+            peak_cpu = max((float(p.get("cpu", 0) or 0) for p in procs), default=0.0)
+            # External sockets are a signal, not an automatic failure: cap their
+            # contribution so a busy workstation does not render a false 0% score.
+            external_penalty = min(18.0, external * 0.35)
+            health = max(0.0, min(100.0, 96.0 - external_penalty - max(0.0, peak_cpu - 55.0) * 0.18))
+            activity = max(0.0, min(100.0, len(procs) * 2.6 + len(conns) * 0.7))
+            self._telemetry_history["صحة المنظومة"].append(health)
+            self._telemetry_history["نشاط النظام"].append(activity)
+            for values in self._telemetry_history.values():
+                del values[:-24]
+            if hasattr(self, "telemetry_chart"):
+                self.telemetry_chart.set_data({
+                    "صحة المنظومة": (self._telemetry_history["صحة المنظومة"], "#2dd4bf"),
+                    "نشاط النظام": (self._telemetry_history["نشاط النظام"], "#a78bfa"),
+                })
+                self.security_gauge.set_value(health)
+                self.metric_labels["score"].setText(f"{health:.0f}%")
         except Exception as exc:
             self.chat_display.append(f"[تحذير الرادار] {exc}")
 

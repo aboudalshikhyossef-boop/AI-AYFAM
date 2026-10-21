@@ -507,6 +507,22 @@ QLabel#scoreBadge {{
     font-weight: 700;
 }}
 
+QLabel#modeBadge {{
+    color: #9cb5bb;
+    background: #102a31;
+    border: 1px solid #27505a;
+    border-radius: 8px;
+    padding: 5px 8px;
+    font-size: 9px;
+    font-weight: 800;
+}}
+
+QFrame#telemetryChart, QFrame#securityGauge {{
+    background: #0b1c24;
+    border: 1px solid #1b3b44;
+    border-radius: 12px;
+}}
+
 QLabel#sectionTitle {{
     font-size: {FONT_SIZE_TITLE}px;
     font-weight: 800;
