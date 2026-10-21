@@ -59,7 +59,10 @@ class TestModernUiSpecs(unittest.TestCase):
         self.assertIn("scans", code)
         self.assertIn("usb", code)
         self.assertIn("chat", code)
-        self.assertIn("ترسانة العمليات التكتيكية السريعة", code)
+        # The dashboard intentionally avoids a duplicated tactical hub; the
+        # primary action lives in the mission banner and tools remain in nav.
+        self.assertNotIn("ترسانة العمليات التكتيكية السريعة", code)
+        self.assertIn("مؤشرات الحالة الأمنية", code)
         self.assertIn("guide_btn", code)
         self.assertIn("intro_btn", code)
 

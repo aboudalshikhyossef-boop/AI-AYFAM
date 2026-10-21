@@ -237,7 +237,6 @@ class TelemetryChart(QFrame):
         p.setFont(p.font())
         p.drawText(QRectF(18, 8, self.width() - 36, 22), Qt.AlignmentFlag.AlignRight, self.title)
         p.setPen(QColor("#6d8a91"))
-        p.drawText(QRectF(18, 27, self.width() - 36, 14), Qt.AlignmentFlag.AlignRight, "النسبة المئوية  •  آخر 24 قراءة  •  تحديث كل 3 ثوانٍ")
 
         rect = self._plot_rect()
         for step in range(5):
@@ -262,6 +261,7 @@ class TelemetryChart(QFrame):
             path = QPainterPath(points[0])
             for point in points[1:]:
                 path.lineTo(point)
+            p.setBrush(Qt.BrushStyle.NoBrush)
             p.setPen(QPen(color, 2.2))
             p.drawPath(path)
             p.setBrush(color)
@@ -296,8 +296,8 @@ class TelemetryChart(QFrame):
             p.setBrush(QColor(color)); p.setPen(Qt.PenStyle.NoPen)
             p.drawEllipse(QPointF(legend_x + 4, 22), 3, 3)
             p.setPen(QColor(TEXT_SECONDARY))
-            p.drawText(QRectF(legend_x + 12, 12, 88, 20), Qt.AlignmentFlag.AlignLeft, label)
-            legend_x += 106
+            p.drawText(QRectF(legend_x + 12, 12, 180, 20), Qt.AlignmentFlag.AlignLeft, label)
+            legend_x += 210
 
 
 class SecurityGauge(QFrame):

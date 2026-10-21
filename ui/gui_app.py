@@ -257,6 +257,8 @@ class UnifiedCockpitWindow(QMainWindow):
             self.setWindowIcon(QIcon(str(icon_path)))
 
         self.settings = Settings()
+        if not bool(self.settings.get("dark_mode", True)):
+            self.setStyleSheet(get_qss("#6d8f8c", "#7d83a6"))
         self.agent = AYFAMAgent(settings=self.settings, ui=GuiTerminalUI(no_color=True))
         self.worker: WorkerThread | None = None
         self.active_task_title = ""
@@ -296,6 +298,8 @@ class UnifiedCockpitWindow(QMainWindow):
         self.sound_ux.bind_buttons(self)
         if hasattr(self, "setting_sound_ux"):
             self.setting_sound_ux.toggled.connect(self.sound_ux.set_enabled)
+        if hasattr(self, "setting_dark_mode"):
+            self.setting_dark_mode.toggled.connect(self._toggle_dark_mode)
         self._busy_cursor_owned = False
 
         self.update_live_telemetry()
@@ -460,21 +464,10 @@ class UnifiedCockpitWindow(QMainWindow):
         self.status_badge.setProperty("state", "idle")
         header_layout.addWidget(self.status_badge)
 
-        self.sound_btn = QPushButton()
-        self.sound_btn.setObjectName("headerControl")
-        self.sound_btn.setCheckable(True)
-        self.sound_btn.setChecked(bool(self.settings.get("sound_ux", True)))
-        self.sound_btn.setToolTip("تشغيل أو كتم أصوات التفاعل")
-        self.sound_btn.clicked.connect(self._toggle_sound)
-        header_layout.addWidget(self.sound_btn)
-
-        self.theme_btn = QPushButton("الوضع الليلي")
-        self.theme_btn.setObjectName("headerControl")
-        self.theme_btn.setCheckable(True)
-        self.theme_btn.setChecked(bool(self.settings.get("dark_mode", True)))
-        self.theme_btn.setToolTip("تفعيل واجهة Dark / Obsidian عالية التباين")
-        self.theme_btn.clicked.connect(self._toggle_dark_mode)
-        header_layout.addWidget(self.theme_btn)
+        mode_badge = QLabel("DARK / OBSIDIAN")
+        mode_badge.setObjectName("modeBadge")
+        mode_badge.setToolTip("يمكن تغيير الوضع والصوت من صفحة إعدادات النظام")
+        header_layout.addWidget(mode_badge)
 
         self.score_badge = QLabel("الدرجة —")
         self.score_badge.setObjectName("scoreBadge")
@@ -635,13 +628,13 @@ class UnifiedCockpitWindow(QMainWindow):
         animation.start()
 
     def _sync_control_labels(self) -> None:
-        if hasattr(self, "sound_btn"):
-            self.sound_btn.setText("الصوت: مفعل" if self.sound_btn.isChecked() else "الصوت: صامت")
-        if hasattr(self, "theme_btn"):
-            self.theme_btn.setText("الوضع الليلي: فعال" if self.theme_btn.isChecked() else "الوضع الليلي: متوقف")
+        if hasattr(self, "setting_sound_ux"):
+            self.setting_sound_ux.setText(
+                "تفعيل أصوات التفاعل الخفيفة" if self.setting_sound_ux.isChecked()
+                else "أصوات التفاعل متوقفة"
+            )
 
     def _toggle_sound(self, enabled: bool) -> None:
-        self.sound_btn.setChecked(bool(enabled))
         self.sound_ux.set_enabled(enabled)
         self.settings.set("sound_ux", bool(enabled))
         self._sync_control_labels()
@@ -649,7 +642,6 @@ class UnifiedCockpitWindow(QMainWindow):
             self.sound_ux.play("success")
 
     def _toggle_dark_mode(self, enabled: bool) -> None:
-        self.theme_btn.setChecked(bool(enabled))
         self.settings.set("dark_mode", bool(enabled))
         self.setStyleSheet(QSS if enabled else get_qss("#6d8f8c", "#7d83a6"))
         self.setProperty("darkMode", bool(enabled))
@@ -691,18 +683,6 @@ class UnifiedCockpitWindow(QMainWindow):
         quick_scan.setIcon(glyph_icon("scans", "#ffffff", 18))
         quick_scan.clicked.connect(lambda: self.run_background_task(self.agent._full_scan, "الفحص الشامل"))
         mission_actions.addWidget(quick_scan)
-
-        quick_usb = QPushButton("فحص الأجهزة")
-        quick_usb.setObjectName("quietAction")
-        quick_usb.setIcon(glyph_icon("usb", ACCENT, 18))
-        quick_usb.clicked.connect(lambda: self.switch_page("usb"))
-        mission_actions.addWidget(quick_usb)
-
-        ask_ai = QPushButton("المستشار الذكي")
-        ask_ai.setObjectName("quietAction")
-        ask_ai.setIcon(glyph_icon("chat", ACCENT_SECONDARY, 18))
-        ask_ai.clicked.connect(lambda: self.switch_page("chat"))
-        mission_actions.addWidget(ask_ai)
         mission_layout.addLayout(mission_actions)
         layout.addWidget(mission)
 
@@ -772,53 +752,6 @@ class UnifiedCockpitWindow(QMainWindow):
         analytics_row.addWidget(self.security_gauge, 1)
         layout.addLayout(analytics_row)
 
-        # ── Quick Tactical Hub ──
-        hub_group = QGroupBox("ترسانة العمليات التكتيكية السريعة")
-        hub_layout = QHBoxLayout(hub_group)
-        hub_layout.setSpacing(SP_MD)
-        hub_layout.setContentsMargins(SP_MD, SP_MD, SP_MD, SP_MD)
-
-        quick_ops = [
-            ("فحص شامل للثغرات", "مسح متقدم للمنافذ وأمان النظام", lambda: self.run_background_task(self.agent._full_scan, "الفحص الشامل")),
-            ("رادار الشبكة المباشر", "تحديث فوري لجدول المقابس النشطة", self.update_live_telemetry),
-            ("درع أجهزة USB", "كشف الأجهزة وفحص التخزين الآمن", lambda: self.switch_page("usb")),
-            ("توليد تقرير تنفيذي", "حفظ وتصدير ملخص الحالة الأمنية", lambda: self.switch_page("reports")),
-        ]
-
-        for op_title, op_desc, op_fn in quick_ops:
-            op_card = QFrame()
-            op_card.setStyleSheet(f"""
-                QFrame {{
-                    background: #0d2028;
-                    border: 1px solid #1b3b44;
-                    border-radius: 10px;
-                }}
-                QFrame:hover {{
-                    border-color: #2c7776;
-                    background: #102a31;
-                }}
-            """)
-            op_box = QVBoxLayout(op_card)
-            op_box.setContentsMargins(12, 10, 12, 10)
-            op_box.setSpacing(4)
-
-            t_lbl = QLabel(op_title)
-            t_lbl.setStyleSheet(f"color: {TEXT_PRIMARY}; font-size: 13px; font-weight: 700;")
-            op_box.addWidget(t_lbl)
-
-            d_lbl = QLabel(op_desc)
-            d_lbl.setStyleSheet(f"color: {TEXT_MUTED}; font-size: 11px;")
-            op_box.addWidget(d_lbl)
-
-            act_btn = QPushButton("تنفيذ الإجراء ➔")
-            act_btn.setObjectName("quietAction")
-            act_btn.clicked.connect(op_fn)
-            op_box.addWidget(act_btn)
-
-            hub_layout.addWidget(op_card)
-
-        layout.addWidget(hub_group)
-
         # ── Live Data Splitter ──
         self.dashboard_splitter = QSplitter(Qt.Orientation.Vertical)
         self.dashboard_splitter.setChildrenCollapsible(False)
@@ -863,7 +796,7 @@ class UnifiedCockpitWindow(QMainWindow):
         self.dashboard_splitter.setStretchFactor(0, 3)
         self.dashboard_splitter.setStretchFactor(1, 2)
         self.dashboard_splitter.setSizes([400, 260])
-        self.dashboard_splitter.setMinimumHeight(660)
+        self.dashboard_splitter.setMinimumHeight(500)
         layout.addWidget(self.dashboard_splitter, 1)
 
     # ═══════════════════════════════════════════════════════════════════════════
@@ -1448,6 +1381,9 @@ class UnifiedCockpitWindow(QMainWindow):
         current_profile = str(self.settings.get("sound_profile", "soft"))
         profile_index = self.setting_sound_profile.findData(current_profile)
         self.setting_sound_profile.setCurrentIndex(profile_index if profile_index >= 0 else 0)
+        self.setting_dark_mode = QCheckBox("تفعيل الوضع الليلي الاحترافي")
+        self.setting_dark_mode.setChecked(bool(self.settings.get("dark_mode", True)))
+        self.setting_dark_mode.setToolTip("يحافظ على واجهة Dark / Obsidian المريحة للعمل الطويل")
 
         grid.addWidget(QLabel("Gemini API Key:"), 0, 0)
         grid.addWidget(self.setting_gemini_key, 0, 1)
@@ -1476,6 +1412,8 @@ class UnifiedCockpitWindow(QMainWindow):
         grid.addWidget(self.setting_sound_ux, 8, 1)
         grid.addWidget(QLabel("نمط النغمة:"), 9, 0)
         grid.addWidget(self.setting_sound_profile, 9, 1)
+        grid.addWidget(QLabel("نمط العرض:"), 10, 0)
+        grid.addWidget(self.setting_dark_mode, 10, 1)
 
         layout.addWidget(form_group)
 
