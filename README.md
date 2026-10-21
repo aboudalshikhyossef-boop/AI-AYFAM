@@ -1,8 +1,8 @@
 # 🛡️ AI AYFAM — وكيل الأمن السيبراني الذكي
 
-**AI AYFAM** هو وكيل أمن سيبراني CLI (سطر أوامر) متخصص، يعمل على **Linux Mint** بدون الحاجة لأي خدمة ذكاء اصطناعي خارجية أو رسوم.
+**AI AYFAM** هو تطبيق سطح مكتب PyQt6 متخصص للأمن السيبراني يعمل على **Linux Mint**. هذا المشروع ليس موقعاً ويبياً ولا منتجاً SaaS؛ الواجهة الأساسية هي واجهة سطح المكتب المحلية.
 
-> **AI AYFAM** is a specialized CLI cybersecurity agent for **Linux Mint** — no external AI services, no subscriptions, no API fees.
+> **AI AYFAM** is a Linux Mint desktop cybersecurity application built with PyQt6. It is not a website or SaaS product.
 
 ---
 
@@ -26,25 +26,19 @@
 
 ---
 
-### بحث الويب الموحّد
+### مصادر البحث داخل تطبيق سطح المكتب
 
-تحتوي واجهة **ترسانة التهديدات** على Google Programmable Search بالمعرّف
-`f5fbcd40fda484bc7` الذي يعمل مباشرة في المتصفح. وهو مسار مستقل لا يستبدل
-مصادر المشروع الأخرى: Google Grounding عبر Gemini، وGoogle Custom Search JSON
-API عند توفير `GOOGLE_CSE_KEY`، وBing RSS، وDuckDuckGo، وWikipedia، وNVD/OSV.dev
-وExploit-DB. عند تعذر Google API تُعرض حالة HTTP وسبب Google الحقيقي، ثم يعمل
-Bing وDuckDuckGo كبدائل واضحة بدلاً من إخفاء الخطأ.
+تعمل مصادر البحث وCVE من داخل تطبيق سطح المكتب عبر المحركات المحلية والتكاملات
+الاختيارية. لا توجد واجهة ويب مطلوبة لتشغيل التطبيق.
 
-لتمكين مسار Google JSON API في الخادم (اختياري)، انسخ القيم التالية إلى ملف
-البيئة أو إلى إعدادات AI AYFAM:
+لتمكين بحث Google الاختياري من داخل الإعدادات، يمكن إضافة:
 
 ```bash
 GOOGLE_CSE_KEY=your_google_custom_search_api_key
 GOOGLE_CSE_CX=f5fbcd40fda484bc7
 ```
 
-> ملاحظة: قيمة `cx` وحدها تكفي لواجهة البحث المضمّنة، لكنها لا تكفي لاستدعاء
-> Google Custom Search JSON API الذي يتطلب مفتاح API منفصلاً.
+> ملاحظة: هذه الإعدادات اختيارية ولا تغيّر طبيعة المشروع كتطبيق سطح مكتب.
 
 ---
 
@@ -59,24 +53,22 @@ cd AI-AYFAM
 chmod +x setup.sh
 ./setup.sh
 
-# 3. تشغيل الوكيل / Run the agent
+# 3. تشغيل تطبيق سطح المكتب / Run the desktop application
 ayfam
 ```
 
 **المتطلبات / Requirements:**
 - Linux Mint 20+ (أو أي Ubuntu/Debian)
-- Python 3.8+
+- Python 3.10+
 - اتصال إنترنت (لبحث CVE والتحديثات فقط)
 
-> التثبيت يستخدم **Python النظام مباشرة** ولا ينشئ `.venv` أو بيئة افتراضية، بينما
-> تتطلب وظائف الفحص الحساسة صلاحيات root عبر `sudo` أو نافذة التفويض.
+> ينشئ المثبت بيئة `.venv` خاصة بالتطبيق ولا يثبت مكتبات AI AYFAM داخل Python النظام.
 
 ---
 
 ## 🚀 الاستخدام / Usage
 
-> **مهم / Important:** تعمل الأداة بصلاحيات root فقط. استخدم `sudo ayfam ...`.
-> لفحص مكتبات Python وأدوات النظام قبل البدء استخدم `sudo ayfam --check-deps`.
+> **مهم / Important:** شغّل واجهة سطح المكتب بحساب المستخدم للحفاظ على جلسة Linux Mint الرسومية. العمليات التي تحتاج امتيازاً تطلبه عبر طبقة التنفيذ الآمن.
 
 ### Gemini CTI — استخبارات تهديدات خاصة بالتصميم
 
@@ -85,20 +77,10 @@ ayfam
 بعد عودة النتائج، تتم المطابقة مع الجهاز **محلياً بالكامل** وتُحفظ النتائج في
 `~/.ayfam/gemini_cti.db` والتقارير في مجلد التقارير المحلي.
 
-```bash
-# إدخال المفتاح دون ظهوره في الشاشة أو سطر الأوامر
-sudo ayfam --configure-gemini
+تتم إدارة مفاتيح Gemini من إعدادات تطبيق سطح المكتب، ولا تُضاف إلى أوامر shell.
 
-# اكتشاف أفضل نموذج متاح لهذا المفتاح تلقائياً
-sudo ayfam --gemini-models
-
-# بحث Google Grounding عن آخر 48 ساعة ثم مطابقة محلية
-sudo ayfam --gemini-threats
-```
-
-يستخدم AI AYFAM افتراضياً `gemini-3.8-flash` مع أداة بحث Google المتاحة للنموذج،
-ويتم ترحيل الإعدادات القديمة تلقائياً من النماذج المتوقفة إلى هذا النموذج. يمكن
-تغيير النموذج عبر `GEMINI_MODEL`، لكن لا يُنصح باستخدام اسم نموذج متقاعد.
+يستخدم AI AYFAM افتراضياً `gemini-3.8-flash`. يبقى اختيار النموذج المحفوظ كما هو
+ولا يتم استبداله قسراً أثناء تحميل الإعدادات.
 
 يدعم البرنامج `GOOGLE_API_KEY` و`GEMINI_API_KEY`؛ وتتقدم قيم البيئة على المفتاح
 المحفوظ في الإعدادات. عند التشغيل عبر `sudo`، يجب أن تكون قيمة البيئة متاحة
@@ -108,70 +90,25 @@ sudo ayfam --gemini-threats
 راجع صفحة Rate Limit في AI Studio؛ لا يمكن للكود تجاوز حدود Google.
 
 ```bash
-# وضع تفاعلي / Interactive mode
-sudo ayfam
+# تشغيل التطبيق
+ayfam
 
-# فحص الشبكة / Network scan
-sudo ayfam --scan network
+# تشغيل التطبيق دون شاشة المقدمة
+ayfam --no-splash
 
-# فحص المنافذ / Port scan
-sudo ayfam --scan ports --target 192.168.1.1
-sudo ayfam --scan ports --target 127.0.0.1
+# فحص المتطلبات فقط دون تشغيل الواجهة
+ayfam --check
 
-# فحص USB والأجهزة / USB & devices
-sudo ayfam --scan usb
-
-# فحص النظام الكامل / Full system scan
-sudo ayfam --scan system
-
-# تحليل السجلات / Log analysis
-sudo ayfam --scan logs
-
-# فحص شامل لكل شيء / Full comprehensive scan
-sudo ayfam --scan full
-
-# إنشاء تقرير / Generate report
-sudo ayfam --report
-
-# تحديث قاعدة بيانات CVE / Update CVE database
-sudo ayfam --update
-
-# إصلاح تلقائي / Auto-fix
-sudo ayfam --fix
-
-# إعداد GitHub (اختياري) / GitHub setup (optional)
-ayfam --set-github-token YOUR_GITHUB_TOKEN
+# عرض الإصدار
+ayfam --version
 ```
 
-### مساعد OpenAI وGemini داخل واجهة Angular
+### ملاحظة حول ملفات الويب القديمة
 
-تستخدم واجهة Angular خادماً محلياً صغيراً (`api_server.py`) حتى لا تُكشف مفاتيح
-API داخل المتصفح أو ملفات JavaScript. يختار `auto` OpenAI أولاً ثم Gemini،
-ثم يعود إلى المحرك المحلي إذا لم يوجد مفتاح أو تعذر الاتصال. يمرّر التشات أيضاً
-ملخص النتائج النشطة إلى المساعد مع تعليمات تميّز الدليل المرصود عن الافتراضات،
-وتطلب شرح الأثر والثقة والقيود والخطوة الآمنة التالية.
-
-زر الفحص في الواجهة لا يعرض محاكاة زمنية: يستدعي `POST /api/scan` الفحوص المحلية
-الحقيقية في `tools/system.py` و`tools/network.py`، ويعيد لكل نتيجة المصدر والدليل
-والثقة عند توفرها والتوصية. إذا توقف الخادم أو فشل فاحص واحد، تُعرض رسالة صريحة
-وتبقى النتائج السابقة بدلاً من إدخال نتائج وهمية.
-
-```bash
-export OPENAI_API_KEY="..."
-export GEMINI_API_KEY="..."
-export AI_PROVIDER=auto       # auto | openai | gemini | local
-export OPENAI_MODEL=gpt-4o-mini
-export GEMINI_MODEL=gemini-3.8-flash
-
-# طرفية منفصلة
-python3 api_server.py
-
-# تشغيل الواجهة
-npm run start
-```
-
-لا تُرسل الواجهة مفاتيح API أبداً؛ ترسل السؤال فقط إلى `/api/assistant` عبر
-Proxy التطوير. عند توقف الخادم تبقى المحادثة متاحة عبر المعرفة المحلية.
+توجد بعض ملفات Angular و`api_server.py` في المستودع من مراحل سابقة، لكنها ليست
+منتج AI AYFAM ولا تدخل في تشغيل تطبيق سطح المكتب. لا تستخدم `npm run start` أو
+تشغّل `api_server.py` لتثبيت التطبيق أو تشغيله؛ نقطة الدخول المعتمدة هي `ayfam`
+والمشغل الرسومي `ayfam-gui`.
 
 ### سياسة حصة Gemini والطلبات المضغوطة
 

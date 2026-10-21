@@ -1,9 +1,10 @@
 #!/bin/bash
 # ====================================================
-#  AI AYFAM v3 — سكريبت التثبيت — Linux Mint
+#  AI AYFAM v8.0.0 — سكريبت التثبيت — Linux Mint
 # ====================================================
 
 set -eo pipefail
+APP_VERSION="8.0.0"
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
 CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\033[0m'; BGREEN='\033[1;32m'
@@ -16,7 +17,7 @@ error()   { echo -e "${RED}[✗]${NC} $1"; exit 1; }
 echo -e "${BGREEN}"
 cat <<'BANNER'
   ╔══════════════════════════════════════════════════════════════╗
-  ║  AI AYFAM v3  —  وكيل الأمن السيبراني الذكي                ║
+  ║  AI AYFAM v8.0.0  —  وكيل الأمن السيبراني الذكي             ║
   ║  Smart Cybersecurity Agent — Self-Learning · NLP-Powered    ║
   ╚══════════════════════════════════════════════════════════════╝
 BANNER
@@ -26,33 +27,34 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 # ── Python ────────────────────────────────────────────────────────────────────
-info "التحقق من Python 3.8+..."
+info "التحقق من Python 3.10+..."
 if ! command -v python3 &>/dev/null; then
     warn "Python 3 غير مثبت — تثبيت..."
     sudo apt-get update -q && sudo apt-get install -y python3 python3-pip python3-venv
 fi
 PY_VER=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
-REQUIRED="3.8"
-if python3 -c "import sys; sys.exit(0 if sys.version_info >= (3,8) else 1)"; then
+REQUIRED="3.10"
+if python3 -c "import sys; sys.exit(0 if sys.version_info >= (3,10) else 1)"; then
     success "Python $PY_VER ✓"
 else
     error "Python $PY_VER غير مدعوم — يلزم $REQUIRED+"
 fi
 
-# ── Python النظام — بدون venv أو بيئة افتراضية ───────────────────────────────
-APP_PYTHON="/usr/bin/python3"
-info "تثبيت مكتبات AI AYFAM في Python النظام مباشرة — بدون venv..."
-PIP_SYSTEM_FLAG=""
-if "$APP_PYTHON" -m pip help install 2>/dev/null | grep -q -- '--break-system-packages'; then
-    PIP_SYSTEM_FLAG="--break-system-packages"
+# ── بيئة افتراضية خاصة بالتطبيق ─────────────────────────────────────────────
+VENV_DIR="$SCRIPT_DIR/.venv"
+APP_PYTHON="$VENV_DIR/bin/python3"
+if [[ ! -x "$APP_PYTHON" ]]; then
+    info "إنشاء بيئة Python افتراضية خاصة بـ AI AYFAM..."
+    python3 -m venv "$VENV_DIR" || error "تعذر إنشاء البيئة الافتراضية؛ ثبّت python3-venv ثم أعد المحاولة"
 fi
+info "تثبيت مكتبات AI AYFAM داخل البيئة الافتراضية..."
 PIP_LOG="$HOME/.cache/ayfam/setup-pip.log"
 mkdir -p "$(dirname "$PIP_LOG")"
-if ! sudo "$APP_PYTHON" -m pip install --ignore-installed $PIP_SYSTEM_FLAG --progress-bar on --disable-pip-version-check \
+if ! "$APP_PYTHON" -m pip install --progress-bar on --disable-pip-version-check \
     --timeout 120 --retries 5 -r requirements.txt 2>&1 | tee "$PIP_LOG"; then
     error "فشل تثبيت مكتبات Python. راجع السجل: $PIP_LOG"
 fi
-success "مكتبات Python النظام جاهزة (بما فيها PyQt6 ومحركات التحليل)"
+success "مكتبات Python المعزولة جاهزة (بما فيها PyQt6 ومحركات التحليل)"
 
 # ── System tools ──────────────────────────────────────────────────────────────
 info "التحقق من أدوات الأمن..."
@@ -141,8 +143,7 @@ fi
 # ── إعداد قاعدة المعرفة ───────────────────────────────────────────────────────
 info "تهيئة قاعدة المعرفة SQLite..."
 mkdir -p ~/ayfam-reports
-sudo mkdir -p /root/ayfam-reports
-sudo -H "$APP_PYTHON" -c "
+"$APP_PYTHON" -c "
 from brain.knowledge_base import KnowledgeBase
 kb = KnowledgeBase()
 stats = kb.get_stats()
@@ -170,7 +171,7 @@ LOG_DIR="\${XDG_STATE_HOME:-\$HOME/.local/state}/ayfam"
 mkdir -p "\$LOG_DIR"
 LOG_FILE="\$LOG_DIR/gui.log"
 printf '[%s] Starting GUI as %s (DISPLAY=%s, WAYLAND_DISPLAY=%s)\\n' "\$(date '+%F %T')" "\$(id -un)" "\${DISPLAY:-unset}" "\${WAYLAND_DISPLAY:-unset}" >>"\$LOG_FILE"
-exec /usr/bin/python3 "\$APP_DIR/main.py" --gui "\$@" >>"\$LOG_FILE" 2>&1
+exec "$APP_PYTHON" "$APP_DIR/main.py" --gui "\$@" >>"\$LOG_FILE" 2>&1
 EOF
 sudo chmod +x "$GUI_LAUNCHER"
 
@@ -225,25 +226,22 @@ fi
 
 echo ""
 echo -e "${BGREEN}${BOLD}╔══════════════════════════════════════════════════════════════╗"
-echo -e "║  ✅  AI AYFAM v3 جاهز! / Ready to launch!                   ║"
+echo -e "║  ✅  AI AYFAM v${APP_VERSION} جاهز! / Ready to launch!        ║"
 echo -e "╚══════════════════════════════════════════════════════════════╝${NC}"
 echo ""
 echo -e "  ${CYAN}كيفية الاستخدام:${NC}"
-echo "    sudo ayfam               → وضع محادثة ذكي (اكتب بالعربي أو الإنجليزي)"
-echo "    sudo ayfam --check-deps  → فحص المتطلبات والأدوات الناقصة"
-echo "    sudo ayfam --scan network → فحص الشبكة"
-echo "    sudo ayfam --scan usb    → مركز تحكم USB"
-echo "    sudo ayfam --scan full   → فحص شامل"
-echo "    sudo ayfam --status      → حالة الوكيل وإحصائيات قاعدة المعرفة"
-echo "    sudo ayfam --update      → تحديث معلومات التهديدات من الإنترنت"
+echo "    ayfam                    → فتح تطبيق سطح المكتب"
+echo "    ayfam --gui              → فتح تطبيق سطح المكتب"
+echo "    ayfam --no-splash        → فتح التطبيق دون شاشة المقدمة"
+echo "    ayfam --check            → فحص المتطلبات فقط دون تشغيل الواجهة"
+echo "    ayfam --version          → عرض إصدار التطبيق"
 echo "    ayfam-gui                → فتح الواجهة الرسومية / أيقونة قائمة التطبيقات"
-echo "    sudo ayfam --configure-gemini → حفظ مفتاح Gemini بشكل مخفي"
-echo "    sudo ayfam --gemini-threats   → CTI آخر 48 ساعة + مطابقة محلية"
+echo "    مفاتيح Gemini وGitHub تُدار من داخل إعدادات التطبيق"
 echo ""
 echo -e "  ${YELLOW}إعداد GitHub (اختياري — لرفع التقارير):${NC}"
 echo "    1. https://github.com/settings/tokens"
 echo "    2. أنشئ Token بصلاحيات: repo, read:user"
-echo "    3. ayfam --set-github-token ghp_XXXXXXXX"
+echo "    3. أدخل المفتاح من داخل إعدادات التطبيق"
 echo ""
 echo -e "  ${CYAN}مثال على المحادثة الذكية:${NC}"
 echo "    > افحص الشبكة"

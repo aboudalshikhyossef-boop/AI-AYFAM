@@ -23,6 +23,7 @@ from PyQt6.QtWidgets import (
 )
 
 from config.settings import Settings
+from config.version import APP_VERSION_LABEL
 from core.agent import AYFAMAgent
 from brain import library, relevance_engine
 from engine.live_recon import LiveReconEngine
@@ -526,7 +527,7 @@ class UnifiedCockpitWindow(QMainWindow):
         main_layout.addWidget(scroll, 1)
 
         # ── Footer ──
-        footer = QLabel(f"  {os.uname().nodename}  |  AI AYFAM v8  |  التنفيذ محلي")
+        footer = QLabel(f"  {os.uname().nodename}  |  {APP_VERSION_LABEL}  |  التنفيذ محلي")
         footer.setObjectName("footer")
         footer.setFixedHeight(26)
         main_layout.addWidget(footer)

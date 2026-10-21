@@ -17,6 +17,7 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 from utils.preflight import check_requirements
+from config.version import APP_VERSION_LABEL
 
 
 def parse_args() -> argparse.Namespace:
@@ -28,7 +29,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--gui", action="store_true", help="تشغيل تطبيق سطح المكتب (الوضع الوحيد)")
     parser.add_argument("--check", action="store_true", help="فحص المتطلبات قبل تشغيل التطبيق")
     parser.add_argument("--no-splash", action="store_true", help="تخطي شاشة الترحيب والمقدمة والدخول المباشر")
-    parser.add_argument("--version", action="version", version="AI AYFAM v5.2.0 (Linux Mint Desktop)")
+    parser.add_argument("--version", action="version", version=f"{APP_VERSION_LABEL} (Linux Mint Desktop)")
     return parser.parse_args()
 
 
@@ -130,6 +131,7 @@ def main() -> int:
         print(results.text())
         if not results.ok:
             return 1
+        return 0
     return run_gui(no_splash=args.no_splash)
 
 

@@ -10,9 +10,8 @@ chmod +x setup.sh
 ./setup.sh
 ```
 
-يَستخدم `setup.sh` **Python النظام مباشرة** ولا ينشئ `venv` أو أي بيئة افتراضية.
-تُثبت المكتبات على مستوى النظام عبر `sudo`، ويعمل الأمر `ayfam` على Python النظام
-مع فحص root الحقيقي من النواة.
+ينشئ `setup.sh` بيئة `.venv` خاصة بالتطبيق ويثبت المكتبات داخلها، ولا يستخدم
+`pip --break-system-packages` أو يعبث بحزم Python الخاصة بالنظام.
 
 إذا ظهر خطأ من نوع `Cannot uninstall pip ... RECORD file not found`، فهذا يعني
 أن سكربتًا قديمًا توقف قبل تحديث المشغّل. اسحب آخر نسخة ثم أعد التثبيت؛ النسخة
@@ -23,7 +22,7 @@ cd ~/AI-AYFAM
 git pull --ff-only origin main
 chmod +x setup.sh
 ./setup.sh
-sudo ayfam --check-deps
+ayfam --check
 ```
 
 ## الطريقة 2: رفع المشروع على GitHub / Method 2: Push to GitHub
@@ -58,17 +57,17 @@ git push -u origin main
 ## بعد التثبيت / After Installation
 
 ```bash
-# فحص المتطلبات / Check dependencies
-sudo ayfam --check-deps
+# فحص المتطلبات دون تشغيل الواجهة / Check dependencies only
+ayfam --check
 
-# تشغيل الوكيل بصلاحيات root / Run the agent as root
-sudo ayfam
+# تشغيل تطبيق سطح المكتب / Run the desktop application
+ayfam
 
-# إضافة GitHub token (اختياري) / Add GitHub token (optional)
-sudo ayfam --set-github-token ghp_XXXXXXXXXXXXXXXX
+# تشغيل دون شاشة المقدمة / Run without splash screen
+ayfam --no-splash
 
-# أول فحص / First scan
-sudo ayfam --scan full
+# عرض الإصدار / Show version
+ayfam --version
 ```
 
 بعد تشغيل `setup.sh` تظهر أيقونة **AI AYFAM Security Center** في قائمة
@@ -78,16 +77,16 @@ sudo ayfam --scan full
 ayfam-gui
 ```
 
-سيطلب النظام صلاحيات root عبر نافذة المصادقة الرسومية `pkexec`، ثم يفتح
-الواجهة داخل جلسة سطح المكتب الحالية.
+تعمل الواجهة بحساب المستخدم داخل جلسة سطح المكتب الحالية، وتستخدم طبقة
+التنفيذ الآمن لطلب الامتياز فقط عند الحاجة إلى عملية إدارية محددة.
 
 ## المتطلبات / Requirements
 
 | المطلوب | الإصدار |
 |---------|---------|
 | Linux Mint / Ubuntu / Debian | 20+ |
-| Python | 3.8+ |
-| pip | أي إصدار |
+| Python | 3.10+ |
+| pip/venv | ضمن البيئة الافتراضية التي ينشئها المثبت |
 | PyQt6 (للواجهة) | 6.5+ |
 | nmap (لفحص المنافذ) | أي |
 | adb (اختياري، للهواتف) | أي |
@@ -100,6 +99,6 @@ sudo apt install nmap usbutils adb net-tools iproute2 lynis chkrootkit fail2ban
 
 ## الصلاحيات / Privileges
 
-تعمل الأداة عمدًا **بمستخدم root فقط** لأن بعض فحوصات النظام والشبكة وعمليات
-التحصين تحتاج قراءة ملفات محمية وتنفيذ أوامر إدارية. إذا كان المستخدم الحالي
-غير root فسيتم إيقاف التشغيل برسالة واضحة بدل تنفيذ جزء ناقص من الفحص.
+تعمل واجهة سطح المكتب بحساب المستخدم للحفاظ على DISPLAY/Wayland وDBus وXAuthority.
+بعض الفحوصات أو عمليات التحصين قد تحتاج امتيازاً، وتتم معالجتها عبر طبقة التنفيذ
+الآمن بدلاً من تشغيل التطبيق كاملاً بصلاحيات root.

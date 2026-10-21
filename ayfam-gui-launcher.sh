@@ -21,7 +21,7 @@ fi
 
 # ── البيئة الافتراضية المطلوبة ──
 export PYTHONUNBUFFERED=1
-export PYTHONPATH="$SCRIPT_DIR:${PYTHONPATH}"
+export PYTHONPATH="$SCRIPT_DIR:${PYTHONPATH:-}"
 
 # ── لا تثبّت حزمًا أثناء التشغيل؛ اعرض خطأ واضحًا بدل تغيير البيئة ──
 if ! "$PYTHON_BIN" -c "from PyQt6.QtWidgets import QApplication" 2>/dev/null; then

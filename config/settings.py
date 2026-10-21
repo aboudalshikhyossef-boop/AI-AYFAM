@@ -11,6 +11,7 @@ import json
 import stat
 import tempfile
 from pathlib import Path
+from config.version import APP_VERSION
 
 try:
     from dotenv import load_dotenv
@@ -53,7 +54,23 @@ DEFAULT_SETTINGS = {
     "cve_cache_hours": 6,
     "max_scan_threads": 50,
     "trusted_networks": [],
-    "version": "1.0.0",
+    "version": APP_VERSION,
+}
+
+_BOOLEAN_SETTINGS = {"auto_fix", "sound_ux", "dark_mode"}
+_POSITIVE_INTEGER_SETTINGS = {
+    "cve_cache_hours": (1, 24 * 30),
+    "max_scan_threads": (1, 256),
+}
+_STRING_SETTINGS = {
+    "github_token", "shodan_key", "abuseipdb_key", "nvd_api_key",
+    "vulners_key", "gemini_api_key", "openai_api_key", "google_cse_key",
+    "google_cse_cx", "openai_model", "gemini_model", "sound_profile",
+}
+_ALLOWED_VALUES = {
+    "language": {"ar", "en"},
+    "ai_provider": {"auto", "openai", "gemini", "local"},
+    "sound_profile": {"soft", "tactical", "silent"},
 }
 
 
@@ -61,9 +78,9 @@ class Settings:
     def __init__(self):
         CONFIG_DIR.mkdir(parents=True, exist_ok=True)
         self._harden_permissions()
-        Path(str(Path.home() / "ayfam-reports")).mkdir(parents=True, exist_ok=True)
         self._data = {**DEFAULT_SETTINGS}
         self._load()
+        Path(self._data["report_dir"]).expanduser().mkdir(parents=True, exist_ok=True)
 
     def _harden_permissions(self):
         """يفرض 0700 على مجلد الإعدادات و0600 على ملف الإعدادات، ويصلح أي
@@ -91,9 +108,7 @@ class Settings:
                     if not isinstance(saved, dict):
                         raise ValueError("configuration root must be an object")
                     self._data.update(saved)
-                    if self._data.get("gemini_model") in {"gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-flash-latest"}:
-                        self._data["gemini_model"] = "gemini-3.8-flash"
-            except (json.JSONDecodeError, OSError) as e:
+            except (json.JSONDecodeError, OSError, ValueError, TypeError) as e:
                 # Don't silently lose user config (including github_token).
                 # Back up the bad file so the user can recover it manually.
                 import shutil, sys
@@ -106,6 +121,46 @@ class Settings:
                 print(f"[CONFIG] Failed to load {CONFIG_FILE}: {e}", file=sys.stderr)
                 if backup:
                     print(f"[CONFIG] Corrupt file backed up to {backup}", file=sys.stderr)
+        self._validate_data()
+
+    def _validate_data(self) -> None:
+        """Restore invalid known values to safe defaults without blocking startup."""
+        import sys
+
+        for key in _BOOLEAN_SETTINGS:
+            value = self._data.get(key)
+            if not isinstance(value, bool):
+                self._data[key] = DEFAULT_SETTINGS[key]
+                print(f"[CONFIG] Ignoring invalid boolean setting: {key}", file=sys.stderr)
+
+        for key, (minimum, maximum) in _POSITIVE_INTEGER_SETTINGS.items():
+            value = self._data.get(key)
+            if isinstance(value, bool) or not isinstance(value, int) or not minimum <= value <= maximum:
+                self._data[key] = DEFAULT_SETTINGS[key]
+                print(f"[CONFIG] Ignoring invalid integer setting: {key}", file=sys.stderr)
+
+        for key in _STRING_SETTINGS:
+            value = self._data.get(key)
+            if not isinstance(value, str):
+                self._data[key] = DEFAULT_SETTINGS[key]
+                print(f"[CONFIG] Ignoring invalid string setting: {key}", file=sys.stderr)
+
+        for key, allowed in _ALLOWED_VALUES.items():
+            if self._data.get(key) not in allowed:
+                self._data[key] = DEFAULT_SETTINGS[key]
+                print(f"[CONFIG] Ignoring invalid value for setting: {key}", file=sys.stderr)
+
+        report_dir = self._data.get("report_dir")
+        if not isinstance(report_dir, str) or not report_dir.strip():
+            self._data["report_dir"] = DEFAULT_SETTINGS["report_dir"]
+            print("[CONFIG] Ignoring invalid setting: report_dir", file=sys.stderr)
+
+        trusted_networks = self._data.get("trusted_networks")
+        if not isinstance(trusted_networks, list) or not all(isinstance(item, str) for item in trusted_networks):
+            self._data["trusted_networks"] = list(DEFAULT_SETTINGS["trusted_networks"])
+            print("[CONFIG] Ignoring invalid setting: trusted_networks", file=sys.stderr)
+
+        self._data["version"] = APP_VERSION
 
     def _save(self):
         # افتح بصلاحيات 0600 منذ اللحظة الأولى (os.open) بدلاً من إنشاء
