@@ -171,6 +171,9 @@ LOG_DIR="\${XDG_STATE_HOME:-\$HOME/.local/state}/ayfam"
 mkdir -p "\$LOG_DIR"
 LOG_FILE="\$LOG_DIR/gui.log"
 printf '[%s] Starting GUI as %s (DISPLAY=%s, WAYLAND_DISPLAY=%s)\\n' "\$(date '+%F %T')" "\$(id -un)" "\${DISPLAY:-unset}" "\${WAYLAND_DISPLAY:-unset}" >>"\$LOG_FILE"
+cd "\$APP_DIR"
+export PYTHONUNBUFFERED=1
+export PYTHONPATH="\$APP_DIR\${PYTHONPATH:+:\$PYTHONPATH}"
 exec "$APP_PYTHON" "$APP_DIR/main.py" --gui "\$@" >>"\$LOG_FILE" 2>&1
 EOF
 sudo chmod +x "$GUI_LAUNCHER"
@@ -185,8 +188,11 @@ Name[ar]=مركز AI AYFAM الأمني
 Comment=AI AYFAM cybersecurity control center
 Comment[ar]=مركز التحكم الأمني AI AYFAM
 Exec=$GUI_LAUNCHER
+TryExec=$GUI_LAUNCHER
 Icon=$SCRIPT_DIR/resources/icon.svg
 Terminal=false
+Path=$SCRIPT_DIR
+StartupWMClass=ai-ayfam
 Categories=System;Security;
 StartupNotify=true
 EOF
