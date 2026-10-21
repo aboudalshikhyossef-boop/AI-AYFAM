@@ -7,7 +7,7 @@ from utils import http_client as requests
 import json
 import base64
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 
 class GitHubTool:
@@ -127,7 +127,7 @@ class GitHubTool:
 
     def get_trending_security_tools(self, days_back: int = 7, max_results: int = 10) -> list:
         """Discover new trending security/hacking tools on GitHub"""
-        since = (datetime.utcnow() - timedelta(days=days_back)).strftime("%Y-%m-%d")
+        since = (datetime.now(timezone.utc) - timedelta(days=days_back)).strftime("%Y-%m-%d")
         queries = [
             f"topic:security topic:cybersecurity pushed:>{since} stars:>10 language:Python",
             f"topic:pentesting pushed:>{since} stars:>5",

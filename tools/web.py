@@ -12,7 +12,7 @@ import shutil
 import socket
 import ssl
 import urllib.parse
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from html import unescape as _html_unescape
 
@@ -57,7 +57,7 @@ def check_connectivity() -> dict:
 
 def search_cve(keyword: str, days_back: int = 90, max_results: int = 10, api_key: str = "") -> list:
     try:
-        end = datetime.utcnow()
+        end = datetime.now(timezone.utc)
         start = end - timedelta(days=days_back)
         params = {
             "keywordSearch": keyword,
@@ -404,7 +404,7 @@ def test_website_security(url: str) -> dict:
                 not_after = cert.get("notAfter", "")
                 if not_after:
                     exp = datetime.strptime(not_after, "%b %d %H:%M:%S %Y %Z")
-                    days_left = (exp - datetime.utcnow()).days
+                    days_left = (exp - datetime.now(timezone.utc)).days
                     result["ssl"]["expires"] = not_after
                     result["ssl"]["days_left"] = days_left
                     result["ssl"]["subject"] = dict(x[0] for x in cert.get("subject", []))

@@ -319,9 +319,25 @@ class UnifiedCockpitWindow(QMainWindow):
         self._busy_cursor_owned = False
         self.telemetry_worker: LiveTelemetryWorker | None = None
         self._last_telemetry_error = ""
+        self._install_accessibility_shortcuts()
 
         self.update_live_telemetry()
         self._sync_control_labels()
+
+    def _install_accessibility_shortcuts(self) -> None:
+        """Keyboard access to common actions without changing mouse workflows."""
+        refresh = QShortcut(QKeySequence("Ctrl+R"), self)
+        refresh.setObjectName("refreshTelemetryShortcut")
+        refresh.setWhatsThis("تحديث بيانات الاتصالات والعمليات")
+        refresh.activated.connect(self.update_live_telemetry)
+        full_scan = QShortcut(QKeySequence("Ctrl+Shift+F"), self)
+        full_scan.setObjectName("fullScanShortcut")
+        full_scan.setWhatsThis("بدء فحص أمني شامل")
+        full_scan.activated.connect(lambda: self.run_background_task(self.agent._full_scan, "الفحص الشامل"))
+        chat_focus = QShortcut(QKeySequence("Ctrl+L"), self)
+        chat_focus.setObjectName("chatFocusShortcut")
+        chat_focus.setWhatsThis("الانتقال إلى حقل المحادثة")
+        chat_focus.activated.connect(lambda: self.chat_input.setFocus())
 
     def _tick_aurora(self) -> None:
         # Kept for backwards compatibility — AmbientSurface animates itself
@@ -834,14 +850,17 @@ class UnifiedCockpitWindow(QMainWindow):
         grid = QGridLayout(form)
         grid.setSpacing(SP_MD)
         self.scan_target = QLineEdit("127.0.0.1")
+        self.scan_target.setAccessibleName("هدف فحص المنافذ")
         self.scan_target.setPlaceholderText("IP أو اسم المضيف")
         self.port_range = QLineEdit("1-1024")
+        self.port_range.setAccessibleName("نطاق المنافذ")
         self.port_range.setPlaceholderText("مثال: 22,80,443 أو 1-1024")
         self.ip_target = QLineEdit()
         self.ip_target.setPlaceholderText("عنوان IP عام")
         self.website_input = QLineEdit()
         self.website_input.setPlaceholderText("https://example.com")
         self.path_input = QLineEdit(str(ROOT_DIR))
+        self.path_input.setAccessibleName("مسار فحص YARA")
         self.path_input.setPlaceholderText("مسار الفحص")
 
         grid.addWidget(QLabel("هدف المنافذ:"), 0, 0)
@@ -1228,6 +1247,7 @@ class UnifiedCockpitWindow(QMainWindow):
         row.setContentsMargins(10, 8, 10, 8)
         row.setSpacing(SP_SM)
         self.chat_input = QLineEdit()
+        self.chat_input.setAccessibleName("رسالة المساعد الأمني")
         self.chat_input.setPlaceholderText("اكتب رسالتك هنا… اضغط Enter للإرسال")
         self.chat_input.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
         self.chat_input.setMinimumHeight(30)
@@ -1307,6 +1327,7 @@ class UnifiedCockpitWindow(QMainWindow):
         row = QHBoxLayout()
         row.setSpacing(SP_SM)
         self.reports_dir = QLineEdit(self.settings.get("report_dir", os.path.expanduser("~/ayfam-reports")))
+        self.reports_dir.setAccessibleName("مجلد التقارير")
         browse = QPushButton("تصفح")
         browse.clicked.connect(self.choose_reports_dir)
         refresh = QPushButton("تحديث")
