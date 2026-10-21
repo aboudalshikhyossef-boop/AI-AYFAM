@@ -18,6 +18,11 @@ try:
 except ImportError:  # optional at import time; preflight reports it when missing
     load_dotenv = None
 
+try:
+    import keyring
+except ImportError:  # optional: secure file storage remains the fallback
+    keyring = None
+
 
 PROJECT_ENV_FILE = Path(__file__).resolve().parents[1] / ".env"
 if load_dotenv is not None:
@@ -28,6 +33,7 @@ if load_dotenv is not None:
 CONFIG_DIR = Path.home() / ".ayfam"
 CONFIG_FILE = CONFIG_DIR / "config.json"
 _SECRET_KEYS = ("github_token", "shodan_key", "abuseipdb_key", "nvd_api_key", "vulners_key", "gemini_api_key", "openai_api_key", "google_cse_key")
+_KEYRING_SERVICE = "ai-ayfam"
 
 DEFAULT_SETTINGS = {
     "language": "ar",
@@ -122,6 +128,35 @@ class Settings:
                 if backup:
                     print(f"[CONFIG] Corrupt file backed up to {backup}", file=sys.stderr)
         self._validate_data()
+        self._load_keyring_secrets()
+
+    def _load_keyring_secrets(self) -> None:
+        """Prefer desktop keyring values without making keyring mandatory/headless-hostile."""
+        if keyring is None:
+            return
+        for name in _SECRET_KEYS:
+            try:
+                value = keyring.get_password(_KEYRING_SERVICE, name)
+            except Exception:
+                value = None
+            if value:
+                self._data[name] = value
+
+    def _save_keyring_secrets(self) -> set[str]:
+        """Store available secrets in the user's keyring and return successful keys."""
+        stored = set()
+        if keyring is None:
+            return stored
+        for name in _SECRET_KEYS:
+            value = self._data.get(name, "")
+            if not value:
+                continue
+            try:
+                keyring.set_password(_KEYRING_SERVICE, name, value)
+                stored.add(name)
+            except Exception:
+                continue
+        return stored
 
     def _validate_data(self) -> None:
         """Restore invalid known values to safe defaults without blocking startup."""
@@ -169,11 +204,15 @@ class Settings:
         if CONFIG_FILE.is_symlink():
             raise OSError("configuration file must not be a symlink")
         CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        stored_secrets = self._save_keyring_secrets()
+        payload = {**self._data}
+        for name in stored_secrets:
+            payload[name] = ""
         fd, temp_name = tempfile.mkstemp(prefix=".config.", dir=CONFIG_DIR, text=True)
         try:
             os.fchmod(fd, 0o600)
             with os.fdopen(fd, "w", encoding="utf-8") as f:
-                json.dump(self._data, f, ensure_ascii=False, indent=2)
+                json.dump(payload, f, ensure_ascii=False, indent=2)
                 f.flush()
                 os.fsync(f.fileno())
             os.replace(temp_name, CONFIG_FILE)
