@@ -47,6 +47,8 @@ DEFAULT_SETTINGS = {
     "gemini_model": "gemini-3.8-flash",
     "auto_fix": False,
     "sound_ux": True,
+    "sound_profile": "soft",
+    "dark_mode": True,
     "report_dir": str(Path.home() / "ayfam-reports"),
     "cve_cache_hours": 6,
     "max_scan_threads": 50,

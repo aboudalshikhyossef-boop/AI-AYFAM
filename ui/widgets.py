@@ -235,7 +235,9 @@ class TelemetryChart(QFrame):
         p.drawRoundedRect(QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5), 12, 12)
         p.setPen(QColor(TEXT_PRIMARY if 'TEXT_PRIMARY' in globals() else "#f2fbfa"))
         p.setFont(p.font())
-        p.drawText(QRectF(18, 12, self.width() - 36, 22), Qt.AlignmentFlag.AlignRight, self.title)
+        p.drawText(QRectF(18, 8, self.width() - 36, 22), Qt.AlignmentFlag.AlignRight, self.title)
+        p.setPen(QColor("#6d8a91"))
+        p.drawText(QRectF(18, 27, self.width() - 36, 14), Qt.AlignmentFlag.AlignRight, "النسبة المئوية  •  آخر 24 قراءة  •  تحديث كل 3 ثوانٍ")
 
         rect = self._plot_rect()
         for step in range(5):
@@ -264,8 +266,13 @@ class TelemetryChart(QFrame):
             p.drawPath(path)
             p.setBrush(color)
             p.setPen(Qt.PenStyle.NoPen)
-            for point in points[-1:]:
-                p.drawEllipse(point, 3.5, 3.5)
+            for point in points:
+                p.drawEllipse(point, 2.4, 2.4)
+
+        p.setPen(QColor("#6d8a91"))
+        for index, label in ((0, "-24"), (max(0, count // 3), "-16"), (max(0, (count * 2) // 3), "-8"), (count - 1, "الآن")):
+            x = rect.left() + rect.width() * index / (count - 1)
+            p.drawText(QRectF(x - 24, rect.bottom() + 8, 48, 16), Qt.AlignmentFlag.AlignCenter, label)
 
         if 0 <= self.hover_index < count:
             x = rect.left() + rect.width() * self.hover_index / (count - 1)
@@ -337,6 +344,7 @@ class SoundUX(QObject):
     def __init__(self, root, enabled=True):
         super().__init__(root)
         self.enabled = bool(enabled)
+        self.profile = "soft"
         self.effects = {}
         if QSoundEffect is not None:
             sounds = {
@@ -353,13 +361,17 @@ class SoundUX(QObject):
     def set_enabled(self, enabled: bool) -> None:
         self.enabled = bool(enabled)
 
+    def set_profile(self, profile: str) -> None:
+        self.profile = profile if profile in {"soft", "confirm"} else "soft"
+
     def play(self, name="click") -> None:
         if not self.enabled:
             return
-        effect = self.effects.get(name)
+        effect_name = "success" if name == "success" or self.profile == "confirm" else "click"
+        effect = self.effects.get(effect_name)
         if effect is not None:
             effect.play()
-        elif name == "success":
+        elif effect_name == "success":
             QApplication.beep()
 
     def bind_buttons(self, root) -> None:

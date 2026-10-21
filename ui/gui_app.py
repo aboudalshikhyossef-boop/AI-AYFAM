@@ -273,8 +273,8 @@ class UnifiedCockpitWindow(QMainWindow):
         self.nav_buttons: list[QPushButton] = []
         self.page_veil_animation: QPropertyAnimation | None = None
         self._telemetry_history = {
-            "صحة المنظومة": [82, 84, 83, 86, 88, 87, 90, 91, 90, 92, 93, 92],
-            "نشاط النظام": [46, 51, 49, 56, 54, 61, 58, 64, 60, 67, 65, 70],
+            "الجاهزية الأمنية (%)": [82, 84, 83, 86, 88, 87, 90, 91, 90, 92, 93, 92],
+            "النشاط التشغيلي (%)": [46, 51, 49, 56, 54, 61, 58, 64, 60, 67, 65, 70],
         }
         self.init_ui()
         self.timer = QTimer(self)
@@ -292,12 +292,14 @@ class UnifiedCockpitWindow(QMainWindow):
         self.chat_display.hover_controller = self.hover_controller
         self.press_feedback = PressFeedbackController(self)
         self.sound_ux = SoundUX(self, enabled=bool(self.settings.get("sound_ux", True)))
+        self.sound_ux.set_profile(str(self.settings.get("sound_profile", "soft")))
         self.sound_ux.bind_buttons(self)
         if hasattr(self, "setting_sound_ux"):
             self.setting_sound_ux.toggled.connect(self.sound_ux.set_enabled)
         self._busy_cursor_owned = False
 
         self.update_live_telemetry()
+        self._sync_control_labels()
 
     def _tick_aurora(self) -> None:
         # Kept for backwards compatibility — AmbientSurface animates itself
@@ -458,10 +460,21 @@ class UnifiedCockpitWindow(QMainWindow):
         self.status_badge.setProperty("state", "idle")
         header_layout.addWidget(self.status_badge)
 
-        self.theme_badge = QLabel("DARK / OBSIDIAN")
-        self.theme_badge.setObjectName("modeBadge")
-        self.theme_badge.setToolTip("الوضع الداكن الاحترافي مفعل للحفاظ على تركيز المشغل")
-        header_layout.addWidget(self.theme_badge)
+        self.sound_btn = QPushButton()
+        self.sound_btn.setObjectName("headerControl")
+        self.sound_btn.setCheckable(True)
+        self.sound_btn.setChecked(bool(self.settings.get("sound_ux", True)))
+        self.sound_btn.setToolTip("تشغيل أو كتم أصوات التفاعل")
+        self.sound_btn.clicked.connect(self._toggle_sound)
+        header_layout.addWidget(self.sound_btn)
+
+        self.theme_btn = QPushButton("الوضع الليلي")
+        self.theme_btn.setObjectName("headerControl")
+        self.theme_btn.setCheckable(True)
+        self.theme_btn.setChecked(bool(self.settings.get("dark_mode", True)))
+        self.theme_btn.setToolTip("تفعيل واجهة Dark / Obsidian عالية التباين")
+        self.theme_btn.clicked.connect(self._toggle_dark_mode)
+        header_layout.addWidget(self.theme_btn)
 
         self.score_badge = QLabel("الدرجة —")
         self.score_badge.setObjectName("scoreBadge")
@@ -621,6 +634,30 @@ class UnifiedCockpitWindow(QMainWindow):
         self.page_veil_animation = animation
         animation.start()
 
+    def _sync_control_labels(self) -> None:
+        if hasattr(self, "sound_btn"):
+            self.sound_btn.setText("الصوت: مفعل" if self.sound_btn.isChecked() else "الصوت: صامت")
+        if hasattr(self, "theme_btn"):
+            self.theme_btn.setText("الوضع الليلي: فعال" if self.theme_btn.isChecked() else "الوضع الليلي: متوقف")
+
+    def _toggle_sound(self, enabled: bool) -> None:
+        self.sound_btn.setChecked(bool(enabled))
+        self.sound_ux.set_enabled(enabled)
+        self.settings.set("sound_ux", bool(enabled))
+        self._sync_control_labels()
+        if enabled:
+            self.sound_ux.play("success")
+
+    def _toggle_dark_mode(self, enabled: bool) -> None:
+        self.theme_btn.setChecked(bool(enabled))
+        self.settings.set("dark_mode", bool(enabled))
+        self.setStyleSheet(QSS if enabled else get_qss("#6d8f8c", "#7d83a6"))
+        self.setProperty("darkMode", bool(enabled))
+        self.style().unpolish(self)
+        self.style().polish(self)
+        self._sync_control_labels()
+        self.update()
+
     # ═══════════════════════════════════════════════════════════════════════════
     #  DASHBOARD PAGE
     # ═══════════════════════════════════════════════════════════════════════════
@@ -724,13 +761,13 @@ class UnifiedCockpitWindow(QMainWindow):
         # ── Interactive analytics ──
         analytics_row = QHBoxLayout()
         analytics_row.setSpacing(SP_MD)
-        self.telemetry_chart = TelemetryChart("اتجاه القياسات الحية")
+        self.telemetry_chart = TelemetryChart("مؤشرات الحالة الأمنية")
         self.telemetry_chart.set_data({
             label: (values, "#2dd4bf" if index == 0 else "#a78bfa")
             for index, (label, values) in enumerate(self._telemetry_history.items())
         })
         self.security_gauge = SecurityGauge()
-        self.security_gauge.set_value(self._telemetry_history["صحة المنظومة"][-1])
+        self.security_gauge.set_value(self._telemetry_history["الجاهزية الأمنية (%)"][-1])
         analytics_row.addWidget(self.telemetry_chart, 3)
         analytics_row.addWidget(self.security_gauge, 1)
         layout.addLayout(analytics_row)
@@ -1405,6 +1442,12 @@ class UnifiedCockpitWindow(QMainWindow):
         self.setting_sound_ux = QCheckBox("تفعيل أصوات التفاعل الخفيفة")
         self.setting_sound_ux.setChecked(bool(self.settings.get("sound_ux", True)))
         self.setting_sound_ux.setToolTip("نقرات قصيرة منخفضة الصوت عند الضغط على الإجراءات")
+        self.setting_sound_profile = QComboBox()
+        self.setting_sound_profile.addItem("هادئ — نقرة ناعمة", "soft")
+        self.setting_sound_profile.addItem("تأكيد — نغمة أوضح", "confirm")
+        current_profile = str(self.settings.get("sound_profile", "soft"))
+        profile_index = self.setting_sound_profile.findData(current_profile)
+        self.setting_sound_profile.setCurrentIndex(profile_index if profile_index >= 0 else 0)
 
         grid.addWidget(QLabel("Gemini API Key:"), 0, 0)
         grid.addWidget(self.setting_gemini_key, 0, 1)
@@ -1431,6 +1474,8 @@ class UnifiedCockpitWindow(QMainWindow):
         grid.addWidget(self.setting_lang_combo, 7, 1)
         grid.addWidget(QLabel("التجربة الحسية:"), 8, 0)
         grid.addWidget(self.setting_sound_ux, 8, 1)
+        grid.addWidget(QLabel("نمط النغمة:"), 9, 0)
+        grid.addWidget(self.setting_sound_profile, 9, 1)
 
         layout.addWidget(form_group)
 
@@ -1475,10 +1520,12 @@ class UnifiedCockpitWindow(QMainWindow):
         lang = self.setting_lang_combo.currentText()
         self.settings.set("language", lang)
         self.settings.set("sound_ux", bool(self.setting_sound_ux.isChecked()))
+        self.settings.set("sound_profile", str(self.setting_sound_profile.currentData() or "soft"))
         self.agent.lang = lang
         self.agent.intel.language = lang
         if hasattr(self, "sound_ux"):
             self.sound_ux.set_enabled(self.setting_sound_ux.isChecked())
+            self.sound_ux.set_profile(str(self.setting_sound_profile.currentData() or "soft"))
             self.sound_ux.play("success")
         self.settings_log.setPlainText("[نجاح] تم حفظ الإعدادات بنجاح!")
         QMessageBox.information(self, "حفظ الإعدادات", "تم حفظ جميع الإعدادات والمفاتيح آمنة محلياً.")
@@ -1715,14 +1762,14 @@ class UnifiedCockpitWindow(QMainWindow):
             external_penalty = min(18.0, external * 0.35)
             health = max(0.0, min(100.0, 96.0 - external_penalty - max(0.0, peak_cpu - 55.0) * 0.18))
             activity = max(0.0, min(100.0, len(procs) * 2.6 + len(conns) * 0.7))
-            self._telemetry_history["صحة المنظومة"].append(health)
-            self._telemetry_history["نشاط النظام"].append(activity)
+            self._telemetry_history["الجاهزية الأمنية (%)"].append(health)
+            self._telemetry_history["النشاط التشغيلي (%)"].append(activity)
             for values in self._telemetry_history.values():
                 del values[:-24]
             if hasattr(self, "telemetry_chart"):
                 self.telemetry_chart.set_data({
-                    "صحة المنظومة": (self._telemetry_history["صحة المنظومة"], "#2dd4bf"),
-                    "نشاط النظام": (self._telemetry_history["نشاط النظام"], "#a78bfa"),
+                    "الجاهزية الأمنية (%)": (self._telemetry_history["الجاهزية الأمنية (%)"], "#2dd4bf"),
+                    "النشاط التشغيلي (%)": (self._telemetry_history["النشاط التشغيلي (%)"], "#a78bfa"),
                 })
                 self.security_gauge.set_value(health)
                 self.metric_labels["score"].setText(f"{health:.0f}%")

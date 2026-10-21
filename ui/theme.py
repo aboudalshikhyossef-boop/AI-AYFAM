@@ -517,6 +517,22 @@ QLabel#modeBadge {{
     font-weight: 800;
 }}
 
+QPushButton#headerControl {{
+    color: {TEXT_SECONDARY};
+    background: #102a31;
+    border: 1px solid #27505a;
+    border-radius: 8px;
+    padding: 6px 9px;
+    font-size: 10px;
+    font-weight: 700;
+}}
+
+QPushButton#headerControl:hover, QPushButton#headerControl:checked {{
+    color: {TEXT_PRIMARY};
+    background: #173943;
+    border-color: {ACCENT};
+}}
+
 QFrame#telemetryChart, QFrame#securityGauge {{
     background: #0b1c24;
     border: 1px solid #1b3b44;
