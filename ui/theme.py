@@ -1,41 +1,41 @@
-"""نظام تصميم زجاجي وعصري فائق الأناقة لسطح مكتب Qt6 — نمط كابينة العمليات والأمان السيبراني (2026)."""
+"""نظام تصميم زجاجي الداكن (Dark Glassmorphism) لسطح مكتب Qt6 — نمط المفهوم الراقي المباشر من Apple Enterprise."""
 from __future__ import annotations
 
-# ── ألوان Obsidian + Afyam Teal الأساسية لمنظومة العمليات ──
-BG_BASE = "#050912"
-BG_SURFACE = "#0b1320"
-BG_ELEVATED = "#111d2d"
-BG_HOVER = "#182b3d"
-BG_INPUT = "#07101b"
+# ── ألوان Dark Glassmorphism الأساسية ──
+BG_BASE = "#030712"               # Obsidian Deep Space
+BG_SURFACE = "rgba(15, 23, 42, 0.65)"   # Slate Dark Glass (65% opacity)
+BG_ELEVATED = "rgba(30, 41, 59, 0.70)"  # Elevated Dark Glass (70% opacity)
+BG_HOVER = "rgba(51, 65, 85, 0.50)"     # Soft Glass Hover
+BG_INPUT = "rgba(15, 23, 42, 0.80)"     # Input Dark Glass
 
-# ── الحدود والتوهج السيبراني ──
-BORDER = "#20394a"
-BORDER_LIGHT = "#1a2d40"
-BORDER_FOCUS = "#5eead4"
-BORDER_GLOW = "#522dd4bf"
+# ── الحدود والتوهج الزجاجي ──
+BORDER = "rgba(255, 255, 255, 0.12)"         # Subtitle Glass Border
+BORDER_LIGHT = "rgba(255, 255, 255, 0.06)"   # Faint Divider
+BORDER_FOCUS = "#2dd4bf"                     # Afyam Teal Focus Accent
+BORDER_GLOW = "rgba(45, 212, 191, 0.40)"     # Teal Glow
 
 # ── ألوان النصوص والتباين ──
-TEXT_PRIMARY = "#f2fbfa"
-TEXT_SECONDARY = "#9cb5bb"
-TEXT_MUTED = "#6d8a91"
+TEXT_PRIMARY = "#f8fafc"          # Pure White / Slate 50
+TEXT_SECONDARY = "#94a3b8"        # Slate 400
+TEXT_MUTED = "#64748b"            # Slate 500
 
-# ── ألوان التمييز والتفاعل ──
+# ── ألوان التمييز النيون والذهبي/التكتيكي ──
 ACCENT = "#2dd4bf"               # Afyam Teal — لون العلامة المميز
 ACCENT_HOVER = "#5eead4"
 ACCENT_PRESSED = "#0f766e"
-ACCENT_SOFT = "#242dd4bf"
+ACCENT_SOFT = "rgba(45, 212, 191, 0.15)"
 
-ACCENT_SECONDARY = "#a78bfa"     # بنفسجي محدود للتحليل والمساعد
-ACCENT_SECONDARY_SOFT = "#24a78bfa"
-ACCENT_VIOLET = "#c4b5fd"        # بنفسجي للذكاء الاصطناعي
+ACCENT_SECONDARY = "#a78bfa"     # Cyber Violet
+ACCENT_SECONDARY_SOFT = "rgba(167, 139, 250, 0.15)"
+ACCENT_VIOLET = "#c4b5fd"
 
 # ── درجات الخطورة والتنبيهات الأمنية ──
-SEV_CRITICAL = "#f43f5e"         # أحمر ياقوتي للحرج
-SEV_HIGH = "#fb923c"             # برتقالي للإنذار العالي
-SEV_MEDIUM = "#f59e0b"           # كهرماني للمتوسط
-SEV_LOW = "#60a5fa"              # أزرق للمنخفض
-SEV_INFO = "#8fb3d1"             # أزرق للمعلومات
-SEV_SAFE = "#34d399"             # زمردي للآمن والسليم
+SEV_CRITICAL = "#f43f5e"         # Ruby Red
+SEV_HIGH = "#fb923c"             # Warning Amber/Orange
+SEV_MEDIUM = "#f59e0b"           # Gold / Yellow
+SEV_LOW = "#60a5fa"              # Azure Blue
+SEV_INFO = "#38bdf8"             # Cyan Info
+SEV_SAFE = "#34d399"             # Emerald Safe
 
 STATUS_OK = SEV_SAFE
 STATUS_WARN = SEV_HIGH
@@ -49,8 +49,8 @@ CARD_ACCENTS = {
     "score": SEV_SAFE,
 }
 
-# ── الخطوط والأبعاد القياسية ──
-FONT_FAMILY = '"Inter", "Noto Sans Arabic", "Cairo", "Segoe UI", "DejaVu Sans", sans-serif'
+# ── الخطوط والأبعاد القياسية (Apple Enterprise Typography) ──
+FONT_FAMILY = '"Inter", "SF Pro Display", "-apple-system", "BlinkMacSystemFont", "Cairo", "Segoe UI", sans-serif'
 FONT_SIZE_BASE = 13
 FONT_SIZE_SMALL = 11
 FONT_SIZE_TITLE = 18
@@ -62,25 +62,27 @@ ACCENT_HUES = [(ACCENT, ACCENT_SECONDARY), ("#5eead4", "#60a5fa"), ("#34d399", "
 
 
 def alpha(color: str, opacity: int) -> str:
-    """إضافة قناة الشفافية بلون سداسي عشري."""
-    return f"#{opacity:02x}{color.lstrip('#')}"
+    """إضافة قناة الشفافية بلون سداسي عشري أو تحويل القيم."""
+    if color.startswith("#"):
+        return f"#{opacity:02x}{color.lstrip('#')}"
+    return color
 
 
 def get_qss(accent: str = ACCENT, accent2: str = ACCENT_SECONDARY) -> str:
     """توليد ورقة الأنماط مع استبدال ألوان التمييز المختارة."""
-    result = QSS.replace(ACCENT_SOFT, alpha(accent, 36))
-    result = result.replace(ACCENT_SECONDARY_SOFT, alpha(accent2, 36))
+    result = QSS.replace(ACCENT_SOFT, f"rgba(45, 212, 191, 0.15)")
+    result = result.replace(ACCENT_SECONDARY_SOFT, f"rgba(167, 139, 250, 0.15)")
     return result.replace(ACCENT, accent).replace(ACCENT_SECONDARY, accent2)
 
 
-# ── ورقة الأنماط الشاملة (QSS) بتصميم كابينة زجاجية معاصرة ──
+# ── ورقة الأنماط الشاملة (QSS) بتصميم Glassmorphism الداكن من Apple ──
 QSS = f"""
 QWidget {{
     background: transparent;
     color: {TEXT_PRIMARY};
     font-family: {FONT_FAMILY};
     font-size: {FONT_SIZE_BASE}px;
-    letter-spacing: 0.1px;
+    letter-spacing: -0.1px;
 }}
 
 QMainWindow, QDialog, QMessageBox {{
@@ -89,7 +91,7 @@ QMainWindow, QDialog, QMessageBox {{
 
 QMainWindow#cockpitWindow {{
     background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-        stop:0 #050912, stop:0.52 #081321, stop:1 #0b1020);
+        stop:0 #030712, stop:0.45 #0b1329, stop:1 #030712);
 }}
 
 QWidget#appRoot, QWidget#mainArea {{
@@ -112,16 +114,16 @@ QScrollArea > QWidget > QWidget {{
 
 /* ── الشريط الجانبي الفخم ── */
 QFrame#sidebar {{
-    background: rgba(7, 15, 26, 235);
-    border-right: 1px solid #1b3448;
+    background: rgba(10, 15, 30, 0.72);
+    border-right: 1px solid rgba(255, 255, 255, 0.08);
 }}
 
 QPushButton#navButton {{
     background: transparent;
     color: {TEXT_SECONDARY};
     border: 1px solid transparent;
-    border-radius: 12px;
-    padding: 10px 12px;
+    border-radius: 10px;
+    padding: 10px 14px;
     text-align: left;
     min-height: 24px;
     font-weight: 500;
@@ -129,15 +131,15 @@ QPushButton#navButton {{
 
 QPushButton#navButton:hover {{
     color: {TEXT_PRIMARY};
-    background: #102a32;
-    border-color: #27505a;
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.10);
 }}
 
 QPushButton#navButton:checked {{
     color: #ffffff;
-    background: #123139;
-    border: 1px solid #2c7776;
-    font-weight: 700;
+    background: rgba(45, 212, 191, 0.16);
+    border: 1px solid rgba(45, 212, 191, 0.45);
+    font-weight: 600;
 }}
 
 QLabel#navGroupLabel {{
@@ -145,51 +147,51 @@ QLabel#navGroupLabel {{
     font-size: 10px;
     font-weight: 700;
     letter-spacing: 0.8px;
-    padding: 14px 10px 6px;
+    padding: 16px 12px 6px;
 }}
 
 QPushButton#assistantNavButton {{
     background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-        stop:0 {alpha(ACCENT_SECONDARY, 35)}, stop:1 {alpha(ACCENT, 25)});
+        stop:0 rgba(167, 139, 250, 0.20), stop:1 rgba(45, 212, 191, 0.15));
     color: {SEV_SAFE};
-    border: 1px solid {alpha(ACCENT_SECONDARY, 140)};
+    border: 1px solid rgba(167, 139, 250, 0.35);
     border-radius: 12px;
     padding: 11px 14px;
-    font-weight: 700;
+    font-weight: 600;
     margin-top: 12px;
 }}
 
 QPushButton#assistantNavButton:hover {{
     background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-        stop:0 {alpha(ACCENT_SECONDARY, 60)}, stop:1 {alpha(ACCENT, 45)});
+        stop:0 rgba(167, 139, 250, 0.35), stop:1 rgba(45, 212, 191, 0.25));
     border-color: {SEV_SAFE};
     color: #ffffff;
 }}
 
 /* ── الشريط العلوي ── */
 QFrame#headerBar {{
-    background: rgba(9, 17, 30, 220);
-    border-bottom: 1px solid #1b3448;
+    background: rgba(15, 23, 42, 0.55);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }}
 
 QLabel#eyebrow {{
     color: {ACCENT};
     font-size: 10px;
     font-weight: 700;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.6px;
 }}
 
 QLabel#brandMark {{
-    background: {alpha(ACCENT, 40)};
-    border: 1.5px solid {alpha(ACCENT, 140)};
-    border-radius: 12px;
+    background: rgba(45, 212, 191, 0.15);
+    border: 1px solid rgba(45, 212, 191, 0.35);
+    border-radius: 10px;
     padding: 6px;
 }}
 
 QLabel#clockTime {{
-    font-family: "DejaVu Sans Mono", monospace;
+    font-family: "SF Mono", "DejaVu Sans Mono", monospace;
     font-size: 15px;
-    font-weight: 800;
+    font-weight: 700;
     color: {TEXT_PRIMARY};
 }}
 
@@ -202,42 +204,42 @@ QLabel#clockDate {{
 /* ── بانر المهمة التكتيكي ── */
 QFrame#missionBanner {{
     background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-        stop:0 rgba(16, 34, 50, 225), stop:0.55 rgba(10, 25, 39, 205), stop:1 rgba(24, 20, 48, 190));
-    border: 1px solid #2c5668;
+        stop:0 rgba(30, 41, 59, 0.70), stop:1 rgba(15, 23, 42, 0.60));
+    border: 1px solid rgba(255, 255, 255, 0.12);
     border-right: 3px solid {ACCENT};
-    border-radius: 18px;
+    border-radius: 16px;
 }}
 
 QFrame#missionBanner:hover {{
-    border-color: #35767a;
+    border-color: rgba(45, 212, 191, 0.40);
     border-right-color: {ACCENT_HOVER};
 }}
 
 QLabel#missionTitle {{
-    font-size: 21px;
-    font-weight: 800;
+    font-size: 20px;
+    font-weight: 700;
     color: {TEXT_PRIMARY};
 }}
 
 /* ── بطاقات العمليات والحاويات ── */
 QFrame#card {{
-    background: rgba(13, 27, 43, 205);
-    border: 1px solid #203d50;
+    background: rgba(30, 41, 59, 0.55);
+    border: 1px solid rgba(255, 255, 255, 0.10);
     border-radius: 16px;
 }}
 
 QFrame#card:hover {{
-    border-color: #3c8b91;
-    background: rgba(20, 43, 59, 225);
+    border-color: rgba(45, 212, 191, 0.35);
+    background: rgba(30, 41, 59, 0.70);
 }}
 
 QGroupBox {{
-    background: #0b1c24;
-    border: 1px solid #1b3b44;
-    border-radius: 12px;
+    background: rgba(15, 23, 42, 0.60);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    border-radius: 14px;
     margin-top: 0;
     padding: 38px 16px 16px;
-    font-weight: 700;
+    font-weight: 600;
 }}
 
 QGroupBox::title {{
@@ -248,120 +250,122 @@ QGroupBox::title {{
     color: {TEXT_PRIMARY};
     background: transparent;
     font-size: 13px;
-    font-weight: 700;
-}}
-
-QGroupBox:hover {{
-    border-color: {alpha(ACCENT_SECONDARY, 140)};
-}}
-
-/* ── الأزرار الفاخرة ── */
-QPushButton {{
-    background: rgba(18, 37, 53, 220);
-    color: {TEXT_PRIMARY};
-    border: 1px solid {alpha(ACCENT, 70)};
-    border-radius: 11px;
-    padding: 8px 16px;
-    min-height: 24px;
     font-weight: 600;
 }}
 
+QGroupBox:hover {{
+    border-color: rgba(167, 139, 250, 0.35);
+}}
+
+/* ── الأزرار الفاخرة Apple-Style ── */
+QPushButton {{
+    background: rgba(255, 255, 255, 0.07);
+    color: {TEXT_PRIMARY};
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 10px;
+    padding: 8px 16px;
+    min-height: 24px;
+    font-weight: 500;
+}}
+
 QPushButton:hover {{
-    background: rgba(28, 61, 76, 235);
-    border-color: {ACCENT};
+    background: rgba(255, 255, 255, 0.14);
+    border-color: rgba(255, 255, 255, 0.25);
     color: #ffffff;
 }}
 
 QPushButton:pressed {{
-    background: #184a4d;
+    background: rgba(45, 212, 191, 0.30);
     border-color: {SEV_SAFE};
 }}
 
 QPushButton[pressingFx="true"] {{
-    background: #1a4b4e;
+    background: rgba(45, 212, 191, 0.25);
     border-color: {ACCENT_HOVER};
     color: #ffffff;
 }}
 
 QPushButton:focus {{
-    border: 2px solid {ACCENT};
+    border: 1px solid {ACCENT};
 }}
 
 QPushButton#primary {{
-    background: #0f766e;
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+        stop:0 #0d9488, stop:1 #0f766e);
     color: #ffffff;
-    border: 1px solid {alpha('#ffffff', 90)};
-    font-weight: 700;
-    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.20);
+    font-weight: 600;
+    border-radius: 10px;
 }}
 
 QPushButton#primary:hover {{
-    background: #149b8e;
-    border-color: #ffffff;
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+        stop:0 #14b8a6, stop:1 #0d9488);
+    border-color: rgba(255, 255, 255, 0.40);
 }}
 
 QPushButton#danger {{
     color: #fecdd3;
-    border-color: {alpha(SEV_CRITICAL, 160)};
-    background: {alpha(SEV_CRITICAL, 40)};
+    border-color: rgba(244, 63, 94, 0.35);
+    background: rgba(244, 63, 94, 0.20);
 }}
 
 QPushButton#danger:hover {{
-    background: {alpha(SEV_CRITICAL, 80)};
+    background: rgba(244, 63, 94, 0.35);
     border-color: {SEV_CRITICAL};
     color: #ffffff;
 }}
 
 QPushButton#pillButton {{
-    border-radius: 14px;
-    padding: 6px 14px;
+    border-radius: 12px;
+    padding: 5px 12px;
     color: {TEXT_SECONDARY};
     font-size: 11px;
     min-height: 20px;
-    background: {alpha(ACCENT, 25)};
-    border: 1px solid {alpha(ACCENT, 60)};
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.10);
 }}
 
 QPushButton#pillButton:hover {{
-    background: {alpha(ACCENT, 55)};
+    background: rgba(45, 212, 191, 0.18);
     color: {TEXT_PRIMARY};
-    border-color: {ACCENT};
+    border-color: rgba(45, 212, 191, 0.40);
 }}
 
 QPushButton#quietAction {{
-    background: {alpha(ACCENT, 30)};
-    border: 1px solid {alpha(ACCENT, 70)};
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.10);
 }}
 
 QPushButton#quietAction:hover {{
-    background: {alpha(ACCENT, 60)};
-    border-color: {ACCENT};
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.22);
 }}
 
 QPushButton:disabled {{
     color: {TEXT_MUTED};
-    background: {alpha(BG_SURFACE, 70)};
-    border-color: {alpha(BORDER, 50)};
+    background: rgba(15, 23, 42, 0.40);
+    border-color: rgba(255, 255, 255, 0.05);
 }}
 
 /* ── حقول الإدخال والكومبوبوكس ── */
 QLineEdit, QComboBox, QPlainTextEdit, QTextEdit {{
-    background: rgba(5, 14, 25, 220);
+    background: rgba(15, 23, 42, 0.70);
     color: {TEXT_PRIMARY};
-    border: 1px solid {alpha(BORDER, 150)};
-    border-radius: 11px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 10px;
     padding: 9px 14px;
     selection-background-color: #0f766e;
     selection-color: #ffffff;
 }}
 
 QLineEdit:hover, QComboBox:hover, QPlainTextEdit:hover, QTextEdit:hover {{
-    border-color: {alpha(ACCENT, 130)};
+    border-color: rgba(45, 212, 191, 0.35);
 }}
 
 QLineEdit:focus, QComboBox:focus, QPlainTextEdit:focus, QTextEdit:focus {{
     border-color: {ACCENT};
-    background: #0e252b;
+    background: rgba(15, 23, 42, 0.90);
 }}
 
 QComboBox::drop-down {{
@@ -370,79 +374,79 @@ QComboBox::drop-down {{
 }}
 
 QComboBox QAbstractItemView {{
-    background: {BG_SURFACE};
-    border: 1px solid {ACCENT};
-    selection-background-color: #15434a;
+    background: rgba(15, 23, 42, 0.95);
+    border: 1px solid rgba(45, 212, 191, 0.40);
+    selection-background-color: rgba(45, 212, 191, 0.25);
     border-radius: 8px;
     color: {TEXT_PRIMARY};
 }}
 
-/* ── الجداول التكتيكية ── */
+/* ── الجداول التكتيكية الزجاجية ── */
 QTableWidget {{
-    background: #0a1b22;
+    background: rgba(15, 23, 42, 0.55);
     color: {TEXT_PRIMARY};
-    alternate-background-color: {alpha(BG_ELEVATED, 100)};
+    alternate-background-color: rgba(30, 41, 59, 0.30);
     gridline-color: transparent;
-    border: 1px solid {alpha(BORDER, 140)};
+    border: 1px solid rgba(255, 255, 255, 0.10);
     border-radius: 14px;
-    selection-background-color: {alpha(ACCENT, 70)};
+    selection-background-color: rgba(45, 212, 191, 0.25);
     outline: none;
 }}
 
 QTableWidget::item {{
     padding: 8px 10px;
-    border-bottom: 1px solid {alpha(BORDER_LIGHT, 90)};
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 }}
 
 QTableWidget::item:hover {{
-    background: {alpha(ACCENT_SECONDARY, 35)};
+    background: rgba(167, 139, 250, 0.15);
     color: {TEXT_PRIMARY};
 }}
 
 QTableWidget::item:selected {{
-    background: {alpha(ACCENT, 70)};
+    background: rgba(45, 212, 191, 0.30);
     color: #ffffff;
 }}
 
 QHeaderView::section {{
-    background: #102a31;
+    background: rgba(30, 41, 59, 0.70);
     color: {TEXT_SECONDARY};
     padding: 10px 8px;
     border: none;
-    border-bottom: 1px solid {alpha(ACCENT_SECONDARY, 140)};
-    font-weight: 700;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.10);
+    font-weight: 600;
     font-size: 11px;
 }}
 
 QTableCornerButton::section {{
-    background: #102730;
+    background: rgba(30, 41, 59, 0.70);
     border: none;
 }}
 
 /* ── أشرطة التقدم ── */
 QProgressBar {{
-    background: {alpha(BG_SURFACE, 200)};
-    border: 1px solid {alpha(BORDER, 80)};
-    border-radius: 5px;
-    min-height: 8px;
-    max-height: 8px;
+    background: rgba(15, 23, 42, 0.60);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 4px;
+    min-height: 6px;
+    max-height: 6px;
 }}
 
 QProgressBar::chunk {{
     background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
         stop:0 {ACCENT}, stop:0.7 {ACCENT_HOVER}, stop:1 {SEV_SAFE});
-    border-radius: 4px;
+    border-radius: 3px;
 }}
 
-/* ── أشرطة التمرير العصرية الرقيقة ── */
+/* ── أشرطة التمرير ── */
 QScrollBar:vertical {{
     background: transparent;
-    width: 7px;
+    width: 6px;
     margin: 2px;
 }}
 
 QScrollBar::handle:vertical {{
-    background: {alpha(ACCENT, 90)};
+    background: rgba(255, 255, 255, 0.20);
     min-height: 32px;
     border-radius: 3px;
 }}
@@ -461,12 +465,12 @@ QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{
 
 QScrollBar:horizontal {{
     background: transparent;
-    height: 7px;
+    height: 6px;
     margin: 2px;
 }}
 
 QScrollBar::handle:horizontal {{
-    background: {alpha(ACCENT, 90)};
+    background: rgba(255, 255, 255, 0.20);
     min-width: 32px;
     border-radius: 3px;
 }}
@@ -479,72 +483,72 @@ QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {{
     background: transparent;
 }}
 
-/* ── شارات الحالة والتقييم ── */
+/* ── شارات الحالة والتقييم Apple Glass Style ── */
 QLabel#statusBadge {{
     color: {STATUS_OK};
-    padding: 6px 14px;
-    background: {alpha(SEV_SAFE, 28)};
-    border: 1px solid {alpha(SEV_SAFE, 120)};
-    border-radius: 14px;
-    font-weight: 700;
+    padding: 5px 12px;
+    background: rgba(52, 211, 153, 0.15);
+    border: 1px solid rgba(52, 211, 153, 0.35);
+    border-radius: 12px;
+    font-weight: 600;
 }}
 
 QLabel#statusBadge[state="running"] {{
     color: {STATUS_WARN};
-    border-color: {alpha(STATUS_WARN, 160)};
-    background: {alpha(STATUS_WARN, 35)};
+    border-color: rgba(251, 146, 60, 0.40);
+    background: rgba(251, 146, 60, 0.18);
 }}
 
 QLabel#statusBadge[state="error"] {{
     color: #fecdd3;
     border-color: {STATUS_ERROR};
-    background: {alpha(STATUS_ERROR, 35)};
+    background: rgba(244, 63, 94, 0.22);
 }}
 
 QLabel#scoreBadge {{
     color: {SEV_SAFE};
-    padding: 6px 14px;
-    background: {alpha(SEV_SAFE, 28)};
-    border: 1px solid {alpha(SEV_SAFE, 120)};
-    border-radius: 14px;
-    font-weight: 700;
+    padding: 5px 12px;
+    background: rgba(52, 211, 153, 0.15);
+    border: 1px solid rgba(52, 211, 153, 0.35);
+    border-radius: 12px;
+    font-weight: 600;
 }}
 
 QLabel#modeBadge {{
-    color: #9cb5bb;
-    background: #102a31;
-    border: 1px solid #27505a;
+    color: #94a3b8;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.10);
     border-radius: 8px;
-    padding: 5px 8px;
+    padding: 4px 8px;
     font-size: 9px;
-    font-weight: 800;
+    font-weight: 700;
 }}
 
 QPushButton#headerControl {{
     color: {TEXT_SECONDARY};
-    background: #102a31;
-    border: 1px solid #27505a;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.10);
     border-radius: 8px;
-    padding: 6px 9px;
+    padding: 5px 9px;
     font-size: 10px;
-    font-weight: 700;
+    font-weight: 600;
 }}
 
 QPushButton#headerControl:hover, QPushButton#headerControl:checked {{
     color: {TEXT_PRIMARY};
-    background: #173943;
+    background: rgba(255, 255, 255, 0.12);
     border-color: {ACCENT};
 }}
 
 QFrame#telemetryChart, QFrame#securityGauge {{
-    background: #0b1c24;
-    border: 1px solid #1b3b44;
-    border-radius: 12px;
+    background: rgba(15, 23, 42, 0.60);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    border-radius: 14px;
 }}
 
 QLabel#sectionTitle {{
     font-size: {FONT_SIZE_TITLE}px;
-    font-weight: 800;
+    font-weight: 700;
     color: {TEXT_PRIMARY};
 }}
 
@@ -555,14 +559,14 @@ QLabel#sectionSubtitle {{
 
 QLabel#metricValue {{
     font-size: {FONT_SIZE_METRIC}px;
-    font-weight: 800;
+    font-weight: 700;
     color: {TEXT_PRIMARY};
 }}
 
 QLabel#metricLabel {{
     color: {TEXT_SECONDARY};
     font-size: 12px;
-    font-weight: 600;
+    font-weight: 500;
 }}
 
 QLabel#metricNote {{
@@ -573,8 +577,8 @@ QLabel#metricNote {{
 QLabel#footer {{
     color: {TEXT_MUTED};
     font-size: 10px;
-    background: #08171f;
-    border-top: 1px solid {alpha(ACCENT, 45)};
+    background: rgba(3, 7, 18, 0.85);
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
     padding: 3px 12px;
 }}
 
@@ -592,7 +596,7 @@ QFrame#activityLamp[state="error"] {{
 }}
 
 QSplitter::handle {{
-    background: {alpha(BORDER, 100)};
+    background: rgba(255, 255, 255, 0.08);
 }}
 
 QSplitter::handle:hover {{
@@ -600,9 +604,9 @@ QSplitter::handle:hover {{
 }}
 
 QToolTip {{
-    background: {BG_ELEVATED};
+    background: rgba(15, 23, 42, 0.95);
     color: {TEXT_PRIMARY};
-    border: 1px solid {ACCENT};
+    border: 1px solid rgba(45, 212, 191, 0.50);
     padding: 8px 12px;
     border-radius: 8px;
 }}
@@ -616,63 +620,63 @@ QTextEdit#messageBody {{
 }}
 
 QFrame#chatComposer {{
-    background: #0d2028;
-    border: 1px solid {alpha(ACCENT_SECONDARY, 140)};
+    background: rgba(15, 23, 42, 0.75);
+    border: 1px solid rgba(255, 255, 255, 0.14);
     border-radius: 16px;
 }}
 
 QFrame#chatUser {{
     background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-        stop:0 #1a3552, stop:1 #10253c);
-    border: 1px solid {alpha(ACCENT, 120)};
+        stop:0 rgba(30, 58, 138, 0.45), stop:1 rgba(15, 23, 42, 0.55));
+    border: 1px solid rgba(45, 212, 191, 0.30);
     border-radius: 16px;
 }}
 
 QFrame#chatAssistant {{
     background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-        stop:0 #14283b, stop:1 #0c1825);
-    border: 1px solid {alpha(ACCENT_SECONDARY, 110)};
+        stop:0 rgba(30, 41, 59, 0.55), stop:1 rgba(15, 23, 42, 0.65));
+    border: 1px solid rgba(167, 139, 250, 0.30);
     border-radius: 16px;
 }}
 
 QFrame#chatSystem {{
-    background: #251d18;
-    border: 1px solid {alpha(SEV_HIGH, 130)};
+    background: rgba(30, 41, 59, 0.50);
+    border: 1px solid rgba(251, 146, 60, 0.35);
     border-radius: 12px;
 }}
 
 QFrame#transitionVeil {{
-    background: #061017;
+    background: rgba(3, 7, 18, 0.85);
     border: none;
 }}
 
 QFrame#floatingStatusBar {{
-    background: rgba(10, 19, 32, 232);
-    border: 1px solid #2a5060;
-    border-radius: 15px;
+    background: rgba(15, 23, 42, 0.80);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    border-radius: 14px;
 }}
 
 QLabel#dockSignal {{
     color: {ACCENT};
     font-size: 10px;
-    font-weight: 800;
-    letter-spacing: 1px;
+    font-weight: 700;
+    letter-spacing: 0.8px;
 }}
 
 QLabel#dockItem {{
     color: {TEXT_SECONDARY};
     font-size: 10px;
-    font-weight: 650;
+    font-weight: 600;
     padding: 4px 9px;
-    background: rgba(22, 41, 57, 155);
-    border: 1px solid rgba(73, 124, 139, 105);
-    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 6px;
 }}
 
 QLabel#dockState {{
     color: {STATUS_OK};
     font-size: 10px;
-    font-weight: 800;
+    font-weight: 700;
 }}
 QLabel#dockState[state="running"] {{ color: {STATUS_WARN}; }}
 QLabel#dockState[state="error"] {{ color: {STATUS_ERROR}; }}
@@ -697,4 +701,4 @@ def severity_color(severity: str) -> str:
 
 def severity_bg(severity: str) -> str:
     """إرجاع خلفية شفافة مطابقة لمستوى الخطورة."""
-    return alpha(severity_color(severity), 36)
+    return f"rgba(45, 212, 191, 0.15)"

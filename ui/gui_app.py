@@ -2012,7 +2012,7 @@ class UnifiedCockpitWindow(QMainWindow):
         self.set_activity_state("running", f"يعمل — {title}")
         QApplication.setOverrideCursor(Qt.CursorShape.BusyCursor)
         self._busy_cursor_owned = True
-        self.chat_display.append(f"\n⚙️ [بدء] {title}")
+        self.chat_display.append(f"\n[بدء] {title}")
         self.scan_progress.show()
         self.scan_hint.setText(f"جارٍ التنفيذ: {title}")
         self.active_task_title = title
@@ -2446,7 +2446,7 @@ class UnifiedCockpitWindow(QMainWindow):
         if isinstance(result, Exception):
             self.active_result_handler = None
             self.set_activity_state("error", "فشل")
-            self.chat_display.append(f"❌ [خطأ] {title}: {result}")
+            self.chat_display.append(f"[خطأ] {title}: {result}")
             self.scan_hint.setText(f"تعذر إكمال: {title}")
             return
         if self.active_result_handler:
@@ -2455,17 +2455,17 @@ class UnifiedCockpitWindow(QMainWindow):
                 handler(result)
             except Exception as exc:
                 self.set_activity_state("error", "فشل")
-                self.chat_display.append(f"❌ [خطأ عرض] {title}: {exc}")
+                self.chat_display.append(f"[خطأ عرض] {title}: {exc}")
                 return
             self.set_activity_state("idle", "جاهز")
-            self.scan_hint.setText(f"✅ اكتمل: {title}")
-            self.chat_display.append(f"✅ [اكتمل] {title}")
+            self.scan_hint.setText(f"[اكتمل] {title}")
+            self.chat_display.append(f"[اكتمل] {title}")
             return
         findings = result if isinstance(result, list) else []
         self.render_findings(findings)
         self.set_activity_state("idle", "جاهز")
-        self.scan_hint.setText(f"✅ اكتمل: {title} | النتائج: {len(findings)}")
-        self.chat_display.append(f"✅ [اكتمل] {title} | النتائج: {len(findings)}")
+        self.scan_hint.setText(f"[اكتمل] {title} | النتائج: {len(findings)}")
+        self.chat_display.append(f"[اكتمل] {title} | النتائج: {len(findings)}")
         self._say(summarize_findings(findings, title))
 
     def render_findings(self, findings: list) -> None:
@@ -2607,10 +2607,10 @@ class UnifiedCockpitWindow(QMainWindow):
         self.refresh_library()
         lines = []
         for doc in result.get("imported", []):
-            lines.append(f"✅ تمت إضافة: {doc['title']} | {doc['chunks']} مقطع | {doc['total_chars']:,} حرف")
+            lines.append(f"[تم] أضيفت: {doc['title']} | {doc['chunks']} مقطع | {doc['total_chars']:,} حرف")
             lines.extend(doc.get("diagnostics", []))
         for failure in result.get("errors", []):
-            lines.append(f"❌ تعذر: {failure['path']}: {failure['error']}")
+            lines.append(f"[خطأ] تعذر: {failure['path']}: {failure['error']}")
         self.library_results.setPlainText("\n\n".join(lines) or "لم تتم إضافة أي ملف.")
 
     def rebuild_library_index(self) -> None:
