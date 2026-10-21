@@ -94,6 +94,32 @@ class AccentLine(QWidget):
         p.fillRect(self.rect(), gradient)
 
 
+class GlowReflection(QWidget):
+    """Ambient-only reflection: a soft light pool, never a duplicate of the icon."""
+
+    def __init__(self, parent=None, color: str = ACCENT):
+        super().__init__(parent)
+        self.color = QColor(color)
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.setFixedHeight(9)
+        self.setObjectName("glowReflection")
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        gradient = QRadialGradient(QPointF(self.width() / 2, 0), max(12, self.width() * 0.62))
+        glow = QColor(self.color)
+        glow.setAlpha(88)
+        gradient.setColorAt(0.0, glow)
+        glow.setAlpha(24)
+        gradient.setColorAt(0.42, glow)
+        glow.setAlpha(0)
+        gradient.setColorAt(1.0, glow)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(gradient)
+        painter.drawEllipse(QRectF(2, -3, max(4, self.width() - 4), 12))
+
+
 class NavIndicator(QWidget):
     """Sliding rim-light marker beside the active navigation button."""
 
@@ -135,6 +161,7 @@ class PressFeedbackController(QObject):
         super().__init__(root)
         self.effects = {}
         self.animations = {}
+        self.reflections = {}
         for button in root.findChildren(QPushButton):
             self.attach(button)
 
@@ -146,10 +173,17 @@ class PressFeedbackController(QObject):
         button.setGraphicsEffect(effect)
         button.installEventFilter(self)
         self.effects[button] = effect
+        reflection = GlowReflection(button, ACCENT)
+        reflection.setGeometry(8, max(0, button.height() - 2), max(4, button.width() - 16), 9)
+        reflection.show()
+        self.reflections[button] = reflection
         button.destroyed.connect(lambda _=None, key=button: self._forget(key))
 
     def _forget(self, button):
         self.effects.pop(button, None)
+        reflection = self.reflections.pop(button, None)
+        if reflection is not None:
+            reflection.deleteLater()
         animation = self.animations.pop(button, None)
         if animation is not None:
             animation.stop()
@@ -178,6 +212,10 @@ class PressFeedbackController(QObject):
     def eventFilter(self, watched, event):
         if watched not in self.effects:
             return super().eventFilter(watched, event)
+        if event.type() in (QEvent.Type.Resize, QEvent.Type.Show):
+            reflection = self.reflections.get(watched)
+            if reflection is not None:
+                reflection.setGeometry(8, max(0, watched.height() - 2), max(4, watched.width() - 16), 9)
         pressed = event.type() in (QEvent.Type.MouseButtonPress, QEvent.Type.KeyPress)
         released = event.type() in (QEvent.Type.MouseButtonRelease, QEvent.Type.KeyRelease)
         if pressed:

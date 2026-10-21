@@ -2,15 +2,15 @@
 from __future__ import annotations
 
 # ── ألوان Obsidian + Afyam Teal الأساسية لمنظومة العمليات ──
-BG_BASE = "#061017"
-BG_SURFACE = "#0a1822"
-BG_ELEVATED = "#102631"
-BG_HOVER = "#15333d"
-BG_INPUT = "#07131b"
+BG_BASE = "#050912"
+BG_SURFACE = "#0b1320"
+BG_ELEVATED = "#111d2d"
+BG_HOVER = "#182b3d"
+BG_INPUT = "#07101b"
 
 # ── الحدود والتوهج السيبراني ──
-BORDER = "#1a3b45"
-BORDER_LIGHT = "#16303a"
+BORDER = "#20394a"
+BORDER_LIGHT = "#1a2d40"
 BORDER_FOCUS = "#5eead4"
 BORDER_GLOW = "#522dd4bf"
 
@@ -50,7 +50,7 @@ CARD_ACCENTS = {
 }
 
 # ── الخطوط والأبعاد القياسية ──
-FONT_FAMILY = '"Noto Sans Arabic", "Cairo", "Segoe UI", "DejaVu Sans", sans-serif'
+FONT_FAMILY = '"Inter", "Noto Sans Arabic", "Cairo", "Segoe UI", "DejaVu Sans", sans-serif'
 FONT_SIZE_BASE = 13
 FONT_SIZE_SMALL = 11
 FONT_SIZE_TITLE = 18
@@ -80,6 +80,7 @@ QWidget {{
     color: {TEXT_PRIMARY};
     font-family: {FONT_FAMILY};
     font-size: {FONT_SIZE_BASE}px;
+    letter-spacing: 0.1px;
 }}
 
 QMainWindow, QDialog, QMessageBox {{
@@ -87,7 +88,8 @@ QMainWindow, QDialog, QMessageBox {{
 }}
 
 QMainWindow#cockpitWindow {{
-    background: {BG_BASE};
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+        stop:0 #050912, stop:0.52 #081321, stop:1 #0b1020);
 }}
 
 QWidget#appRoot, QWidget#mainArea {{
@@ -110,8 +112,8 @@ QScrollArea > QWidget > QWidget {{
 
 /* ── الشريط الجانبي الفخم ── */
 QFrame#sidebar {{
-    background: #08171e;
-    border-right: 1px solid #19353d;
+    background: rgba(7, 15, 26, 235);
+    border-right: 1px solid #1b3448;
 }}
 
 QPushButton#navButton {{
@@ -166,8 +168,8 @@ QPushButton#assistantNavButton:hover {{
 
 /* ── الشريط العلوي ── */
 QFrame#headerBar {{
-    background: #0a1b22;
-    border-bottom: 1px solid #193b43;
+    background: rgba(9, 17, 30, 220);
+    border-bottom: 1px solid #1b3448;
 }}
 
 QLabel#eyebrow {{
@@ -199,8 +201,9 @@ QLabel#clockDate {{
 
 /* ── بانر المهمة التكتيكي ── */
 QFrame#missionBanner {{
-    background: #0d232b;
-    border: 1px solid #24515a;
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+        stop:0 rgba(16, 34, 50, 225), stop:0.55 rgba(10, 25, 39, 205), stop:1 rgba(24, 20, 48, 190));
+    border: 1px solid #2c5668;
     border-right: 3px solid {ACCENT};
     border-radius: 18px;
 }}
@@ -218,14 +221,14 @@ QLabel#missionTitle {{
 
 /* ── بطاقات العمليات والحاويات ── */
 QFrame#card {{
-    background: #0d2028;
-    border: 1px solid #1b3b44;
-    border-radius: 12px;
+    background: rgba(13, 27, 43, 205);
+    border: 1px solid #203d50;
+    border-radius: 16px;
 }}
 
 QFrame#card:hover {{
-    border-color: #2c7776;
-    background: #102a31;
+    border-color: #3c8b91;
+    background: rgba(20, 43, 59, 225);
 }}
 
 QGroupBox {{
@@ -254,7 +257,7 @@ QGroupBox:hover {{
 
 /* ── الأزرار الفاخرة ── */
 QPushButton {{
-    background: #112a32;
+    background: rgba(18, 37, 53, 220);
     color: {TEXT_PRIMARY};
     border: 1px solid {alpha(ACCENT, 70)};
     border-radius: 11px;
@@ -264,7 +267,7 @@ QPushButton {{
 }}
 
 QPushButton:hover {{
-    background: #173943;
+    background: rgba(28, 61, 76, 235);
     border-color: {ACCENT};
     color: #ffffff;
 }}
@@ -343,7 +346,7 @@ QPushButton:disabled {{
 
 /* ── حقول الإدخال والكومبوبوكس ── */
 QLineEdit, QComboBox, QPlainTextEdit, QTextEdit {{
-    background: {BG_INPUT};
+    background: rgba(5, 14, 25, 220);
     color: {TEXT_PRIMARY};
     border: 1px solid {alpha(BORDER, 150)};
     border-radius: 11px;
@@ -641,6 +644,41 @@ QFrame#chatSystem {{
 QFrame#transitionVeil {{
     background: #061017;
     border: none;
+}}
+
+QFrame#floatingStatusBar {{
+    background: rgba(10, 19, 32, 232);
+    border: 1px solid #2a5060;
+    border-radius: 15px;
+}}
+
+QLabel#dockSignal {{
+    color: {ACCENT};
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 1px;
+}}
+
+QLabel#dockItem {{
+    color: {TEXT_SECONDARY};
+    font-size: 10px;
+    font-weight: 650;
+    padding: 4px 9px;
+    background: rgba(22, 41, 57, 155);
+    border: 1px solid rgba(73, 124, 139, 105);
+    border-radius: 8px;
+}}
+
+QLabel#dockState {{
+    color: {STATUS_OK};
+    font-size: 10px;
+    font-weight: 800;
+}}
+QLabel#dockState[state="running"] {{ color: {STATUS_WARN}; }}
+QLabel#dockState[state="error"] {{ color: {STATUS_ERROR}; }}
+
+QWidget#glowReflection {{
+    background: transparent;
 }}
 """
 

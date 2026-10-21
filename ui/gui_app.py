@@ -559,6 +559,25 @@ class UnifiedCockpitWindow(QMainWindow):
 
         main_layout.addWidget(scroll, 1)
 
+        # ── Dynamic floating status dock ──
+        dock = QFrame(objectName="floatingStatusBar")
+        dock.setFixedHeight(42)
+        dock_layout = QHBoxLayout(dock)
+        dock_layout.setContentsMargins(SP_MD, 5, SP_MD, 5)
+        dock_layout.setSpacing(SP_SM)
+        signal = QLabel("●  AYFAM LIVE DEFENSE")
+        signal.setObjectName("dockSignal")
+        dock_layout.addWidget(signal)
+        for text in ("LOCAL PROCESSING", "USB SENTRY", "AI READY"):
+            item = QLabel(text)
+            item.setObjectName("dockItem")
+            dock_layout.addWidget(item)
+        dock_layout.addStretch()
+        self.dock_state = QLabel("SYSTEM READY")
+        self.dock_state.setObjectName("dockState")
+        dock_layout.addWidget(self.dock_state)
+        main_layout.addWidget(dock)
+
         # ── Footer ──
         footer = QLabel(f"  {os.uname().nodename}  |  {APP_VERSION_LABEL}  |  التنفيذ محلي")
         footer.setObjectName("footer")
@@ -2006,6 +2025,11 @@ class UnifiedCockpitWindow(QMainWindow):
 
     def set_activity_state(self, state: str, text: str) -> None:
         self.status_badge.setText(text)
+        if hasattr(self, "dock_state"):
+            self.dock_state.setText({"idle": "SYSTEM READY", "running": "LIVE ANALYSIS", "error": "ATTENTION REQUIRED"}.get(state, "SYSTEM READY"))
+            self.dock_state.setProperty("state", state)
+            self.dock_state.style().unpolish(self.dock_state)
+            self.dock_state.style().polish(self.dock_state)
         status_text = {"idle": "[ جاهز ]", "running": "[ يعمل ]", "error": "[ خطأ ]"}.get(state, "[ جاهز ]")
         status_color = {"idle": STATUS_OK, "running": "#d29922", "error": STATUS_ERROR}.get(state, STATUS_OK)
         self.sidebar_status.setText(status_text)
