@@ -171,10 +171,10 @@ LOG_DIR="\${XDG_STATE_HOME:-\$HOME/.local/state}/ayfam"
 mkdir -p "\$LOG_DIR"
 LOG_FILE="\$LOG_DIR/gui.log"
 printf '[%s] Starting GUI as %s (DISPLAY=%s, WAYLAND_DISPLAY=%s)\\n' "\$(date '+%F %T')" "\$(id -un)" "\${DISPLAY:-unset}" "\${WAYLAND_DISPLAY:-unset}" >>"\$LOG_FILE"
-cd "\$APP_DIR"
+cd "$SCRIPT_DIR"
 export PYTHONUNBUFFERED=1
-export PYTHONPATH="\$APP_DIR\${PYTHONPATH:+:\$PYTHONPATH}"
-exec "$APP_PYTHON" "$APP_DIR/main.py" --gui "\$@" >>"\$LOG_FILE" 2>&1
+export PYTHONPATH="$SCRIPT_DIR\${PYTHONPATH:+:\$PYTHONPATH}"
+exec "$APP_PYTHON" "$SCRIPT_DIR/main.py" --gui "\$@" >>"\$LOG_FILE" 2>&1
 EOF
 sudo chmod +x "$GUI_LAUNCHER"
 
