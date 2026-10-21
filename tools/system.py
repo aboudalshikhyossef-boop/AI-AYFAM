@@ -144,10 +144,18 @@ def check_crontabs() -> dict:
         ("sudo crontab -l 2>/dev/null", "root cron"),
         ("cat /etc/crontab 2>/dev/null", "/etc/crontab"),
     ]
-    for d in ["/etc/cron.d", "/etc/cron.daily", "/etc/cron.weekly", "/etc/cron.monthly",
-              "/var/spool/cron/crontabs"]:
+    cron_dirs = ["/etc/cron.d", "/etc/cron.daily", "/etc/cron.weekly", "/etc/cron.monthly",
+                 "/var/spool/cron/crontabs"]
+    for d in cron_dirs:
         if os.path.isdir(d):
-            sources.append((f"cat {d}/* 2>/dev/null", d))
+            try:
+                for entry in os.listdir(d):
+                    fpath = os.path.join(d, entry)
+                    if os.path.isfile(fpath) and not os.path.islink(fpath):
+                        # Use safe_exec.run to safely read files without shell globbing/interpolation
+                        sources.append((fpath, d))
+            except OSError:
+                pass
 
     dangerous_patterns = [
         (r"(nc|ncat|netcat)\s+-[eln]", "Netcat reverse shell"),
@@ -161,8 +169,12 @@ def check_crontabs() -> dict:
     ]
 
     seen = set()
-    for cmd_str, source in sources:
-        _, out, _ = _run(cmd_str, timeout=10)
+    for cmd_str_or_path, source in sources:
+        if cmd_str_or_path.startswith("/") and os.path.isfile(cmd_str_or_path):
+            r = safe_exec.run(["cat", cmd_str_or_path], timeout=10)
+            out = r.stdout
+        else:
+            _, out, _ = _run(cmd_str_or_path, timeout=10)
         for line in out.split("\n"):
             line = line.strip()
             if not line or line.startswith("#") or len(line) < 8 or line in seen:
