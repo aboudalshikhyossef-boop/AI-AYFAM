@@ -41,18 +41,21 @@ class LogForensicsEngine:
         succ_pattern = re.compile(rf"Accepted (?:password|publickey) for (\S+) from {ip}")
 
         for line in content.splitlines():
-            m_fail = fail_pattern.search(line)
-            if m_fail:
-                user, address = m_fail.group(1), m_fail.group(2)
-                failed_by_ip[address] += 1
-                failed_by_user[user].add(address)
-                ip_timeline[address].append(('fail', user))
-
-            m_succ = succ_pattern.search(line)
-            if m_succ:
-                user, address = m_succ.group(1), m_succ.group(2)
-                successful_logins.add(address)
-                ip_timeline[address].append(('success', user))
+            # Bolt Optimization: Fast string pre-filter before running regex patterns
+            # avoids executing costly regex evaluation on millions of non-matching log lines
+            if "Failed password" in line:
+                m_fail = fail_pattern.search(line)
+                if m_fail:
+                    user, address = m_fail.group(1), m_fail.group(2)
+                    failed_by_ip[address] += 1
+                    failed_by_user[user].add(address)
+                    ip_timeline[address].append(('fail', user))
+            elif "Accepted" in line:
+                m_succ = succ_pattern.search(line)
+                if m_succ:
+                    user, address = m_succ.group(1), m_succ.group(2)
+                    successful_logins.add(address)
+                    ip_timeline[address].append(('success', user))
 
         for address, events in ip_timeline.items():
             fails_before_success = 0
