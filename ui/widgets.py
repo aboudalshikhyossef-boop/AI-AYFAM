@@ -1,4 +1,4 @@
-"""مكونات Qt6: خلفية غير حاجبة، لمعان يتبع المؤشر، وفقاعات محادثة قابلة للنسخ."""
+"""مكونات Qt6: خلفية زجاجية غير حاجبة، لمعان يتبع المؤشر، وفقاعات محادثة قابلة للنسخ بتصميم Dark Glassmorphism."""
 from __future__ import annotations
 
 import html
@@ -20,7 +20,7 @@ try:
 except ImportError:  # pragma: no cover - minimal Qt installations may omit Multimedia
     QSoundEffect = None
 
-from ui.theme import ACCENT, BG_BASE, SEV_SAFE, TEXT_MUTED, TEXT_SECONDARY, alpha
+from ui.theme import ACCENT, BG_BASE, SEV_SAFE, TEXT_MUTED, TEXT_PRIMARY, TEXT_SECONDARY, alpha
 
 
 class AmbientSurface(QWidget):
@@ -40,24 +40,24 @@ class AmbientSurface(QWidget):
 
     def paintEvent(self, event):
         p = QPainter(self)
-        p.fillRect(self.rect(), QColor(BG_BASE))
+        p.fillRect(self.rect(), QColor("#030712"))
         w, h = self.width(), self.height()
-        # Diffuse light has no solid circles or opaque shapes.
-        for color, cx, cy in (("#159e9a", 0.22, 0.1), ("#6941c6", 0.94, 0.76)):
+        # Diffuse Apple-style glass light pools
+        for color, cx, cy in (("#0d9488", 0.22, 0.1), ("#6366f1", 0.94, 0.76)):
             center = QPointF(w * (cx + 0.06 * math.sin(self._phase)), h * cy)
             g = QRadialGradient(center, max(w, h) * 0.8)
             c = QColor(color)
-            c.setAlpha(32)
+            c.setAlpha(28)
             g.setColorAt(0, c)
             c.setAlpha(0)
             g.setColorAt(1, c)
             p.fillRect(self.rect(), g)
-        # One moving, very faint diagonal light band.
+        # One moving, faint diagonal light band.
         g = QLinearGradient(0, 0, w, h)
         t = 0.5 + 0.18 * math.sin(self._phase * 0.6)
         g.setColorAt(0, QColor(45, 212, 191, 0))
         g.setColorAt(max(0, t - 0.15), QColor(45, 212, 191, 0))
-        g.setColorAt(t, QColor(45, 212, 191, 5))
+        g.setColorAt(t, QColor(45, 212, 191, 6))
         g.setColorAt(min(1, t + 0.15), QColor(167, 139, 250, 0))
         g.setColorAt(1, QColor(167, 139, 250, 0))
         p.fillRect(self.rect(), g)
@@ -66,11 +66,11 @@ class AmbientSurface(QWidget):
 class AccentLine(QWidget):
     """Thin animated palette sweep under the header using the brand signal colors."""
 
-    COLORS = ("#1b8f88", "#2dd4bf", "#5eead4", "#2dd4bf", "#1b8f88", "#2dd4bf", "#1b8f88")
+    COLORS = ("#0d9488", "#2dd4bf", "#5eead4", "#2dd4bf", "#0d9488", "#2dd4bf", "#0d9488")
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setFixedHeight(3)
+        self.setFixedHeight(2)
         self.phase = 0.0
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._tick)
@@ -89,7 +89,7 @@ class AccentLine(QWidget):
         last = len(self.COLORS) - 1
         for index, color in enumerate(self.COLORS):
             c = QColor(color)
-            c.setAlpha(190)
+            c.setAlpha(180)
             gradient.setColorAt(index / last, c)
         p.fillRect(self.rect(), gradient)
 
@@ -126,13 +126,13 @@ class NavIndicator(QWidget):
     def __init__(self, parent):
         super().__init__(parent)
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        self.setGeometry(3, 0, 5, 0)
+        self.setGeometry(3, 0, 4, 0)
         self.animation = QPropertyAnimation(self, b"geometry", self)
         self.animation.setDuration(260)
         self.animation.setEasingCurve(QEasingCurve.Type.OutBack)
 
     def move_to(self, button):
-        target = QRect(3, button.y() + 9, 5, max(10, button.height() - 18))
+        target = QRect(3, button.y() + 9, 4, max(10, button.height() - 18))
         if not self.isVisible() or self.height() == 0:
             self.setGeometry(target)
             self.show()
@@ -151,7 +151,7 @@ class NavIndicator(QWidget):
         gradient.setColorAt(1, QColor("#a78bfa"))
         p.setPen(Qt.PenStyle.NoPen)
         p.setBrush(gradient)
-        p.drawRoundedRect(QRectF(self.rect()), 2.5, 2.5)
+        p.drawRoundedRect(QRectF(self.rect()), 2.0, 2.0)
 
 
 class PressFeedbackController(QObject):
@@ -230,7 +230,7 @@ class PressFeedbackController(QObject):
 
 
 class TelemetryChart(QFrame):
-    """Lightweight interactive line chart for live dashboard telemetry."""
+    """Lightweight interactive line chart for live dashboard telemetry with dark glass styling."""
 
     def __init__(self, title="اتجاه القياسات الحية", parent=None):
         super().__init__(parent)
@@ -268,20 +268,20 @@ class TelemetryChart(QFrame):
     def paintEvent(self, event):
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        p.fillRect(self.rect(), QColor("#0b1c24"))
-        p.setPen(QPen(QColor("#1b3b44"), 1))
-        p.drawRoundedRect(QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5), 12, 12)
-        p.setPen(QColor(TEXT_PRIMARY if 'TEXT_PRIMARY' in globals() else "#f2fbfa"))
+        p.fillRect(self.rect(), QColor(15, 23, 42, 160))
+        p.setPen(QPen(QColor(255, 255, 255, 25), 1))
+        p.drawRoundedRect(QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5), 14, 14)
+        p.setPen(QColor("#f8fafc"))
         p.setFont(p.font())
         p.drawText(QRectF(18, 8, self.width() - 36, 22), Qt.AlignmentFlag.AlignRight, self.title)
-        p.setPen(QColor("#6d8a91"))
+        p.setPen(QColor("#64748b"))
 
         rect = self._plot_rect()
         for step in range(5):
             y = rect.bottom() - (rect.height() * step / 4)
-            p.setPen(QPen(QColor("#17313a"), 1, Qt.PenStyle.DotLine))
+            p.setPen(QPen(QColor(255, 255, 255, 15), 1, Qt.PenStyle.DotLine))
             p.drawLine(QPointF(rect.left(), y), QPointF(rect.right(), y))
-            p.setPen(QColor("#6d8a91"))
+            p.setPen(QColor("#64748b"))
             p.drawText(QRectF(8, y - 8, 30, 16), Qt.AlignmentFlag.AlignRight, str(step * 25))
 
         count = max((len(values) for values, _ in self.series.values()), default=0)
@@ -307,7 +307,7 @@ class TelemetryChart(QFrame):
             for point in points:
                 p.drawEllipse(point, 2.4, 2.4)
 
-        p.setPen(QColor("#6d8a91"))
+        p.setPen(QColor("#64748b"))
         for index, label in ((0, "-24"), (max(0, count // 3), "-16"), (max(0, (count * 2) // 3), "-8"), (count - 1, "الآن")):
             x = rect.left() + rect.width() * index / (count - 1)
             p.drawText(QRectF(x - 24, rect.bottom() + 8, 48, 16), Qt.AlignmentFlag.AlignCenter, label)
@@ -321,10 +321,10 @@ class TelemetryChart(QFrame):
                 if self.hover_index < len(values):
                     tooltip_lines.append(f"{label}: {values[self.hover_index]:.0f}")
             box = QRectF(max(8, x - 88), rect.top() + 8, 176, 22 + 18 * len(tooltip_lines))
-            p.setPen(QPen(QColor("#2c7776"), 1))
-            p.setBrush(QColor("#102a31"))
-            p.drawRoundedRect(box, 7, 7)
-            p.setPen(QColor("#f2fbfa"))
+            p.setPen(QPen(QColor(45, 212, 191, 100), 1))
+            p.setBrush(QColor(15, 23, 42, 230))
+            p.drawRoundedRect(box, 8, 8)
+            p.setPen(QColor("#f8fafc"))
             for row, text in enumerate(["نقطة القياس"] + tooltip_lines):
                 p.drawText(QRectF(box.left() + 10, box.top() + 7 + row * 18, box.width() - 20, 16), Qt.AlignmentFlag.AlignRight, text)
 
@@ -339,7 +339,7 @@ class TelemetryChart(QFrame):
 
 
 class SecurityGauge(QFrame):
-    """Compact posture gauge with a hover explanation for the current score."""
+    """Compact posture gauge with dark glass aesthetics and hover details."""
 
     def __init__(self, title="الجاهزية الأمنية", parent=None):
         super().__init__(parent)
@@ -365,19 +365,19 @@ class SecurityGauge(QFrame):
     def paintEvent(self, event):
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        p.fillRect(self.rect(), QColor("#0b1c24"))
-        p.setPen(QPen(QColor("#1b3b44"), 1))
-        p.drawRoundedRect(QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5), 12, 12)
+        p.fillRect(self.rect(), QColor(15, 23, 42, 160))
+        p.setPen(QPen(QColor(255, 255, 255, 25), 1))
+        p.drawRoundedRect(QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5), 14, 14)
         center = QPointF(self.width() / 2, self.height() / 2 + 8)
         radius = min(self.width(), self.height()) * 0.31
         base = QRectF(center.x() - radius, center.y() - radius, radius * 2, radius * 2)
-        p.setPen(QPen(QColor("#1b3b44"), 12, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+        p.setPen(QPen(QColor(255, 255, 255, 20), 12, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
         p.drawArc(base, 225 * 16, -270 * 16)
-        color = QColor("#6d8a91" if self.pending else "#34d399" if self.value >= 70 else "#f59e0b" if self.value >= 40 else "#f87171")
+        color = QColor("#64748b" if self.pending else "#34d399" if self.value >= 70 else "#f59e0b" if self.value >= 40 else "#f87171")
         p.setPen(QPen(color, 12, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
         if not self.pending:
             p.drawArc(base, 225 * 16, int(-270 * 16 * self.value / 100))
-        p.setPen(QColor("#f2fbfa")); p.setFont(p.font())
+        p.setPen(QColor("#f8fafc")); p.setFont(p.font())
         p.drawText(QRectF(0, center.y() - 18, self.width(), 34), Qt.AlignmentFlag.AlignCenter, "—" if self.pending else f"{self.value:.0f}%")
         p.setPen(QColor(TEXT_SECONDARY))
         p.drawText(QRectF(12, 16, self.width() - 24, 22), Qt.AlignmentFlag.AlignRight, self.title)
@@ -447,7 +447,6 @@ class HaloOverlay(QWidget):
             return
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        # GroupBox leaves room above its frame for the title.
         top = 1
         rect = QRectF(1, top, self.width() - 2, self.height() - top - 1)
         path = QPainterPath()
@@ -472,11 +471,7 @@ FLOW_PAIRS = {
 
 
 class FlowBorder(QWidget):
-    """Animated frame: a light comet travels around the border of tables and fields.
-
-    The overlay is clipped to a thin ring, so only the border pixels repaint each frame
-    (the content underneath is never redrawn) and nothing blocks the mouse or the text.
-    """
+    """Animated frame: a light comet travels around the border of tables and fields."""
 
     RING = 2
 
@@ -581,7 +576,7 @@ class FlowController(QObject):
 
 
 class HoverController(QObject):
-    """Polls the pointer (no application-wide event filter, so no per-event Python cost)."""
+    """Polls the pointer."""
 
     PANELS = ("card", "missionBanner", "chatComposer", "chatUser", "chatAssistant", "chatSystem")
 
@@ -610,7 +605,7 @@ class HoverController(QObject):
             if isinstance(widget, QLineEdit) and isinstance(widget.parentWidget(), QFrame) \
                     and widget.parentWidget().objectName() == "chatComposer":
                 widget.setCursor(Qt.CursorShape.IBeamCursor)
-                continue  # the composer pill already owns the rim
+                continue
             if isinstance(widget, (QLineEdit, QTextEdit, QPlainTextEdit)):
                 widget.setCursor(Qt.CursorShape.IBeamCursor)
             elif isinstance(widget, (QPushButton, QComboBox)):
@@ -622,9 +617,6 @@ class HoverController(QObject):
             widget.destroyed.connect(lambda _=None, key=widget: self._forget(key))
 
     def _forget(self, key):
-        # Qt may emit ``destroyed`` while QObject teardown has already
-        # removed Python attributes from the controller.  Cleanup must be
-        # idempotent and safe during interpreter/application shutdown.
         getattr(self, "overlays", {}).pop(key, None)
         getattr(self, "active", set()).discard(key)
         getattr(self, "animating", set()).discard(key)
@@ -692,7 +684,6 @@ class MessageBody(QTextEdit):
         option = self.document().defaultTextOption()
         option.setWrapMode(QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere)
         self.document().setDefaultTextOption(option)
-        # Preserve Arabic joining (no letter spacing); auto direction handles Arabic/English/code.
         self.setPlainText(text)
         cursor = self.textCursor()
         cursor.select(QTextCursor.SelectionType.Document)
@@ -732,7 +723,7 @@ class ChatBubble(QFrame):
         if role == "system":
             title, color = SYSTEM_KINDS.get(tag or "النظام", ("النظام", "#2dd4bf"))
             self.setStyleSheet(
-                f"QFrame#chatSystem {{ background: {alpha(color, 30)}; border: 1px solid {alpha(color, 150)}; border-radius: 14px; }}")
+                f"QFrame#chatSystem {{ background: rgba(30, 41, 59, 0.50); border: 1px solid rgba(255, 255, 255, 0.10); border-radius: 12px; }}")
             row = QHBoxLayout(self)
             row.setContentsMargins(14, 7, 14, 7)
             row.setSpacing(10)
@@ -740,7 +731,7 @@ class ChatBubble(QFrame):
             dot.setFixedSize(8, 8)
             dot.setStyleSheet(f"background: {color}; border-radius: 4px;")
             label = QLabel(title)
-            label.setStyleSheet(f"color: {color}; font-size: 11px; font-weight: 700;")
+            label.setStyleSheet(f"color: {color}; font-size: 11px; font-weight: 600;")
             self.body = QLabel(text)
             self.body.setWordWrap(True)
             self.body.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
@@ -760,7 +751,7 @@ class ChatBubble(QFrame):
         header = QHBoxLayout()
         header.setSpacing(12)
         name = QLabel("أنت" if role == "user" else "مساعد AYFAM")
-        name.setStyleSheet(f"color: {accent}; font-size: 11px; font-weight: 700;")
+        name.setStyleSheet(f"color: {accent}; font-size: 11px; font-weight: 600;")
         timestamp = QLabel(stamp)
         timestamp.setStyleSheet(f"color: {TEXT_MUTED}; font-size: 10px;")
         if role == "user":
@@ -792,15 +783,15 @@ def _action_button(label, kind=""):
     button.setCursor(Qt.CursorShape.PointingHandCursor)
     button.setMinimumHeight(32)
     button.setStyleSheet(
-        f"QPushButton {{ background: {alpha(color, 36)}; color: #eaf6ff; border: 1px solid {alpha(color, 170)}; "
-        f"border-radius: 11px; padding: 4px 14px; font-weight: 600; font-size: 12px; }}"
-        f"QPushButton:hover {{ background: {alpha(color, 90)}; border-color: {color}; }}"
-        f"QPushButton:disabled {{ color: #6f8aa3; background: transparent; border-color: #302e6685; }}")
+        f"QPushButton {{ background: rgba(255, 255, 255, 0.08); color: #f8fafc; border: 1px solid rgba(255, 255, 255, 0.16); "
+        f"border-radius: 10px; padding: 4px 14px; font-weight: 500; font-size: 12px; }}"
+        f"QPushButton:hover {{ background: rgba(255, 255, 255, 0.16); border-color: rgba(255, 255, 255, 0.30); }}"
+        f"QPushButton:disabled {{ color: #64748b; background: transparent; border-color: rgba(255, 255, 255, 0.05); }}")
     return button
 
 
 class ActionBubble(ChatBubble):
-    """Assistant bubble followed by one-shot buttons (save / discard / open ...)."""
+    """Assistant bubble followed by action buttons."""
 
     def __init__(self, text, actions, stamp):
         super().__init__(text, "assistant", stamp)
@@ -822,12 +813,12 @@ class ActionBubble(ChatBubble):
         if not sticky:
             for button in self.buttons:
                 button.setEnabled(False)
-            clicked.setText(f"{clicked.text()}  ✓")
+            clicked.setText(f"{clicked.text()}  [تم]")
         callback()
 
 
 class ResultsCard(QFrame):
-    """Tidy search results: summary, per-engine status, and one card per source."""
+    """Tidy search results with dark glass cards."""
 
     def __init__(self, report, title, stamp, actions):
         super().__init__()
@@ -842,7 +833,7 @@ class ResultsCard(QFrame):
         head = QHBoxLayout()
         name = QLabel(title or f"نتائج البحث عن «{report.query}»")
         name.setWordWrap(True)
-        name.setStyleSheet(f"color: {SEV_SAFE}; font-size: 12px; font-weight: 700;")
+        name.setStyleSheet(f"color: {SEV_SAFE}; font-size: 12px; font-weight: 600;")
         stamp_label = QLabel(stamp)
         stamp_label.setStyleSheet(f"color: {TEXT_MUTED}; font-size: 10px;")
         head.addWidget(name, 1)
@@ -857,8 +848,8 @@ class ResultsCard(QFrame):
             color = "#34d399" if good else ("#fb923c" if "غير مفعّل" in status or "لا " in status else "#f87171")
             chip = QLabel(f"{engine}: {status}" if not good else f"{engine}: {status.replace('يعمل — ', '')}")
             chip.setToolTip(f"{engine} — {status}")
-            chip.setStyleSheet(f"color: {color}; background: {alpha(color, 26)}; border: 1px solid {alpha(color, 120)}; "
-                               f"border-radius: 9px; padding: 2px 9px; font-size: 10px; font-weight: 600;")
+            chip.setStyleSheet(f"color: {color}; background: rgba(15, 23, 42, 0.60); border: 1px solid rgba(255, 255, 255, 0.12); "
+                               f"border-radius: 8px; padding: 2px 9px; font-size: 10px; font-weight: 600;")
             chips.addWidget(chip)
         chips.addStretch()
         box.addLayout(chips)
@@ -896,7 +887,7 @@ class ResultsCard(QFrame):
         if not sticky:
             for button in self.buttons:
                 button.setEnabled(False)
-            clicked.setText(f"{clicked.text()}  ✓")
+            clicked.setText(f"{clicked.text()}  [تم]")
         callback()
 
     def _hit_card(self, index, hit):
@@ -904,8 +895,8 @@ class ResultsCard(QFrame):
         card = QFrame()
         card.setObjectName("resultCard")
         card.setStyleSheet(
-            f"QFrame#resultCard {{ background: {alpha(color, 18)}; border: 1px solid {alpha(color, 110)}; border-radius: 14px; }}"
-            f"QFrame#resultCard:hover {{ background: {alpha(color, 36)}; border-color: {color}; }}")
+            f"QFrame#resultCard {{ background: rgba(15, 23, 42, 0.50); border: 1px solid rgba(255, 255, 255, 0.10); border-radius: 12px; }}"
+            f"QFrame#resultCard:hover {{ background: rgba(30, 41, 59, 0.65); border-color: rgba(255, 255, 255, 0.20); }}")
         lay = QVBoxLayout(card)
         lay.setContentsMargins(14, 10, 14, 10)
         lay.setSpacing(5)
@@ -914,13 +905,13 @@ class ResultsCard(QFrame):
         number = QLabel(str(index))
         number.setFixedSize(22, 22)
         number.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        number.setStyleSheet(f"background: {alpha(color, 60)}; color: #eaf6ff; border-radius: 11px; font-weight: 700; font-size: 11px;")
+        number.setStyleSheet(f"background: rgba(255, 255, 255, 0.10); color: #f8fafc; border-radius: 11px; font-weight: 600; font-size: 11px;")
         title = QLabel(hit.title)
         title.setWordWrap(True)
-        title.setStyleSheet("color: #eaf6ff; font-weight: 700; font-size: 13px; background: transparent; border: none;")
+        title.setStyleSheet("color: #f8fafc; font-weight: 600; font-size: 13px; background: transparent; border: none;")
         badge = QLabel(hit.engine_label)
-        badge.setStyleSheet(f"color: {color}; background: {alpha(color, 28)}; border: 1px solid {alpha(color, 140)}; "
-                            f"border-radius: 9px; padding: 1px 9px; font-size: 10px; font-weight: 700;")
+        badge.setStyleSheet(f"color: {color}; background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.10); "
+                            f"border-radius: 8px; padding: 1px 9px; font-size: 10px; font-weight: 600;")
         rel = QLabel(f"صلة {int(hit.relevance * 100)}%")
         rel.setStyleSheet(f"color: {TEXT_MUTED}; font-size: 10px; background: transparent; border: none;")
         top.addWidget(number, 0, Qt.AlignmentFlag.AlignTop)
@@ -939,7 +930,7 @@ class ResultsCard(QFrame):
         shown = hit.url if len(hit.url) <= 62 else hit.url[:59] + "…"
         link = QLabel(shown)
         link.setToolTip(hit.url)
-        link.setStyleSheet(f"color: {alpha(color, 230)}; font-size: 10px; background: transparent; border: none;")
+        link.setStyleSheet(f"color: {TEXT_MUTED}; font-size: 10px; background: transparent; border: none;")
         open_btn = _action_button("فتح الرابط", "")
         open_btn.setMinimumHeight(28)
         open_btn.clicked.connect(lambda _=False, u=hit.url: QDesktopServices.openUrl(QUrl(u)))
@@ -989,7 +980,6 @@ class ChatView(QScrollArea):
             return "user", text[5:].strip(), None
         if text.startswith("[الوكيل]"):
             return "assistant", text[8:].strip(), None
-        # Prefix based: a normal answer containing these words stays an assistant message.
         match = cls.SYSTEM_RE.match(text)
         if match:
             tag = "WARN" if match.group(1).startswith("تحذير") else match.group(1)
@@ -1008,14 +998,12 @@ class ChatView(QScrollArea):
         bar = self.verticalScrollBar()
         follow = bar.maximum() - bar.value() < 70
         self._insert_row(bubble, role, bubble)
-        # Bound the visual log, preventing unbounded widget/timer growth during long sessions.
         if len(self.bubbles) > 400:
             self.bubbles.pop(0)
             item = self.messages.takeAt(0)
             item.widget().deleteLater()
         if follow:
             QTimer.singleShot(30, lambda: bar.setValue(bar.maximum()))
-
 
     def _insert_row(self, widget, role, bubble):
         row = QWidget()
@@ -1057,7 +1045,7 @@ class ChatView(QScrollArea):
             self.append("[النظام] تفكير: " + "  ←  ".join(steps))
 
     def append_actions(self, text, actions):
-        """Assistant bubble with buttons: actions = [(label, callback, kind)] kind in primary|danger|''."""
+        """Assistant bubble with buttons."""
         bubble = ActionBubble(text, actions, datetime.now().strftime("%H:%M"))
         bubble.fit_width(self.viewport().width())
         return self._push(bubble)
