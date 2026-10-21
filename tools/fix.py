@@ -8,6 +8,7 @@ AI AYFAM - Auto-Fix Engine
 """
 
 import os
+import re
 from datetime import datetime
 
 from utils import safe_exec, validators
@@ -19,6 +20,35 @@ def _backup_file(path):
     backup = f"{path}.ayfam_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     res = safe_exec.run(["cp", "--", path, backup], sudo=True)
     return backup if res.ok else None
+
+
+def _validate_sshd_config(config: str) -> bool:
+    result = safe_exec.run(["sshd", "-t", "-f", config], sudo=True, check_binary=False)
+    return result.ok
+
+
+def _set_global_sshd_option(config: str, option: str, value: str):
+    """Set an sshd option before the first Match block, preserving the file."""
+    script = (
+        "import re,sys; p=sys.argv[1]; option=sys.argv[2]; value=sys.argv[3]; "
+        "lines=open(p,encoding='utf-8').read().splitlines(True); "
+        "match=next((i for i,x in enumerate(lines) if re.match(r'^\\s*Match\\s',x,re.I)),len(lines)); "
+        "pat=re.compile(r'^\\s*#?\\s*'+re.escape(option)+r'(\\s|$)',re.I); "
+        "changed=False; out=[]; "
+        "\nfor i,x in enumerate(lines):\n"
+        "  if i < match and pat.match(x):\n"
+        "    out.append(option+' '+value+'\\n'); changed=True\n"
+        "  else: out.append(x)\n"
+        "if not changed: out.insert(match, option+' '+value+'\\n')\n"
+        "open(p,'w',encoding='utf-8').writelines(out)"
+    )
+    return safe_exec.run(["python3", "-c", script, config, option, value], sudo=True)
+
+
+def _restore_backup(config: str, backup: str | None) -> bool:
+    if not backup:
+        return False
+    return safe_exec.run(["cp", "--", backup, config], sudo=True).ok
 
 
 FIX_REGISTRY = {}
@@ -40,9 +70,7 @@ def fix_enable_firewall():
     steps.append({"cmd": "ufw default deny incoming", "ok": r2.ok, "out": r2.stdout})
     r3 = safe_exec.run(["ufw", "default", "allow", "outgoing"], sudo=True)
     steps.append({"cmd": "ufw default allow outgoing", "ok": r3.ok, "out": r3.stdout})
-    r4 = safe_exec.run(["ufw", "allow", "22/tcp"], sudo=True)
-    steps.append({"cmd": "ufw allow 22/tcp (SSH)", "ok": r4.ok, "out": r4.stdout})
-    return {"success": all(s["ok"] for s in steps[:2]), "steps": steps}
+    return {"success": all(s["ok"] for s in steps), "steps": steps}
 
 
 @register_fix("disable_root_ssh")
@@ -50,18 +78,16 @@ def fix_disable_root_ssh():
     config = "/etc/ssh/sshd_config"
     backup = _backup_file(config)
     steps = [{"cmd": f"backup to {backup}", "ok": bool(backup)}]
-    r1 = safe_exec.run(["sed", "-i", "s/^PermitRootLogin.*/PermitRootLogin no/", config], sudo=True)
-    ok = r1.ok
-    if ok:
-        # تأكد أن السطر موجود فعلاً (sed لا يضيف سطراً جديداً إن لم يجد تطابقاً)
-        check = safe_exec.run(["grep", "-q", "^PermitRootLogin no", config], sudo=True)
-        if not check.ok:
-            r1b = safe_exec.write_file_privileged(config, "PermitRootLogin no\n", append=True)
-            ok = r1b.ok
-    steps.append({"cmd": "Set PermitRootLogin no", "ok": ok, "out": r1.stdout, "err": r1.stderr})
+    r1 = _set_global_sshd_option(config, "PermitRootLogin", "no")
+    steps.append({"cmd": "Set PermitRootLogin no", "ok": r1.ok, "out": r1.stdout, "err": r1.stderr})
+    if not r1.ok or not _validate_sshd_config(config):
+        _restore_backup(config, backup)
+        return {"success": False, "steps": steps + [{"cmd": "validate sshd config", "ok": False}], "backup": backup}
     r2 = safe_exec.run(["systemctl", "restart", "sshd"], sudo=True)
     steps.append({"cmd": "restart sshd", "ok": r2.ok, "out": r2.stdout})
-    return {"success": ok, "steps": steps, "backup": backup}
+    if not r2.ok:
+        _restore_backup(config, backup)
+    return {"success": r2.ok, "steps": steps, "backup": backup}
 
 
 @register_fix("remove_suid")
@@ -98,7 +124,7 @@ def fix_update_system():
     steps = []
     r1 = safe_exec.run(["apt-get", "update", "-y"], sudo=True, timeout=120)
     steps.append({"cmd": "apt-get update", "ok": r1.ok, "out": r1.stdout[:200]})
-    r2 = safe_exec.run(["apt-get", "upgrade", "-y"], sudo=True, timeout=300)
+    r2 = safe_exec.run(["apt-get", "upgrade", "-y"], sudo=True, timeout=1800)
     steps.append({"cmd": "apt-get upgrade", "ok": r2.ok, "out": r2.stdout[:200]})
     return {"success": r1.ok and r2.ok, "steps": steps}
 
@@ -117,15 +143,20 @@ def fix_kill_process(pid: str):
 def fix_disable_ssh_password_auth():
     config = "/etc/ssh/sshd_config"
     backup = _backup_file(config)
-    r1 = safe_exec.run(["sed", "-i", "s/^PasswordAuthentication.*/PasswordAuthentication no/", config], sudo=True)
-    ok = r1.ok
-    if ok:
-        check = safe_exec.run(["grep", "-q", "^PasswordAuthentication no", config], sudo=True)
-        if not check.ok:
-            r1b = safe_exec.write_file_privileged(config, "PasswordAuthentication no\n", append=True)
-            ok = r1b.ok
+    authorized_keys = os.path.expanduser("~/.ssh/authorized_keys")
+    if not os.path.isfile(authorized_keys):
+        return {"success": False, "error": "تم الإلغاء: لا يوجد ~/.ssh/authorized_keys؛ قد تفقد الوصول إلى SSH", "backup": backup}
+    r1 = _set_global_sshd_option(config, "PasswordAuthentication", "no")
+    steps = [{"cmd": "disable password auth", "ok": r1.ok}]
+    if not r1.ok or not _validate_sshd_config(config):
+        _restore_backup(config, backup)
+        steps.append({"cmd": "validate sshd config", "ok": False})
+        return {"success": False, "steps": steps, "backup": backup}
     r2 = safe_exec.run(["systemctl", "restart", "sshd"], sudo=True)
-    return {"success": ok, "steps": [{"cmd": "disable password auth", "ok": ok}, {"cmd": "restart sshd", "ok": r2.ok}], "backup": backup}
+    steps.append({"cmd": "restart sshd", "ok": r2.ok})
+    if not r2.ok:
+        _restore_backup(config, backup)
+    return {"success": r2.ok, "steps": steps, "backup": backup}
 
 
 @register_fix("remove_autorun")
@@ -171,10 +202,17 @@ def fix_change_dns(dns1: str = "1.1.1.1", dns2: str = "1.0.0.1"):
     for label, val in (("dns1", dns1), ("dns2", dns2)):
         if not validators.is_valid_ip(val):
             return {"success": False, "error": f"عنوان DNS غير صالح ({label}): {val}"}
-    backup = _backup_file("/etc/resolv.conf")
-    content = f"nameserver {dns1}\nnameserver {dns2}\n"
-    r = safe_exec.write_file_privileged("/etc/resolv.conf", content)
-    return {"success": r.ok, "steps": [{"cmd": f"set DNS to {dns1}, {dns2}", "ok": r.ok}], "backup": backup}
+    if safe_exec.run(["resolvectl", "status"], check_binary=False).ok:
+        interfaces = safe_exec.run(["resolvectl", "dns"], check_binary=False)
+        if not interfaces.ok:
+            return {"success": False, "error": "تعذر اكتشاف واجهة DNS عبر resolvectl"}
+        iface_names = re.findall(r"^([^\s:]+):", interfaces.stdout, flags=re.MULTILINE)
+        iface = next((name for name in iface_names if name != "Global"), "")
+        if not iface:
+            return {"success": False, "error": "لم يُعثر على واجهة شبكة لتغيير DNS"}
+        r = safe_exec.run(["resolvectl", "dns", iface, dns1, dns2], sudo=True)
+        return {"success": r.ok, "steps": [{"cmd": f"resolvectl dns {iface}", "ok": r.ok}], "persistent": False}
+    return {"success": False, "error": "resolvectl غير متاح؛ لم تتم الكتابة فوق /etc/resolv.conf"}
 
 
 def apply_fix(fix_id: str, **kwargs) -> dict:

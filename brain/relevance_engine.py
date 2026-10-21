@@ -30,6 +30,8 @@ from __future__ import annotations
 import re
 import json
 import pickle
+import os
+import stat
 import itertools
 from pathlib import Path
 from typing import Any
@@ -276,6 +278,21 @@ def is_index_built() -> bool:
     return VECTORIZER_PATH.exists() and MATRIX_PATH.exists() and CHUNK_IDS_PATH.exists()
 
 
+def _trusted_artifact(path: Path) -> bool:
+    """Reject symlinked or group/world-writable pickle artifacts before unpickling."""
+    try:
+        info = path.lstat()
+        if not stat.S_ISREG(info.st_mode) or path.is_symlink():
+            return False
+        if info.st_uid != os.geteuid():
+            return False
+        if info.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
+            return False
+        return True
+    except OSError:
+        return False
+
+
 def get_index_meta() -> dict:
     if META_PATH.exists():
         try:
@@ -304,6 +321,8 @@ def _load_index():
             "لم يُبنَ فهرس الذكاء بعد — شغّل أمر 'إعادة بناء فهرس الذكاء' "
             "بعد إضافة كتبك أولاً."
         )
+    if not _trusted_artifact(VECTORIZER_PATH) or not _trusted_artifact(MATRIX_PATH):
+        raise IndexNotBuiltError("ملفات فهرس الذكاء غير موثوقة أو قابلة للتعديل من مستخدم آخر")
     with open(VECTORIZER_PATH, "rb") as f:
         vectorizer = pickle.load(f)
     matrix = sparse.load_npz(MATRIX_PATH)
@@ -352,12 +371,21 @@ def build_index(kb, max_features: int = 80000) -> dict:
         return {"success": False, "error": f"تعذّر بناء الفهرس: {e}"}
 
     INTEL_DIR.mkdir(parents=True, exist_ok=True)
+    try:
+        INTEL_DIR.chmod(0o700)
+    except OSError:
+        pass
     with open(VECTORIZER_PATH, "wb") as f:
         pickle.dump(vectorizer, f)
     sparse.save_npz(MATRIX_PATH, matrix)
     CHUNK_IDS_PATH.write_text(json.dumps(chunk_ids))
     meta = {"chunks_indexed": len(chunk_ids), "vocabulary_size": len(vectorizer.vocabulary_)}
     META_PATH.write_text(json.dumps(meta))
+    for artifact in (VECTORIZER_PATH, MATRIX_PATH, CHUNK_IDS_PATH, META_PATH):
+        try:
+            artifact.chmod(0o600)
+        except OSError:
+            pass
 
     return {"success": True, **meta}
 

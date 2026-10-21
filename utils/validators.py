@@ -22,6 +22,13 @@ _IFACE_RE = re.compile(r"^[A-Za-z0-9_.:-]{1,32}$")
 _PORT_RANGE_RE = re.compile(r"^\d{1,5}(-\d{1,5})?$")
 _ADB_SERIAL_RE = re.compile(r"^[A-Za-z0-9_.:-]{1,64}$")
 _ANDROID_PKG_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$")
+_PROTECTED_PATHS = {
+    "/", "/bin", "/boot", "/dev", "/etc", "/lib", "/lib32", "/lib64",
+    "/proc", "/root", "/run", "/sbin", "/sys", "/usr", "/var",
+    "/etc/passwd", "/etc/shadow", "/etc/group", "/etc/gshadow",
+    "/etc/sudoers", "/etc/sudoers.d", "/etc/ssh/sshd_config",
+    "/etc/resolv.conf",
+}
 
 
 def is_valid_ip(value: str) -> bool:
@@ -72,6 +79,8 @@ def validate_pid(value: str):
     pid = int(v)
     if pid <= 1:
         return False, "لا يُسمح بإنهاء PID 1 (init/systemd) — قد يعطّل النظام بالكامل"
+    if pid == os.getpid():
+        return False, "لا يمكن للتطبيق إنهاء عملية AI AYFAM نفسها"
     return True, v
 
 
@@ -90,7 +99,7 @@ def validate_ip_for_fix(value: str):
 
 
 def validate_safe_path(value: str, must_be_absolute: bool = True):
-    """تحقق عام من مسار ملف: بدون '..'، وبدون بايتات فارغة."""
+    """تحقق من مسار ملف مع حظر جذور وملفات النظام الحرجة."""
     v = (value or "").strip()
     if not v or "\x00" in v:
         return False, f"مسار غير صالح: '{value}'"
@@ -98,6 +107,9 @@ def validate_safe_path(value: str, must_be_absolute: bool = True):
         return False, f"مسار يحتوي على '..' مرفوض لأسباب أمنية: '{value}'"
     if must_be_absolute and not os.path.isabs(v):
         return False, f"يجب أن يكون المسار مطلقاً: '{value}'"
+    normalized = os.path.normpath(v)
+    if normalized in _PROTECTED_PATHS:
+        return False, f"المسار محمي ولا يُسمح بتعديله تلقائياً: '{normalized}'"
     return True, v
 
 

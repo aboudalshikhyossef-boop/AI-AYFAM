@@ -549,10 +549,12 @@ class UnifiedCockpitWindow(QMainWindow):
 
     def closeEvent(self, event) -> None:
         if hasattr(self, "worker") and self.worker and self.worker.isRunning():
+            self.worker.requestInterruption()
             self.worker.quit()
-            if not self.worker.wait(1500):
-                self.worker.terminate()
-                self.worker.wait(500)
+            if not self.worker.wait(3000):
+                self.chat_display.append("[النظام] توجد عملية فحص جارية؛ أوقفها من المصدر ثم أغلق التطبيق لتجنب قطعها قسراً.")
+                event.ignore()
+                return
         super().closeEvent(event)
 
     def switch_page(self, key: str) -> None:
