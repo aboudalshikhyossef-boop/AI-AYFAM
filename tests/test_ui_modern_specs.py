@@ -79,6 +79,25 @@ class TestModernUiSpecs(unittest.TestCase):
         self.assertIn("def set_pending(self)", widgets_code)
         self.assertIn('"—" if self.pending', widgets_code)
 
+    def test_desktop_paths_and_telemetry_are_safe(self):
+        with open(ROOT_DIR / "ui/gui_app.py", "r", encoding="utf-8") as f:
+            code = f.read()
+        self.assertIn("QLineEdit(str(ROOT_DIR))", code)
+        self.assertIn("class LiveTelemetryWorker(QThread)", code)
+        self.assertIn("LiveReconEngine.get_live_connections()", code)
+        self.assertIn("self.telemetry_worker.start()", code)
+        self.assertNotIn("self.worker.terminate()", code)
+
+    def test_known_tool_catalog_has_no_duplicate_dictionary_keys(self):
+        import ast
+
+        source = (ROOT_DIR / "brain/tech_extractor.py").read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        assignment = next(node for node in ast.walk(tree) if isinstance(node, ast.Assign)
+                          and any(getattr(target, "id", "") == "KNOWN_TOOLS" for target in node.targets))
+        keys = [key.value for key in assignment.value.keys if isinstance(key, ast.Constant)]
+        self.assertEqual(len(keys), len(set(keys)))
+
     def test_main_cli_splash_flag(self):
         import argparse
         from main import parse_args

@@ -112,6 +112,21 @@ class WorkerThread(QThread):
             self.task_result.emit(exc)
 
 
+class LiveTelemetryWorker(QThread):
+    """Collect potentially slow ss/ps data outside the Qt GUI thread."""
+
+    result_ready = pyqtSignal(object)
+
+    def run(self) -> None:
+        try:
+            self.result_ready.emit({
+                "connections": LiveReconEngine.get_live_connections(),
+                "processes": LiveReconEngine.get_top_processes(20),
+            })
+        except Exception as exc:
+            self.result_ready.emit(exc)
+
+
 def _sev_brush(severity: str) -> QColor:
     return QColor(severity_color(severity))
 
@@ -302,6 +317,8 @@ class UnifiedCockpitWindow(QMainWindow):
         if hasattr(self, "setting_dark_mode"):
             self.setting_dark_mode.toggled.connect(self._toggle_dark_mode)
         self._busy_cursor_owned = False
+        self.telemetry_worker: LiveTelemetryWorker | None = None
+        self._last_telemetry_error = ""
 
         self.update_live_telemetry()
         self._sync_control_labels()
@@ -548,13 +565,15 @@ class UnifiedCockpitWindow(QMainWindow):
         QTimer.singleShot(60, self._place_nav_indicator)
 
     def closeEvent(self, event) -> None:
-        if hasattr(self, "worker") and self.worker and self.worker.isRunning():
-            self.worker.requestInterruption()
-            self.worker.quit()
-            if not self.worker.wait(3000):
-                self.chat_display.append("[النظام] توجد عملية فحص جارية؛ أوقفها من المصدر ثم أغلق التطبيق لتجنب قطعها قسراً.")
-                event.ignore()
-                return
+        running_workers = [worker for worker in (getattr(self, "worker", None), getattr(self, "telemetry_worker", None))
+                           if worker is not None and worker.isRunning()]
+        for worker in running_workers:
+            worker.requestInterruption()
+            worker.quit()
+        if any(not worker.wait(3000) for worker in running_workers):
+            self.chat_display.append("[النظام] توجد عملية فحص جارية؛ أوقفها من المصدر ثم أغلق التطبيق لتجنب قطعها قسراً.")
+            event.ignore()
+            return
         super().closeEvent(event)
 
     def switch_page(self, key: str) -> None:
@@ -822,7 +841,7 @@ class UnifiedCockpitWindow(QMainWindow):
         self.ip_target.setPlaceholderText("عنوان IP عام")
         self.website_input = QLineEdit()
         self.website_input.setPlaceholderText("https://example.com")
-        self.path_input = QLineEdit(".")
+        self.path_input = QLineEdit(str(ROOT_DIR))
         self.path_input.setPlaceholderText("مسار الفحص")
 
         grid.addWidget(QLabel("هدف المنافذ:"), 0, 0)
@@ -1105,7 +1124,7 @@ class UnifiedCockpitWindow(QMainWindow):
 
         path_row = QHBoxLayout()
         path_row.addWidget(QLabel("مسار الفحص للأدوات:"))
-        self.tool_path = QLineEdit(".")
+        self.tool_path = QLineEdit(str(ROOT_DIR))
         self.tool_path.setPlaceholderText("مسار الفحص (افتراضي: المجلد الحالي .)")
         path_row.addWidget(self.tool_path)
         layout.addLayout(path_row)
@@ -1647,9 +1666,30 @@ class UnifiedCockpitWindow(QMainWindow):
         table.verticalScrollBar().setValue(scroll)
 
     def update_live_telemetry(self) -> None:
+        if self.telemetry_worker is not None and self.telemetry_worker.isRunning():
+            return
+        self.telemetry_worker = LiveTelemetryWorker(self)
+        self.telemetry_worker.result_ready.connect(self._render_live_telemetry)
+        self.telemetry_worker.finished.connect(self._telemetry_finished)
+        self.telemetry_worker.start()
+
+    def _telemetry_finished(self) -> None:
+        worker = self.telemetry_worker
+        if worker is not None:
+            worker.deleteLater()
+        self.telemetry_worker = None
+
+    def _render_live_telemetry(self, result) -> None:
         try:
-            conns = LiveReconEngine.get_live_connections()
-            procs = LiveReconEngine.get_top_processes(20)
+            if isinstance(result, Exception):
+                message = str(result)
+                if message != self._last_telemetry_error:
+                    self.chat_display.append(f"[تحذير الرادار] {message}")
+                    self._last_telemetry_error = message
+                return
+            self._last_telemetry_error = ""
+            conns = result.get("connections", [])
+            procs = result.get("processes", [])
             conn_state = self._table_state(self.table_conns, 3)
             proc_state = self._table_state(self.table_procs, 1)
             for table in (self.table_conns, self.table_procs):
