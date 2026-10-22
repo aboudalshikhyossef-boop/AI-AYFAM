@@ -1,0 +1,209 @@
+"""
+AI AYFAM — Centralized Security Rules Registry
+سجل القواعد الأمني المركزي — يربط معرف القواعد (rule_id) بالمسميات الثنائية اللغتين،
+الوسوم الأمنية، ووسوم ATT&CK والتوصيات.
+"""
+
+from typing import Dict, Any, Optional
+from engine.finding import Finding
+
+RULES_REGISTRY: Dict[str, Dict[str, Any]] = {
+    "FIREWALL-001": {
+        "rule_id": "FIREWALL-001",
+        "title_ar": "الجدار الناري ufw معطل",
+        "title_en": "Uncomplicated Firewall (UFW) is disabled",
+        "category": "network",
+        "tags": ["firewall", "network", "system"],
+        "attack_ids": ["T1562.004"],
+        "severity": "critical",
+        "fix_template": "sudo ufw enable && sudo ufw default deny incoming && sudo ufw default allow outgoing",
+        "fix_id": "enable_firewall",
+    },
+    "SSH-001": {
+        "rule_id": "SSH-001",
+        "title_ar": "تسجيل دخول جذر SSH مسموح",
+        "title_en": "SSH root login permitted",
+        "category": "ssh",
+        "tags": ["ssh", "authentication", "network"],
+        "attack_ids": ["T1021.004", "T1078"],
+        "severity": "high",
+        "fix_template": "PermitRootLogin no\nsudo systemctl restart ssh",
+        "fix_id": "disable_root_ssh",
+    },
+    "SSH-002": {
+        "rule_id": "SSH-002",
+        "title_ar": "تسجيل دخول SSH بكلمة مرور مسموح",
+        "title_en": "SSH password authentication permitted",
+        "category": "ssh",
+        "tags": ["ssh", "authentication", "network"],
+        "attack_ids": ["T1110"],
+        "severity": "medium",
+        "fix_template": "PasswordAuthentication no\nsudo systemctl restart ssh",
+        "fix_id": "disable_ssh_password_auth",
+    },
+    "SYS-SUID-001": {
+        "rule_id": "SYS-SUID-001",
+        "title_ar": "ملف SUID حساس متاح",
+        "title_en": "Sensitive SUID binary found",
+        "category": "system",
+        "tags": ["suid", "privilege_escalation", "system"],
+        "attack_ids": ["T1548.001"],
+        "severity": "high",
+        "fix_template": "sudo chmod u-s {path}",
+        "fix_id": "remove_suid",
+    },
+    "SYS-WRITE-001": {
+        "rule_id": "SYS-WRITE-001",
+        "title_ar": "مسار نظام حساس قابل للكتابة للجميع",
+        "title_en": "World-writable system path detected",
+        "category": "system",
+        "tags": ["permissions", "system"],
+        "attack_ids": ["T1222.002"],
+        "severity": "high",
+        "fix_template": "sudo chmod o-w {path}",
+        "fix_id": "restrict_world_writable",
+    },
+    "SYS-USER-001": {
+        "rule_id": "SYS-USER-001",
+        "title_ar": "مستخدم بدون كلمة مرور",
+        "title_en": "User account without password",
+        "category": "users",
+        "tags": ["users", "authentication"],
+        "attack_ids": ["T1078"],
+        "severity": "critical",
+        "fix_template": "sudo passwd -l {user}",
+    },
+    "SYS-USER-SUDO": {
+        "rule_id": "SYS-USER-SUDO",
+        "title_ar": "مستخدم بصلاحيات sudo",
+        "title_en": "User with sudo privileges",
+        "category": "users",
+        "tags": ["users", "sudo", "privileges"],
+        "attack_ids": ["T1078.003"],
+        "severity": "info",
+        "fix_template": "",
+    },
+    "NET-PORT-001": {
+        "rule_id": "NET-PORT-001",
+        "title_ar": "منفذ مفتوح حساس أو محفوف بالمخاطر",
+        "title_en": "Sensitive open network port detected",
+        "category": "network",
+        "tags": ["open_port", "network", "listening"],
+        "attack_ids": ["T1043", "T1090"],
+        "severity": "medium",
+        "fix_template": "sudo ufw deny {port}/tcp",
+    },
+    "NET-SUSP-PROC": {
+        "rule_id": "NET-SUSP-PROC",
+        "title_ar": "عملية مريبة في /tmp أو /dev/shm",
+        "title_en": "Suspicious execution path detected in temporary directory",
+        "category": "process",
+        "tags": ["process", "suspicious_path", "execution"],
+        "attack_ids": ["T1059", "T1036"],
+        "severity": "critical",
+        "fix_template": "sudo kill -9 {pid}",
+        "fix_id": "kill_process",
+    },
+    "NET-PROMISC-001": {
+        "rule_id": "NET-PROMISC-001",
+        "title_ar": "واجهة شبكة في وضع Promiscuous",
+        "title_en": "Network interface in promiscuous mode",
+        "category": "network",
+        "tags": ["network", "sniffing", "promiscuous"],
+        "attack_ids": ["T1040"],
+        "severity": "high",
+        "fix_template": "sudo ip link set {iface} promisc off",
+    },
+    "USB-SUSP-001": {
+        "rule_id": "USB-SUSP-001",
+        "title_ar": "ملف تشغيل تلقائي أو ملف مريب على جهاز USB",
+        "title_en": "Autorun or suspicious file on USB storage device",
+        "category": "usb",
+        "tags": ["usb", "autorun", "initial_access"],
+        "attack_ids": ["T1091", "T1204"],
+        "severity": "high",
+        "fix_template": "rm -f {path}",
+        "fix_id": "remove_autorun",
+    },
+    "LOG-SSH-BRUTE": {
+        "rule_id": "LOG-SSH-BRUTE",
+        "title_ar": "محاولات تخمين هجوم القوة الغاشمة SSH",
+        "title_en": "SSH brute force attempts detected in logs",
+        "category": "logs",
+        "tags": ["ssh", "brute_force", "logs"],
+        "attack_ids": ["T1110"],
+        "severity": "high",
+        "fix_template": "sudo ufw deny from {ip}",
+        "fix_id": "ban_ip",
+    },
+    "LOG-SUDO-FAIL": {
+        "rule_id": "LOG-SUDO-FAIL",
+        "title_ar": "اخفاقات متكررة في استخدام sudo",
+        "title_en": "Repeated sudo authentication failures",
+        "category": "logs",
+        "tags": ["sudo", "logs", "authentication"],
+        "attack_ids": ["T1110"],
+        "severity": "medium",
+        "fix_template": "sudo grep 'sudo:' /var/log/auth.log | tail -n 20",
+    },
+    "SYS-UPDATE-001": {
+        "rule_id": "SYS-UPDATE-001",
+        "title_ar": "تحديثات أمنية معلقة",
+        "title_en": "Pending security updates available",
+        "category": "system",
+        "tags": ["updates", "vulnerabilities", "system"],
+        "attack_ids": ["T1190"],
+        "severity": "medium",
+        "fix_template": "sudo apt-get update && sudo apt-get upgrade -y",
+        "fix_id": "update_system",
+    },
+    "GENERIC-001": {
+        "rule_id": "GENERIC-001",
+        "title_ar": "نتيجة أمنية عامة",
+        "title_en": "General security finding",
+        "category": "general",
+        "tags": ["general"],
+        "attack_ids": [],
+        "severity": "info",
+        "fix_template": "",
+    },
+}
+
+
+def get_rule(rule_id: str) -> Dict[str, Any]:
+    return RULES_REGISTRY.get(rule_id, RULES_REGISTRY["GENERIC-001"])
+
+
+def create_finding(
+    rule_id: str,
+    title_ar: Optional[str] = None,
+    title_en: Optional[str] = None,
+    detail: str = "",
+    detail_en: Optional[str] = None,
+    severity: Optional[str] = None,
+    evidence: Optional[Dict[str, Any]] = None,
+    stable_key: Optional[str] = None,
+    fix: Optional[str] = None,
+    **kwargs,
+) -> Finding:
+    rule = get_rule(rule_id)
+    sev = severity or rule["severity"]
+    t_ar = title_ar or rule["title_ar"]
+    t_en = title_en or rule["title_en"]
+    fix_str = fix if fix is not None else rule["fix_template"]
+
+    return Finding(
+        rule_id=rule_id,
+        severity=sev,
+        title=t_ar,
+        title_en=t_en,
+        detail=detail,
+        detail_en=detail_en or detail,
+        fix=fix_str,
+        category=rule["category"],
+        tags=list(rule["tags"]),
+        attack_ids=list(rule["attack_ids"]),
+        evidence=evidence or {},
+        stable_key=stable_key,
+        **kwargs,
+    )

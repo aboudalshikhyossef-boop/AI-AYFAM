@@ -11,6 +11,7 @@ import platform
 from datetime import datetime
 
 from utils import safe_exec
+from engine.rules_registry import create_finding
 
 
 def _run(cmd, timeout=30):
@@ -120,19 +121,25 @@ def check_suid_files() -> dict:
             continue
 
         if any(path.startswith(sp) for sp in SUSPICIOUS_SUID_LOCATIONS):
-            result["findings"].append({
-                "severity": "critical",
-                "title": f"🔴 SUID في مكان خطير جداً: {path}",
-                "detail": "ملف SUID خارج النظام — يشير إلى rootkit أو اختراق",
-                "fix": f"chmod u-s '{path}'\nrm -f '{path}'  # إن لم يكن ملفاً أصلياً",
-            })
+            result["findings"].append(create_finding(
+                "SYS-SUID-001",
+                severity="critical",
+                title_ar=f"🔴 SUID في مكان خطير جداً: {path}",
+                detail="ملف SUID خارج النظام — يشير إلى rootkit أو اختراق",
+                fix=f"chmod u-s '{path}'\nrm -f '{path}'  # إن لم يكن ملفاً أصلياً",
+                evidence={"path": path},
+                stable_key=path,
+            ))
         else:
-            result["findings"].append({
-                "severity": "medium",
-                "title": f"SUID غير معروف — راجعه: {path}",
-                "detail": "خارج القائمة البيضاء لملفات SUID المعروفة",
-                "fix": f"file '{path}'\nchmod u-s '{path}'  # لإزالة SUID إن لم يكن ضرورياً",
-            })
+            result["findings"].append(create_finding(
+                "SYS-SUID-001",
+                severity="medium",
+                title_ar=f"SUID غير معروف — راجعه: {path}",
+                detail="خارج القائمة البيضاء لملفات SUID المعروفة",
+                fix=f"file '{path}'\nchmod u-s '{path}'  # لإزالة SUID إن لم يكن ضرورياً",
+                evidence={"path": path},
+                stable_key=path,
+            ))
     return result
 
 
@@ -186,21 +193,27 @@ def check_crontabs() -> dict:
             result["jobs"].append({"source": source, "job": line, "trusted": False})
             for pattern, desc in dangerous_patterns:
                 if re.search(pattern, line, re.IGNORECASE):
-                    result["findings"].append({
-                        "severity": "critical",
-                        "title": f"🔴 Cron خبيث ({desc}): {source}",
-                        "detail": f"السطر: {line[:200]}",
-                        "fix": "احذف فوراً: crontab -e",
-                    })
+                    result["findings"].append(create_finding(
+                        "NET-SUSP-PROC",
+                        severity="critical",
+                        title_ar=f"🔴 Cron خبيث ({desc}): {source}",
+                        detail=f"السطر: {line[:200]}",
+                        fix="احذف فوراً: crontab -e",
+                        evidence={"source": source, "line": line},
+                        stable_key=line,
+                    ))
                     break
             else:
                 if any(kw in line for kw in ["/tmp/", "/dev/shm", "chmod 777", "suid"]):
-                    result["findings"].append({
-                        "severity": "high",
-                        "title": f"Cron مشبوه من {source}: {line[:60]}",
-                        "detail": f"الأمر: {line[:200]}",
-                        "fix": "راجع: crontab -e",
-                    })
+                    result["findings"].append(create_finding(
+                        "NET-SUSP-PROC",
+                        severity="high",
+                        title_ar=f"Cron مشبوه من {source}: {line[:60]}",
+                        detail=f"الأمر: {line[:200]}",
+                        fix="راجع: crontab -e",
+                        evidence={"source": source, "line": line},
+                        stable_key=line,
+                    ))
     return result
 
 
@@ -227,23 +240,29 @@ def check_running_processes() -> dict:
         result["processes"].append({"user": user, "pid": pid, "cmd": cmd[:80]})
         for kw, (sev, desc) in suspicious_keywords.items():
             if kw in cmd:
-                result["findings"].append({
-                    "severity": sev,
-                    "title": f"عملية مشبوهة: {desc} (PID:{pid})",
-                    "detail": f"User: {user} | CMD: {cmd[:150]}",
-                    "fix": f"sudo kill -9 {pid}",
-                })
+                result["findings"].append(create_finding(
+                    "NET-SUSP-PROC",
+                    severity=sev,
+                    title_ar=f"عملية مشبوهة: {desc} (PID:{pid})",
+                    detail=f"User: {user} | CMD: {cmd[:150]}",
+                    fix=f"sudo kill -9 {pid}",
+                    evidence={"pid": pid, "user": user, "cmd": cmd},
+                    stable_key=f"{user}:{cmd[:50]}",
+                ))
                 break
         try:
             if float(cpu) > 95 and not any(
                 t in cmd for t in ("Xorg", "compiz", "gnome", "kde", "systemd", "kworker")
             ):
-                result["findings"].append({
-                    "severity": "medium",
-                    "title": f"استهلاك CPU مرتفع: {cmd[:50]} ({cpu}%)",
-                    "detail": f"PID:{pid} | User:{user}",
-                    "fix": f"sudo strace -p {pid} 2>&1 | head -10",
-                })
+                result["findings"].append(create_finding(
+                    "NET-SUSP-PROC",
+                    severity="medium",
+                    title_ar=f"استهلاك CPU مرتفع: {cmd[:50]} ({cpu}%)",
+                    detail=f"PID:{pid} | User:{user}",
+                    fix=f"sudo strace -p {pid} 2>&1 | head -10",
+                    evidence={"pid": pid, "cpu": cpu},
+                    stable_key=f"{pid}:{cmd[:50]}",
+                ))
         except ValueError:
             pass
     return result
@@ -261,19 +280,25 @@ def check_users_and_groups() -> dict:
         uid_int = int(uid) if uid.isdigit() else 9999
         result["users"].append({"user": user, "uid": uid, "shell": shell})
         if uid_int == 0 and user != "root":
-            result["findings"].append({
-                "severity": "critical",
-                "title": f"🔴 مستخدم بـ UID=0 غير root: {user}",
-                "detail": "يمتلك صلاحيات root كاملة!",
-                "fix": f"sudo userdel {user}",
-            })
+            result["findings"].append(create_finding(
+                "SYS-USER-001",
+                severity="critical",
+                title_ar=f"🔴 مستخدم بـ UID=0 غير root: {user}",
+                detail="يمتلك صلاحيات root كاملة!",
+                fix=f"sudo userdel {user}",
+                evidence={"user": user, "uid": uid},
+                stable_key=user,
+            ))
         elif uid_int >= 1000 and uid_int != 65534 and shell not in ("/bin/false", "/usr/sbin/nologin", "/sbin/nologin", "") and user != current_user:
-            result["findings"].append({
-                "severity": "info",
-                "title": f"مستخدم بصلاحية تسجيل دخول: {user} (UID:{uid})",
-                "detail": f"Shell: {shell}",
-                "fix": f"إن لم يكن ضرورياً: sudo usermod -s /usr/sbin/nologin {user}",
-            })
+            result["findings"].append(create_finding(
+                "SYS-USER-001",
+                severity="info",
+                title_ar=f"مستخدم بصلاحية تسجيل دخول: {user} (UID:{uid})",
+                detail=f"Shell: {shell}",
+                fix=f"إن لم يكن ضرورياً: sudo usermod -s /usr/sbin/nologin {user}",
+                evidence={"user": user, "uid": uid},
+                stable_key=user,
+            ))
     _, sudo_out, _ = _run("getent group sudo wheel admin 2>/dev/null")
     for line in sudo_out.split("\n"):
         parts = line.split(":")
@@ -282,12 +307,15 @@ def check_users_and_groups() -> dict:
                 m = m.strip()
                 if m:
                     result["sudo_users"].append(m)
-                    result["findings"].append({
-                        "severity": "info",
-                        "title": f"مستخدم sudo: {m} (مجموعة: {parts[0]})",
-                        "detail": "تأكد أن فقط المستخدمين الموثوقين في sudo",
-                        "fix": "",
-                    })
+                    result["findings"].append(create_finding(
+                        "SYS-USER-SUDO",
+                        severity="info",
+                        title_ar=f"مستخدم sudo: {m} (مجموعة: {parts[0]})",
+                        detail="تأكد أن فقط المستخدمين الموثوقين في sudo",
+                        fix="",
+                        evidence={"user": m, "group": parts[0]},
+                        stable_key=m,
+                    ))
     return result
 
 
@@ -307,26 +335,32 @@ def check_ssh_config() -> dict:
             continue
     cfg = result["config"]
     if cfg.get("permitrootlogin", "").lower() not in ("no", "prohibit-password", "forced-commands-only"):
-        result["findings"].append({
-            "severity": "high",
-            "title": "SSH يسمح بدخول root مباشر!",
-            "detail": f"PermitRootLogin = {cfg.get('permitrootlogin','default')}",
-            "fix": "PermitRootLogin no\nsudo systemctl restart ssh",
-        })
+        result["findings"].append(create_finding(
+            "SSH-001",
+            severity="high",
+            title_ar="SSH يسمح بدخول root مباشر!",
+            detail=f"PermitRootLogin = {cfg.get('permitrootlogin','default')}",
+            fix="PermitRootLogin no\nsudo systemctl restart ssh",
+            stable_key="permitrootlogin",
+        ))
     if cfg.get("passwordauthentication", "yes").lower() == "yes":
-        result["findings"].append({
-            "severity": "medium",
-            "title": "SSH يقبل كلمات المرور — استخدم SSH keys",
-            "detail": "PasswordAuthentication yes",
-            "fix": "PasswordAuthentication no  # في /etc/ssh/sshd_config",
-        })
+        result["findings"].append(create_finding(
+            "SSH-002",
+            severity="medium",
+            title_ar="SSH يقبل كلمات المرور — استخدم SSH keys",
+            detail="PasswordAuthentication yes",
+            fix="PasswordAuthentication no  # في /etc/ssh/sshd_config",
+            stable_key="passwordauth",
+        ))
     if cfg.get("port", "22") == "22":
-        result["findings"].append({
-            "severity": "low",
-            "title": "SSH على المنفذ الافتراضي 22",
-            "detail": "تغيير المنفذ يقلل Brute Force التلقائي",
-            "fix": "Port 2222  # في /etc/ssh/sshd_config",
-        })
+        result["findings"].append(create_finding(
+            "SSH-001",
+            severity="low",
+            title_ar="SSH على المنفذ الافتراضي 22",
+            detail="تغيير المنفذ يقلل Brute Force التلقائي",
+            fix="Port 2222  # في /etc/ssh/sshd_config",
+            stable_key="sshport",
+        ))
     return result
 
 
@@ -342,12 +376,15 @@ def check_world_writable() -> dict:
             continue
         result["files"].append(path)
         sev = "critical" if any(path.startswith(p) for p in ["/etc/", "/usr/bin/", "/bin/"]) else "high"
-        result["findings"].append({
-            "severity": sev,
-            "title": f"ملف نظام قابل للكتابة من الجميع: {path}",
-            "detail": "تصعيد الصلاحيات محتمل!",
-            "fix": f"sudo chmod o-w '{path}'",
-        })
+        result["findings"].append(create_finding(
+            "SYS-WRITE-001",
+            severity=sev,
+            title_ar=f"ملف نظام قابل للكتابة من الجميع: {path}",
+            detail="تصعيد الصلاحيات محتمل!",
+            fix=f"sudo chmod o-w '{path}'",
+            evidence={"path": path},
+            stable_key=path,
+        ))
     return result
 
 
@@ -359,24 +396,30 @@ def get_installed_packages_vulnerabilities() -> dict:
         result["updates_available"] = count
         if count > 0:
             sev = "high" if count > 20 else "medium" if count > 5 else "low"
-            result["findings"].append({
-                "severity": sev,
-                "title": f"تحديثات معلّقة: {count} حزمة",
-                "detail": "بعض التحديثات قد تشمل إصلاحات أمنية",
-                "fix": "sudo apt-get update && sudo apt-get upgrade -y",
-            })
+            result["findings"].append(create_finding(
+                "SYS-UPDATE-001",
+                severity=sev,
+                title_ar=f"تحديثات معلّقة: {count} حزمة",
+                detail="بعض التحديثات قد تشمل إصلاحات أمنية",
+                fix="sudo apt-get update && sudo apt-get upgrade -y",
+                evidence={"count": count},
+                stable_key="pending_updates",
+            ))
     except ValueError:
         pass
     _, sec_upd, _ = _run("apt-get -s upgrade 2>/dev/null | grep -i 'security' | wc -l", timeout=30)
     try:
         sec_count = int(sec_upd.strip())
         if sec_count > 0:
-            result["findings"].append({
-                "severity": "high",
-                "title": f"تحديثات أمنية معلّقة: {sec_count} حزمة",
-                "detail": "تحديثات تتضمن إصلاحات أمنية",
-                "fix": "sudo apt-get update && sudo apt-get upgrade -y",
-            })
+            result["findings"].append(create_finding(
+                "SYS-UPDATE-001",
+                severity="high",
+                title_ar=f"تحديثات أمنية معلّقة: {sec_count} حزمة",
+                detail="تحديثات تتضمن إصلاحات أمنية",
+                fix="sudo apt-get update && sudo apt-get upgrade -y",
+                evidence={"count": sec_count},
+                stable_key="pending_sec_updates",
+            ))
     except ValueError:
         pass
     return result
@@ -462,13 +505,15 @@ def analyze_logs() -> dict:
     result["sources"] = sources
     read = [s for s in sources if s["status"] == "read"]
     if not read:
-        result["findings"].append({
-            "severity": "medium", "category": "logs", "confidence": 0.9,
-            "title": "تعذّر قراءة سجلات المصادقة",
-            "detail": "لا توجد صلاحية لقراءة سجلات الدخول، لذلك لا يمكن القول إن النظام نظيف. المصادر المحاولة: "
+        result["findings"].append(create_finding(
+            "LOG-SSH-BRUTE",
+            severity="medium",
+            title_ar="تعذّر قراءة سجلات المصادقة",
+            detail="لا توجد صلاحية لقراءة سجلات الدخول، لذلك لا يمكن القول إن النظام نظيف. المصادر المحاولة: "
                       + "، ".join(f"{s['source']} ({'مرفوض' if s['status'] == 'denied' else 'فارغ'})" for s in sources),
-            "fix": "sudo usermod -aG adm,systemd-journal $USER   # ثم سجّل الخروج والدخول، أو شغّل التطبيق بصلاحيات sudo",
-        })
+            fix="sudo usermod -aG adm,systemd-journal $USER   # ثم سجّل الخروج والدخول، أو شغّل التطبيق بصلاحيات sudo",
+            stable_key="read_auth_logs",
+        ))
         return result
     brute_ips, invalid = {}, {}
     for line in lines:
@@ -487,55 +532,71 @@ def analyze_logs() -> dict:
             result["new_users"].append(line.strip()[-120:])
         if "Accepted" in line and "for root" in line:
             result["successful_root_logins"] += 1
-            result["findings"].append({
-                "severity": "high", "category": "logs", "confidence": 0.9,
-                "title": "دخول root ناجح عبر SSH",
-                "detail": line.strip()[:200],
-                "fix": "راجع هذا الدخول وعطّل الدخول المباشر: PermitRootLogin no في /etc/ssh/sshd_config ثم sudo systemctl restart ssh",
-            })
+            result["findings"].append(create_finding(
+                "SSH-001",
+                severity="high",
+                title_ar="دخول root ناجح عبر SSH",
+                detail=line.strip()[:200],
+                fix="راجع هذا الدخول وعطّل الدخول المباشر: PermitRootLogin no في /etc/ssh/sshd_config ثم sudo systemctl restart ssh",
+                stable_key="accepted_root",
+            ))
     result["brute_force_ips"] = brute_ips
     result["invalid_users"] = invalid
     for ip, count in brute_ips.items():
         if count >= 10:
-            result["findings"].append({
-                "severity": "high" if count >= 50 else "medium", "category": "logs", "confidence": 0.9,
-                "title": f"هجوم تخمين كلمات مرور من {ip} ({count} محاولة)",
-                "detail": f"{count} محاولة دخول فاشلة من {ip} ضمن السجلات المقروءة.",
-                "fix": f"sudo ufw deny from {ip}\nsudo fail2ban-client set sshd banip {ip}",
-                "evidence": {"ip": ip, "attempts": count},
-            })
+            result["findings"].append(create_finding(
+                "LOG-SSH-BRUTE",
+                severity="high" if count >= 50 else "medium",
+                title_ar=f"هجوم تخمين كلمات مرور من {ip} ({count} محاولة)",
+                detail=f"{count} محاولة دخول فاشلة من {ip} ضمن السجلات المقروءة.",
+                fix=f"sudo ufw deny from {ip}\nsudo fail2ban-client set sshd banip {ip}",
+                evidence={"ip": ip, "attempts": count},
+                stable_key=ip,
+            ))
     if invalid:
         top = sorted(invalid.items(), key=lambda x: -x[1])[:5]
-        result["findings"].append({
-            "severity": "medium" if sum(invalid.values()) >= 20 else "low", "category": "logs", "confidence": 0.85,
-            "title": f"محاولات بأسماء مستخدمين غير موجودة ({sum(invalid.values())})",
-            "detail": "مهاجمون يجرّبون أسماء شائعة مثل: " + "، ".join(f"{n} ({c})" for n, c in top),
-            "fix": "فعّل fail2ban وعطّل الدخول بكلمة المرور: PasswordAuthentication no",
-        })
+        result["findings"].append(create_finding(
+            "LOG-SSH-BRUTE",
+            severity="medium" if sum(invalid.values()) >= 20 else "low",
+            title_ar=f"محاولات بأسماء مستخدمين غير موجودة ({sum(invalid.values())})",
+            detail="مهاجمون يجرّبون أسماء شائعة مثل: " + "، ".join(f"{n} ({c})" for n, c in top),
+            fix="فعّل fail2ban وعطّل الدخول بكلمة المرور: PasswordAuthentication no",
+            stable_key="invalid_users",
+        ))
     if result["sudo_failures"] >= 3:
-        result["findings"].append({
-            "severity": "medium", "category": "logs", "confidence": 0.8,
-            "title": f"فشل صلاحيات sudo {result['sudo_failures']} مرة",
-            "detail": "محاولات رفع صلاحيات فاشلة؛ قد تكون أخطاء كتابة أو محاولة تخمين.",
-            "fix": "راجع من حاول: sudo grep 'sudo:' /var/log/auth.log | tail -n 20",
-        })
+        result["findings"].append(create_finding(
+            "LOG-SUDO-FAIL",
+            severity="medium",
+            title_ar=f"فشل صلاحيات sudo {result['sudo_failures']} مرة",
+            detail="محاولات رفع صلاحيات فاشلة؛ قد تكون أخطاء كتابة أو محاولة تخمين.",
+            fix="راجع من حاول: sudo grep 'sudo:' /var/log/auth.log | tail -n 20",
+            stable_key="sudo_failures",
+        ))
     for entry in result["new_users"][-3:]:
-        result["findings"].append({
-            "severity": "medium", "category": "logs", "confidence": 0.7,
-            "title": "إنشاء مستخدم جديد في السجلات", "detail": entry,
-            "fix": "تأكد أنك أنشأت الحساب بنفسك؛ وإلا احذفه: sudo userdel -r <name>",
-        })
+        result["findings"].append(create_finding(
+            "SYS-USER-001",
+            severity="medium",
+            title_ar="إنشاء مستخدم جديد في السجلات",
+            detail=entry,
+            fix="تأكد أنك أنشأت الحساب بنفسك؛ وإلا احذفه: sudo userdel -r <name>",
+            stable_key=entry,
+        ))
     if result["failed_logins"] > 5 and not brute_ips:
-        result["findings"].append({
-            "severity": "low", "category": "logs", "confidence": 0.7,
-            "title": f"محاولات تسجيل دخول فاشلة: {result['failed_logins']}", "detail": "متفرقة وليست من عنوان واحد متكرر.",
-            "fix": "sudo apt install fail2ban && sudo systemctl enable --now fail2ban",
-        })
+        result["findings"].append(create_finding(
+            "LOG-SSH-BRUTE",
+            severity="low",
+            title_ar=f"محاولات تسجيل دخول فاشلة: {result['failed_logins']}",
+            detail="متفرقة وليست من عنوان واحد متكرر.",
+            fix="sudo apt install fail2ban && sudo systemctl enable --now fail2ban",
+            stable_key="scattered_failures",
+        ))
     if not result["findings"]:
-        result["findings"].append({
-            "severity": "info", "category": "logs", "confidence": 0.9,
-            "title": "لا نشاط مشبوه في السجلات المقروءة",
-            "detail": "حُلّل " + "، ".join(f"{s['source']} ({s['lines']} سطر)" for s in read) + ". لا تخمين كلمات مرور ولا دخول root ولا مستخدمين جدد.",
-            "fix": "لا إجراء. أعد الفحص دورياً.",
-        })
+        result["findings"].append(create_finding(
+            "LOG-SSH-BRUTE",
+            severity="info",
+            title_ar="لا نشاط مشبوه في السجلات المقروءة",
+            detail="حُلّل " + "، ".join(f"{s['source']} ({s['lines']} سطر)" for s in read) + ". لا تخمين كلمات مرور ولا دخول root ولا مستخدمين جدد.",
+            fix="لا إجراء. أعد الفحص دورياً.",
+            stable_key="clean_logs",
+        ))
     return result

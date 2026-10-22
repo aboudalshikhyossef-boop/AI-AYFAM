@@ -1,7 +1,7 @@
 """
 AI AYFAM v5 — Normalized Finding Data Model
-نموذج النتائج الموحد — متوافق كلياً مع قواميس dict السابقة، مع دعم وسوم ATT&CK
-ودرجات المخاطر وحساب نقاط الاختناق.
+نموذج النتائج الموحد — متوافق كلياً مع قواميس dict السابقة، مع دعم معرّفات القواعد الثابتة
+(rule_id)، البصمات المقارنة (fingerprint)، ووسوم ATT&CK.
 """
 
 import hashlib
@@ -37,17 +37,34 @@ class Finding(dict):
         confidence: float = 1.0,
         title_en: Optional[str] = None,
         detail_en: Optional[str] = None,
+        rule_id: str = "GENERIC-001",
+        stable_key: Optional[str] = None,
+        fingerprint: Optional[str] = None,
     ):
         sev_clean = (severity or "info").lower()
         if sev_clean not in SEVERITY_WEIGHTS:
             sev_clean = "info"
 
-        # توليد معرف ثابت للنتيجة
-        id_material = f"{category}:{title}:{sev_clean}"
-        fid = hashlib.sha256(id_material.encode("utf-8")).hexdigest()[:16]
+        # حساب البصمة fingerprint والمُعرّف id
+        rule_clean = rule_id or "GENERIC-001"
+        ev_dict = evidence or {}
+
+        if not fingerprint:
+            key_part = stable_key or ""
+            if not key_part and ev_dict:
+                # استخراج جزء ثابت مفتاحي من الأدلة إذا لم يُمرّر
+                key_part = str(ev_dict.get("path") or ev_dict.get("ip") or ev_dict.get("port") or ev_dict.get("service") or ev_dict.get("pid") or "")
+            if not key_part:
+                key_part = title
+            fp_material = f"{rule_clean}:{key_part}"
+            fingerprint = hashlib.sha256(fp_material.encode("utf-8")).hexdigest()[:16]
+
+        fid = fingerprint
 
         super().__init__(
             id=fid,
+            fingerprint=fingerprint,
+            rule_id=rule_clean,
             severity=sev_clean,
             title=title,
             detail=detail,
@@ -55,7 +72,7 @@ class Finding(dict):
             category=category,
             tags=tags or [],
             attack_ids=attack_ids or [],
-            evidence=evidence or {},
+            evidence=ev_dict,
             fix_cmds=fix_cmds or ([fix] if fix and "\n" not in fix and not fix.startswith("#") else []),
             effort=effort,
             risk_of_fix=risk_of_fix,
@@ -68,6 +85,18 @@ class Finding(dict):
     @property
     def id(self) -> str:
         return self["id"]
+
+    @property
+    def fingerprint(self) -> str:
+        return self["fingerprint"]
+
+    @property
+    def rule_id(self) -> str:
+        return self["rule_id"]
+
+    @property
+    def category(self) -> str:
+        return self["category"]
 
     @property
     def severity(self) -> str:
@@ -98,4 +127,7 @@ class Finding(dict):
             confidence=d.get("confidence", 1.0),
             title_en=d.get("title_en"),
             detail_en=d.get("detail_en"),
+            rule_id=d.get("rule_id", "GENERIC-001"),
+            stable_key=d.get("stable_key"),
+            fingerprint=d.get("fingerprint"),
         )

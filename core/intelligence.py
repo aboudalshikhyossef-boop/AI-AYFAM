@@ -35,17 +35,17 @@ ARABIC_SEVERITY = {
 #  tools/network.py اليوم (عربية دائماً بغضّ النظر عن لغة الواجهة).
 # ─────────────────────────────────────────────────────────────────────────
 
-_FINDING_TAGS = {
-    "ssh_root_login":      ["SSH يسمح بدخول root"],
-    "ssh_password_auth":   ["SSH يقبل كلمات المرور"],
-    "firewall_disabled":   ["جدار الحماية UFW معطَّل", "UFW Firewall is disabled"],
-    "dangerous_port_open": ["منفذ خطير مفتوح", "خدمة مكشوفة على جميع الواجهات"],
-    "brute_force":         ["هجوم Brute Force"],
-    "successful_root_ssh": ["دخول root ناجح عبر SSH"],
-    "rogue_uid0_user":     ["مستخدم بـ UID=0 غير root"],
-    "malicious_cron":      ["Cron خبيث"],
-    "dangerous_suid":      ["SUID في مكان خطير جداً"],
-    "world_writable":      ["ملف نظام قابل للكتابة من الجميع"],
+_RULE_ID_TAGS = {
+    "ssh_root_login":      ["SSH-001"],
+    "ssh_password_auth":   ["SSH-002"],
+    "firewall_disabled":   ["FIREWALL-001"],
+    "dangerous_port_open": ["NET-PORT-001"],
+    "brute_force":         ["LOG-SSH-BRUTE"],
+    "successful_root_ssh": ["SSH-001"],
+    "rogue_uid0_user":     ["SYS-USER-001"],
+    "malicious_cron":      ["NET-SUSP-PROC"],
+    "dangerous_suid":      ["SYS-SUID-001"],
+    "world_writable":      ["SYS-WRITE-001"],
 }
 
 CORRELATION_RULES = [
@@ -106,13 +106,34 @@ CORRELATION_RULES = [
 ]
 
 
+_LEGACY_TITLE_KEYWORDS = {
+    "ssh_root_login":      ["SSH يسمح بدخول root", "PermitRootLogin"],
+    "ssh_password_auth":   ["SSH يقبل كلمات المرور", "PasswordAuthentication"],
+    "firewall_disabled":   ["جدار الحماية UFW معطَّل", "UFW Firewall is disabled"],
+    "dangerous_port_open": ["منفذ خطير مفتوح", "خدمة مكشوفة على جميع الواجهات"],
+    "brute_force":         ["هجوم Brute Force", "هجوم تخمين"],
+    "successful_root_ssh": ["دخول root ناجح عبر SSH"],
+    "rogue_uid0_user":     ["مستخدم بـ UID=0 غير root"],
+    "malicious_cron":      ["Cron خبيث"],
+    "dangerous_suid":      ["SUID في مكان خطير جداً"],
+    "world_writable":      ["ملف نظام قابل للكتابة من الجميع"],
+}
+
 def _tag_findings(findings: List[Dict]) -> Dict[str, List[Dict]]:
-    """يُرجع dict: وسم -> قائمة النتائج المطابقة له (بحسب عنوانها)."""
+    """يُرجع dict: وسم -> قائمة النتائج المطابقة له بحسب rule_id أو tags مع دعم التوافق العكسي للأناوين."""
     tagged: Dict[str, List[Dict]] = {}
     for f in findings:
+        r_id = f.get("rule_id", "")
+        f_tags = f.get("tags") or []
         title = f.get("title", "")
-        for tag, keywords in _FINDING_TAGS.items():
-            if any(kw in title for kw in keywords):
+        for tag, rule_ids in _RULE_ID_TAGS.items():
+            # Match by rule_id, tags, or legacy keywords fallback
+            matched = (
+                r_id in rule_ids
+                or any(t in f_tags for t in rule_ids)
+                or any(kw in title for kw in _LEGACY_TITLE_KEYWORDS.get(tag, []))
+            )
+            if matched:
                 tagged.setdefault(tag, []).append(f)
     return tagged
 
@@ -343,7 +364,10 @@ Findings Summary:
         cur_risk = current.get("risk", {}) or {}
 
         def _key(f):
-            return (f.get("title", "")[:60], f.get("severity", ""))
+            fp = f.get("fingerprint") or f.get("id")
+            if fp:
+                return fp
+            return (f.get("rule_id", ""), f.get("title", "")[:60], f.get("severity", ""))
 
         prev_map = {_key(f): f for f in prev_findings}
         cur_map = {_key(f): f for f in cur_findings}
