@@ -1,0 +1,121 @@
+{
+  "sysctl_rules": [
+    {
+      "key": "kernel.kptr_restrict",
+      "expected_value": "2",
+      "severity": "high",
+      "rule_id": "KERN-SYSCTL-001",
+      "title_ar": "تقييد مؤشرات النواة kernel.kptr_restrict معطّل أو غير كافٍ",
+      "title_en": "Kernel pointer restriction disabled or insufficient",
+      "rationale": "خفي عناوين مؤشرات النواة للحد من هجمات استغلال الذاكرة وتصعيد الصلاحيات.",
+      "attack_ids": ["T1068"],
+      "cis_id": "CIS 1.5.1",
+      "risk_of_fix": "low"
+    },
+    {
+      "key": "kernel.dmesg_restrict",
+      "expected_value": "1",
+      "severity": "medium",
+      "rule_id": "KERN-SYSCTL-002",
+      "title_ar": "وصول غير السوبر-يوزر لسجلات dmesg متاح",
+      "title_en": "Unprivileged dmesg log access permitted",
+      "rationale": "يمنع المستخدمين غير الموثوقين من قراءة سجلات النواة المسربة للمعلومات الحساسة.",
+      "attack_ids": ["T1082"],
+      "cis_id": "CIS 1.5.2",
+      "risk_of_fix": "low"
+    },
+    {
+      "key": "kernel.perf_event_paranoid",
+      "expected_value": "2",
+      "severity": "medium",
+      "rule_id": "KERN-SYSCTL-003",
+      "title_ar": "أحداث الأداء perf_event غير مقيدة للمستخدم العادي",
+      "title_en": "Unprivileged perf event monitoring permitted",
+      "rationale": "يمنع استغلال أحداث الأداء لشن هجمات القنوات الجانبية وسرقة البيانات.",
+      "attack_ids": ["T1068"],
+      "cis_id": "CIS 1.5.3",
+      "risk_of_fix": "low"
+    },
+    {
+      "key": "kernel.unprivileged_bpf_disabled",
+      "expected_value": "1",
+      "severity": "high",
+      "rule_id": "KERN-SYSCTL-004",
+      "title_ar": "تحميل BPF للمستخدم غير المرفوع متاح",
+      "title_en": "Unprivileged BPF loading enabled",
+      "rationale": "يمنع المستخدمين العاديين من تحميل برامج eBPF قد تُستغل في الثغرات.",
+      "attack_ids": ["T1574"],
+      "cis_id": "CIS 1.5.4",
+      "risk_of_fix": "low"
+    },
+    {
+      "key": "kernel.yama.ptrace_scope",
+      "expected_value": "1",
+      "severity": "high",
+      "rule_id": "KERN-SYSCTL-005",
+      "title_ar": "نطاق ptrace يسمح للعمليات بفحص العمليات الأخرى",
+      "title_en": "ptrace scope permits unprivileged process memory inspection",
+      "rationale": "يمنع البرمجيات الخبيثة من قراءة ذاكرة العمليات الأخرى أو استخراج الاعتمادات.",
+      "attack_ids": ["T1055"],
+      "cis_id": "CIS 1.5.5",
+      "risk_of_fix": "low"
+    },
+    {
+      "key": "kernel.sysrq",
+      "expected_value": "0",
+      "severity": "low",
+      "rule_id": "KERN-SYSCTL-006",
+      "title_ar": "مفاتيح Magic SysRq مفعّلة بالكامل",
+      "title_en": "Magic SysRq key fully enabled",
+      "rationale": "تعطيل SysRq يمنع تجاوز الحماية الفيزيائية للوحة المفاتيح.",
+      "attack_ids": ["T1200"],
+      "risk_of_fix": "low"
+    },
+    {
+      "key": "fs.protected_fifos",
+      "expected_value": "2",
+      "severity": "medium",
+      "rule_id": "KERN-SYSCTL-007",
+      "title_ar": "حماية أنابيب FIFO في المجلدات المشتركة معطلة",
+      "title_en": "Protected FIFO pipes in shared directories disabled",
+      "rationale": "يمنع هجمات التعدي وقراءة الأنابيب في /tmp.",
+      "attack_ids": ["T1036"],
+      "risk_of_fix": "low"
+    },
+    {
+      "key": "kernel.unprivileged_userns_clone",
+      "expected_value": "0",
+      "severity": "medium",
+      "rule_id": "KERN-SYSCTL-008",
+      "title_ar": "نطاقات مستخدمين غير المرفوعين unprivileged_userns متاحة",
+      "title_en": "Unprivileged user namespaces clone enabled",
+      "rationale": "يقلل سطح الهجوم على ثغرات النواة المتعلقة بالنطاقات المستقلة.",
+      "attack_ids": ["T1068"],
+      "risk_of_fix": "medium"
+    },
+    {
+      "key": "net.ipv4.conf.all.accept_redirects",
+      "expected_value": "0",
+      "severity": "medium",
+      "rule_id": "KERN-SYSCTL-009",
+      "title_ar": "قَبول إعادة التوجيه ICMP Redirects متاح",
+      "title_en": "ICMP Redirect acceptance enabled",
+      "rationale": "يمنع هجمات المفهوم المزدوج رجل في المنتصف (MITM) عبر إعادة التوجيه.",
+      "attack_ids": ["T1557"],
+      "cis_id": "CIS 3.2.1",
+      "risk_of_fix": "low"
+    },
+    {
+      "key": "net.ipv4.conf.all.send_redirects",
+      "expected_value": "0",
+      "severity": "medium",
+      "rule_id": "KERN-SYSCTL-010",
+      "title_ar": "إرسال إعادة التوجيه ICMP Redirects متاح",
+      "title_en": "ICMP Redirect sending enabled",
+      "rationale": "يمنع تحويل جهازك إلى موجه زائف على الشبكة المحلية.",
+      "attack_ids": ["T1557"],
+      "cis_id": "CIS 3.2.2",
+      "risk_of_fix": "low"
+    }
+  ]
+}
