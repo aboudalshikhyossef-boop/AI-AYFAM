@@ -258,9 +258,6 @@ class GeminiThreatClient:
         if not self.api_key:
             raise GeminiCTIError("Gemini API key is missing")
 
-    def close(self) -> None:
-        self._client = None
-
     def ask_assistant(self, prompt: str, system_context: str = "") -> str:
         """Make exactly one compact Gemini request; no SDK/model fallback burst."""
         sys_instruction = (

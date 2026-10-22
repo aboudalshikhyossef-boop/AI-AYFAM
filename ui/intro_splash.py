@@ -210,7 +210,7 @@ class AyfamIntroSplash(QWidget):
         """)
         brand_titles.addWidget(sub_lbl)
 
-        tagline = QLabel("تحكم كامل • حماية فورية للأجهزة • مساعدة ذكية محلية 100%")
+        tagline = QLabel("تحكم كامل • حماية فورية للأجهزة • معالجة محلية مع دعم استخبارات Gemini الهجينة")
         tagline.setStyleSheet(f"""
             color: {TEXT_MUTED};
             font-size: 11px;

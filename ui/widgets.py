@@ -308,9 +308,9 @@ class TelemetryChart(QFrame):
                 p.drawEllipse(point, 2.4, 2.4)
 
         p.setPen(QColor("#64748b"))
-        for index, label in ((0, "-24"), (max(0, count // 3), "-16"), (max(0, (count * 2) // 3), "-8"), (count - 1, "الآن")):
+        for index, label in ((0, "قبل 72 ثانية"), (max(0, count // 3), "قبل 48ث"), (max(0, (count * 2) // 3), "قبل 24ث"), (count - 1, "الآن")):
             x = rect.left() + rect.width() * index / (count - 1)
-            p.drawText(QRectF(x - 24, rect.bottom() + 8, 48, 16), Qt.AlignmentFlag.AlignCenter, label)
+            p.drawText(QRectF(x - 36, rect.bottom() + 8, 72, 16), Qt.AlignmentFlag.AlignCenter, label)
 
         if 0 <= self.hover_index < count:
             x = rect.left() + rect.width() * self.hover_index / (count - 1)
