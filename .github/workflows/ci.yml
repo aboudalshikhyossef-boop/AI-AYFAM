@@ -34,7 +34,6 @@ jobs:
       - name: Run code linters
         run: |
           .venv/bin/ruff check --select F811,F821,F601,E722 .
-          .venv/bin/pyflakes --version
       - name: Compile Python sources
         run: .venv/bin/python -m compileall -q .
       - name: Run tests
