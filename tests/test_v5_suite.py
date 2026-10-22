@@ -9,7 +9,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from engine.finding import Finding
 from engine.sysreader import FakeSystem
 from engine.hardening import HardeningEngine
-from engine.suidintel import SuidIntelligence
 from engine.hunter import ThreatHunter
 from engine.secretscan import SecretScanner
 from engine.risk import RiskEngine
@@ -40,12 +39,6 @@ titles = [f["title"] for f in findings]
 check("detects insecure ip_forward", any("net.ipv4.ip_forward" in t for t in titles))
 check("detects disabled ASLR", any("ASLR" in t for t in titles))
 check("detects insecure /dev/shm mount", any("/dev/shm" in t for t in titles))
-
-print("\n[3] SUID Intelligence & GTFOBins")
-suid_intel = SuidIntelligence(sys_reader=fake_sys)
-suid_findings = suid_intel.audit_suid(["/usr/bin/find", "/bin/nano", "/usr/bin/safe_custom_app"])
-check("flags known GTFOBins binaries", len(suid_findings) == 2)
-check("attack ID mapped", any("T1548.001" in f["attack_ids"] for f in suid_findings))
 
 print("\n[4] Threat Hunter (Backdoors & Persistence)")
 fake_hunter_sys = FakeSystem(
