@@ -40,6 +40,7 @@ class Finding(dict):
         rule_id: str = "GENERIC-001",
         stable_key: Optional[str] = None,
         fingerprint: Optional[str] = None,
+        **kwargs,
     ):
         sev_clean = (severity or "info").lower()
         if sev_clean not in SEVERITY_WEIGHTS:
@@ -80,6 +81,7 @@ class Finding(dict):
             title_en=title_en or title,
             detail_en=detail_en or detail,
             score=int(SEVERITY_WEIGHTS.get(sev_clean, 2) * confidence),
+            **kwargs,
         )
 
     @property

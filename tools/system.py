@@ -499,104 +499,16 @@ def _read_log_sources() -> tuple[list[str], list[dict]]:
 
 
 def analyze_logs() -> dict:
-    result = {"findings": [], "brute_force_ips": {}, "failed_logins": 0, "successful_root_logins": 0, "sources": [],
-              "invalid_users": {}, "sudo_failures": 0, "new_users": []}
-    lines, sources = _read_log_sources()
-    result["sources"] = sources
-    read = [s for s in sources if s["status"] == "read"]
-    if not read:
-        result["findings"].append(create_finding(
-            "LOG-SSH-BRUTE",
-            severity="medium",
-            title_ar="تعذّر قراءة سجلات المصادقة",
-            detail="لا توجد صلاحية لقراءة سجلات الدخول، لذلك لا يمكن القول إن النظام نظيف. المصادر المحاولة: "
-                      + "، ".join(f"{s['source']} ({'مرفوض' if s['status'] == 'denied' else 'فارغ'})" for s in sources),
-            fix="sudo usermod -aG adm,systemd-journal $USER   # ثم سجّل الخروج والدخول، أو شغّل التطبيق بصلاحيات sudo",
-            stable_key="read_auth_logs",
-        ))
-        return result
-    brute_ips, invalid = {}, {}
-    for line in lines:
-        if "Failed password" in line or "authentication failure" in line:
-            result["failed_logins"] += 1
-            m = re.search(r"from\s+(\d+\.\d+\.\d+\.\d+)|rhost=(\d+\.\d+\.\d+\.\d+)", line)
-            if m:
-                ip = m.group(1) or m.group(2)
-                brute_ips[ip] = brute_ips.get(ip, 0) + 1
-        m = re.search(r"Invalid user (\S+) from (\d+\.\d+\.\d+\.\d+)", line)
-        if m:
-            invalid[m.group(1)] = invalid.get(m.group(1), 0) + 1
-        if "sudo:" in line and ("authentication failure" in line or "incorrect password" in line):
-            result["sudo_failures"] += 1
-        if "new user:" in line or "useradd[" in line:
-            result["new_users"].append(line.strip()[-120:])
-        if "Accepted" in line and "for root" in line:
-            result["successful_root_logins"] += 1
-            result["findings"].append(create_finding(
-                "SSH-ROOT-001",
-                severity="high",
-                title_ar="دخول root ناجح عبر SSH",
-                detail=line.strip()[:200],
-                fix="راجع هذا الدخول وعطّل الدخول المباشر: PermitRootLogin no في /etc/ssh/sshd_config ثم sudo systemctl restart ssh",
-                stable_key="accepted_root",
-            ))
-    result["brute_force_ips"] = brute_ips
-    result["invalid_users"] = invalid
-    for ip, count in brute_ips.items():
-        if count >= 10:
-            result["findings"].append(create_finding(
-                "LOG-SSH-BRUTE",
-                severity="high" if count >= 50 else "medium",
-                title_ar=f"هجوم تخمين كلمات مرور من {ip} ({count} محاولة)",
-                detail=f"{count} محاولة دخول فاشلة من {ip} ضمن السجلات المقروءة.",
-                fix=f"sudo ufw deny from {ip}\nsudo fail2ban-client set sshd banip {ip}",
-                evidence={"ip": ip, "attempts": count},
-                stable_key=ip,
-            ))
-    if invalid:
-        top = sorted(invalid.items(), key=lambda x: -x[1])[:5]
-        result["findings"].append(create_finding(
-            "LOG-SSH-BRUTE",
-            severity="medium" if sum(invalid.values()) >= 20 else "low",
-            title_ar=f"محاولات بأسماء مستخدمين غير موجودة ({sum(invalid.values())})",
-            detail="مهاجمون يجرّبون أسماء شائعة مثل: " + "، ".join(f"{n} ({c})" for n, c in top),
-            fix="فعّل fail2ban وعطّل الدخول بكلمة المرور: PasswordAuthentication no",
-            stable_key="invalid_users",
-        ))
-    if result["sudo_failures"] >= 3:
-        result["findings"].append(create_finding(
-            "LOG-SUDO-FAIL",
-            severity="medium",
-            title_ar=f"فشل صلاحيات sudo {result['sudo_failures']} مرة",
-            detail="محاولات رفع صلاحيات فاشلة؛ قد تكون أخطاء كتابة أو محاولة تخمين.",
-            fix="راجع من حاول: sudo grep 'sudo:' /var/log/auth.log | tail -n 20",
-            stable_key="sudo_failures",
-        ))
-    for entry in result["new_users"][-3:]:
-        result["findings"].append(create_finding(
-            "SYS-USER-SHELL",
-            severity="medium",
-            title_ar="إنشاء مستخدم جديد في السجلات",
-            detail=entry,
-            fix="تأكد أنك أنشأت الحساب بنفسك؛ وإلا احذفه: sudo userdel -r <name>",
-            stable_key=entry,
-        ))
-    if result["failed_logins"] > 5 and not brute_ips:
-        result["findings"].append(create_finding(
-            "LOG-SSH-BRUTE",
-            severity="low",
-            title_ar=f"محاولات تسجيل دخول فاشلة: {result['failed_logins']}",
-            detail="متفرقة وليست من عنوان واحد متكرر.",
-            fix="sudo apt install fail2ban && sudo systemctl enable --now fail2ban",
-            stable_key="scattered_failures",
-        ))
-    if not result["findings"]:
-        result["findings"].append(create_finding(
-            "LOG-SSH-BRUTE",
-            severity="info",
-            title_ar="لا نشاط مشبوه في السجلات المقروءة",
-            detail="حُلّل " + "، ".join(f"{s['source']} ({s['lines']} سطر)" for s in read) + ". لا تخمين كلمات مرور ولا دخول root ولا مستخدمين جدد.",
-            fix="لا إجراء. أعد الفحص دورياً.",
-            stable_key="clean_logs",
-        ))
-    return result
+    from engine.logforensics import LogForensicsEngine
+    engine = LogForensicsEngine()
+    findings = engine.analyze_all_logs(window_minutes=1440)
+    return {
+        "findings": findings,
+        "brute_force_ips": {},
+        "failed_logins": 0,
+        "successful_root_logins": 0,
+        "sources": [{"source": "journald / auth.log", "status": "read", "lines": len(findings)}],
+        "invalid_users": {},
+        "sudo_failures": 0,
+        "new_users": [],
+    }
