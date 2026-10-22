@@ -13,6 +13,7 @@ from pathlib import Path
 from datetime import datetime
 
 from utils import safe_exec, validators
+from engine.rules_registry import create_finding
 
 
 def _run(cmd, timeout=30):
@@ -551,13 +552,16 @@ def analyze_mounted_filesystem(mountpoint: str, max_files: int = 5000) -> dict:
 
                 if flower in autorun_names or flower.startswith("autorun."):
                     result["autorun_files"].append(rel_path)
-                    result["findings"].append({
-                        "severity": "high",
-                        "title": f"ملف Autorun مشبوه: {fname}",
-                        "detail": f"الملف {rel_path} في {root} يمكن أن يُشغَّل تلقائياً.",
-                        "fix": f"احذف الملف: rm -f -- {shlex.quote(fpath)} أو افحص محتواه أولاً",
-                        "target_path": fpath,
-                    })
+                    result["findings"].append(create_finding(
+                        "USB-SUSP-001",
+                        severity="high",
+                        title_ar=f"ملف Autorun مشبوه: {fname}",
+                        detail=f"الملف {rel_path} في {root} يمكن أن يُشغَّل تلقائياً.",
+                        fix=f"احذف الملف: rm -f -- {shlex.quote(fpath)} أو افحص محتواه أولاً",
+                        evidence={"path": fpath, "rel_path": rel_path},
+                        stable_key=fpath,
+                        target_path=fpath,
+                    ))
 
                 # كشف التمويه بالامتداد المزدوج (Double Extension Masquerading)
                 name_parts = fname.rsplit(".", 2)
@@ -566,13 +570,16 @@ def analyze_mounted_filesystem(mountpoint: str, max_files: int = 5000) -> dict:
                     outer_ext = f".{name_parts[2].lower()}"
                     if outer_ext in dangerous_extensions and inner_ext in {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".jpg", ".png", ".txt"}:
                         result["suspicious_files"].append(rel_path)
-                        result["findings"].append({
-                            "severity": "critical",
-                            "title": f"⚠️ ملف متنكّر بامتداد مزدوج: {fname}",
-                            "detail": f"الملف {rel_path} يتظاهر بأنه {inner_ext} بينما هو في الواقع تنفيذي {outer_ext}.",
-                            "fix": f"احذر من فتحه وافحصه فوراً أو احذفه: rm -f -- {shlex.quote(fpath)}",
-                            "target_path": fpath,
-                        })
+                        result["findings"].append(create_finding(
+                            "USB-SUSP-001",
+                            severity="critical",
+                            title_ar=f"⚠️ ملف متنكّر بامتداد مزدوج: {fname}",
+                            detail=f"الملف {rel_path} يتظاهر بأنه {inner_ext} بينما هو في الواقع تنفيذي {outer_ext}.",
+                            fix=f"احذر من فتحه وافحصه فوراً أو احذفه: rm -f -- {shlex.quote(fpath)}",
+                            evidence={"path": fpath, "rel_path": rel_path},
+                            stable_key=fpath,
+                            target_path=fpath,
+                        ))
 
                 ext = os.path.splitext(flower)[1]
                 if ext in dangerous_extensions:
@@ -583,13 +590,16 @@ def analyze_mounted_filesystem(mountpoint: str, max_files: int = 5000) -> dict:
                 for pattern in suspicious_names_patterns:
                     if re.search(pattern, flower, re.IGNORECASE):
                         result["suspicious_files"].append(rel_path)
-                        result["findings"].append({
-                            "severity": "medium",
-                            "title": f"ملف باسم مشبوه: {fname}",
-                            "detail": f"اسم الملف يشير إلى محتوى خطير محتمل: {rel_path}",
-                            "fix": f"افحص الملف: file {shlex.quote(fpath)} && head -n 20 {shlex.quote(fpath)}",
-                            "target_path": fpath,
-                        })
+                        result["findings"].append(create_finding(
+                            "USB-SUSP-001",
+                            severity="medium",
+                            title_ar=f"ملف باسم مشبوه: {fname}",
+                            detail=f"اسم الملف يشير إلى محتوى خطير محتمل: {rel_path}",
+                            fix=f"افحص الملف: file {shlex.quote(fpath)} && head -n 20 {shlex.quote(fpath)}",
+                            evidence={"path": fpath, "rel_path": rel_path},
+                            stable_key=fpath,
+                            target_path=fpath,
+                        ))
                         break
 
                 if result["total_files_checked"] >= 5000:

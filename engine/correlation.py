@@ -56,26 +56,21 @@ def _extract_paths(text: str) -> List[str]:
 def _rule_ssh_compromise_path(findings: List[Finding]) -> List[Finding]:
     """
     سلسلة هجوم SSH الكاملة:
-    1) SSH يسمح بكلمة المرور أو root
-    2) هجوم brute force مسجّل في السجلات
+    1) SSH يسمح بكلمة المرور أو root (SSH-001 / SSH-002)
+    2) هجوم brute force مسجّل في السجلات (LOG-SSH-BRUTE)
     3) → مسار اختراق مباشر عبر SSH
-
-    هذا يرفع الخطورة من "إعدادات ضعيفة" + "سجلات" إلى "مسار اختراق مؤكد".
     """
     chains = []
 
-    # ابحث عن ضعف في إعدادات SSH — نطابق عناوين الفاحص الحقيقية
     ssh_weak = [
         f for f in findings
-        if "ssh" in (f.get("tags") or [])
-        and any(kw in (f.get("title") or "") for kw in (
-            "كلمات المرور", "PasswordAuthentication", "يدخل root", "PermitRootLogin",
-            "يسمح بدخول root", "يقبل كلمات المرور",
-        ))
+        if f.get("rule_id") in ("SSH-001", "SSH-002") or "ssh" in (f.get("tags") or [])
     ]
 
-    # ابحث عن brute force في السجلات
-    brute = [f for f in findings if "brute_force" in (f.get("tags") or [])]
+    brute = [
+        f for f in findings
+        if f.get("rule_id") == "LOG-SSH-BRUTE" or "brute_force" in (f.get("tags") or [])
+    ]
 
     if ssh_weak and brute:
         ssh_finding = ssh_weak[0]
@@ -116,25 +111,21 @@ def _rule_ssh_compromise_path(findings: List[Finding]) -> List[Finding]:
 
 def _rule_exposed_service_path(findings: List[Finding]) -> List[Finding]:
     """
-    خدمة حساسة مكشوفة + جدار حماية معطّل = سطح هجوم مباشر.
-    الفاحصات الحقيقية تُنتج قواميس خام بدون وسوم، لذا نطابق على العنوان.
+    خدمة حساسة مكشوفة (NET-PORT-001) + جدار حماية معطّل (FIREWALL-001) = سطح هجوم مباشر.
     """
     chains = []
 
-    # خدمة مكشوفة — نطابق الوسوم أو العنوان
     exposed = [
         f for f in findings
-        if "exposed_port" in (f.get("tags") or [])
-        or "exposed_service" in (f.get("tags") or [])
-        or "مكشوفة" in (f.get("title") or "")
-        or "exposed" in (f.get("title") or "").lower()
+        if f.get("rule_id") == "NET-PORT-001"
+        or "open_port" in (f.get("tags") or [])
+        or "listening" in (f.get("tags") or [])
     ]
 
-    # جدار حماية معطّل — نطابق العنوان (الفاحص لا يستخدم وسوماً)
     fw_weak = [
         f for f in findings
-        if any(kw in (f.get("title") or "") for kw in ("معطّل", "disabled", "Disabled"))
-        and ("firewall" in (f.get("title") or "").lower() or "ufw" in (f.get("title") or "").lower())
+        if f.get("rule_id") == "FIREWALL-001"
+        or "firewall" in (f.get("tags") or [])
     ]
 
     if exposed and fw_weak:
@@ -278,28 +269,24 @@ def _rule_persistence_path(findings: List[Finding]) -> List[Finding]:
 def _rule_exploitability_amplifier(findings: List[Finding]) -> List[Finding]:
     """
     ASLR معطّل + خدمة مكشوفة أو تحديثات أمنية معلّقة = قابلية استغلال عالية.
-    نتحقق أن ASLR فعلاً معطّل عبر العنوان، لا مجرد وجود نتيجة ASLR.
     """
     chains = []
 
-    # ASLR معطّل فعلاً — نطابق العنوان الذي يحتوي "غير مفعلة" أو "disabled"
     aslr_off = [
         f for f in findings
         if "aslr" in (f.get("tags") or [])
-        and any(kw in (f.get("title") or "") for kw in ("غير مفعلة", "disabled", "Disabled", "معطّل"))
     ]
 
-    # خدمة مكشوفة أو تحديثات أمنية معلّقة
     exposed = [
         f for f in findings
-        if "exposed_port" in (f.get("tags") or [])
-        or "exposed_service" in (f.get("tags") or [])
-        or "مكشوفة" in (f.get("title") or "")
-        or "exposed" in (f.get("title") or "").lower()
+        if f.get("rule_id") == "NET-PORT-001"
+        or "open_port" in (f.get("tags") or [])
+        or "listening" in (f.get("tags") or [])
     ]
     updates = [
         f for f in findings
-        if any(kw in (f.get("title") or "") for kw in ("تحديثات", "Updates", "تحديث", "update"))
+        if f.get("rule_id") == "SYS-UPDATE-001"
+        or "updates" in (f.get("tags") or [])
     ]
 
     if aslr_off and (exposed or updates):

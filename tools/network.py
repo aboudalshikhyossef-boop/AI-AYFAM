@@ -12,6 +12,7 @@ from typing import Optional
 
 from utils import safe_exec, validators
 from tools import port_catalog
+from engine.rules_registry import create_finding
 
 
 def _run(cmd, timeout=30):
@@ -267,20 +268,25 @@ def check_data_leaks():
     for conn in connections:
         if conn["trust"] == "suspicious" or conn["risk"] in ("critical", "high"):
             sev = "critical" if conn["risk"] == "critical" else "high"
-            findings.append({
-                "severity": sev,
-                "title": f"اتصال مشبوه حقيقي: {conn['remote']} — {conn['process']}",
-                "detail": f"السبب: {conn['reason']}\nالبروتوكول: {conn['proto']} | الحالة: {conn['state']}",
-                "fix": f"اقطع الاتصال: sudo ss -K dst {conn['remote'].split(':')[0]}\n"
-                       f"أو أوقف العملية: sudo pkill -9 {conn['process']}",
-            })
+            findings.append(create_finding(
+                "NET-PORT-001",
+                severity=sev,
+                title_ar=f"اتصال مشبوه حقيقي: {conn['remote']} — {conn['process']}",
+                detail=f"السبب: {conn['reason']}\nالبروتوكول: {conn['proto']} | الحالة: {conn['state']}",
+                fix=f"اقطع الاتصال: sudo ss -K dst {conn['remote'].split(':')[0]}\nأو أوقف العملية: sudo pkill -9 {conn['process']}",
+                evidence={"remote": conn["remote"], "process": conn["process"]},
+                stable_key=f"{conn['remote']}:{conn['process']}",
+            ))
         elif conn["trust"] == "unknown" and conn["risk"] == "medium":
-            findings.append({
-                "severity": "medium",
-                "title": f"اتصال يحتاج مراجعة: {conn['remote']} ({conn['process']})",
-                "detail": conn["reason"],
-                "fix": f"تحقق من العملية: sudo lsof -i -p $(pgrep {conn['process']})",
-            })
+            findings.append(create_finding(
+                "NET-PORT-001",
+                severity="medium",
+                title_ar=f"اتصال يحتاج مراجعة: {conn['remote']} ({conn['process']})",
+                detail=conn["reason"],
+                fix=f"تحقق من العملية: sudo lsof -i -p $(pgrep {conn['process']})",
+                evidence={"remote": conn["remote"], "process": conn["process"]},
+                stable_key=f"{conn['remote']}:{conn['process']}",
+            ))
 
     # Check for services listening on all interfaces
     out, _ = _run("ss -tlnp 2>/dev/null")
@@ -296,12 +302,15 @@ def check_data_leaks():
                         proc = _extract_process_name(process)
                         # Only flag if it's a non-standard port and non-trusted process
                         if port not in TRUSTED_PORTS_OUTBOUND and port not in (22, 80, 443, 53) and proc not in TRUSTED_PROCESSES:
-                            findings.append({
-                                "severity": "medium",
-                                "title": f"خدمة مكشوفة على جميع الواجهات: منفذ {port} ({proc})",
-                                "detail": f"الخدمة تقبل الاتصالات من أي مصدر خارجي.",
-                                "fix": f"قيّد الاستماع على localhost إن أمكن، أو أضف قاعدة UFW.",
-                            })
+                            findings.append(create_finding(
+                                "NET-PORT-001",
+                                severity="medium",
+                                title_ar=f"خدمة مكشوفة على جميع الواجهات: منفذ {port} ({proc})",
+                                detail="الخدمة تقبل الاتصالات من أي مصدر خارجي.",
+                                fix="قيّد الاستماع على localhost إن أمكن، أو أضف قاعدة UFW.",
+                                evidence={"port": port, "process": proc},
+                                stable_key=str(port),
+                            ))
                     except Exception:
                         pass
 
@@ -313,12 +322,15 @@ def check_data_leaks():
         if line.startswith("nameserver"):
             ip = line.split()[-1] if len(line.split()) > 1 else ""
             if ip and ip not in known_dns and not ip.startswith("192.168.") and not ip.startswith("10."):
-                findings.append({
-                    "severity": "medium",
-                    "title": f"خادم DNS غير معروف: {ip}",
-                    "detail": "خادم DNS قد يتسبب في تسريب استعلامات DNS أو إعادة توجيه.",
-                    "fix": f"غيّر DNS إلى 1.1.1.1 في /etc/resolv.conf أو Network Manager",
-                })
+                findings.append(create_finding(
+                    "NET-PORT-001",
+                    severity="medium",
+                    title_ar=f"خادم DNS غير معروف: {ip}",
+                    detail="خادم DNS قد يتسبب في تسريب استعلامات DNS أو إعادة توجيه.",
+                    fix="غيّر DNS إلى 1.1.1.1 في /etc/resolv.conf أو Network Manager",
+                    evidence={"ip": ip},
+                    stable_key=ip,
+                ))
 
     return {"connections": connections, "findings": findings}
 
@@ -330,12 +342,14 @@ def check_firewall():
         result["enabled"] = True
         result["rules"] = [l for l in out.split("\n") if l.strip() and "Status" not in l]
     else:
-        result["findings"].append({
-            "severity": "high",
-            "title": "جدار الحماية UFW معطَّل / UFW Firewall is disabled",
-            "detail": "لا يوجد جدار حماية نشط يحمي نظامك.",
-            "fix": "sudo ufw enable\nsudo ufw default deny incoming\nsudo ufw default allow outgoing\nsudo ufw allow 22/tcp",
-        })
+        result["findings"].append(create_finding(
+            "FIREWALL-001",
+            severity="high",
+            title_ar="جدار الحماية UFW معطَّل / UFW Firewall is disabled",
+            detail="لا يوجد جدار حماية نشط يحمي نظامك.",
+            fix="sudo ufw enable\nsudo ufw default deny incoming\nsudo ufw default allow outgoing\nsudo ufw allow 22/tcp",
+            stable_key="ufw_disabled",
+        ))
     return result
 
 
@@ -449,23 +463,33 @@ def scan_ports(target: str, port_range: str = "1-1024") -> dict:
         detail = [f"الخدمة: {service}" + (f" | الشعار: {banner}" if banner else ""), info["why"]]
         if exposure:
             detail.append(exposure)
-        result["findings"].append({
-            "severity": risk,
-            "title": f"منفذ مفتوح: {service} ({port}/{proto})",
-            "category": "ports",
-            "confidence": 0.95,
-            "detail": "\n".join(detail),
-            "fix": info["fix"] if risk != "info" else "لا إجراء: الخدمة محلية فقط.",
-            "evidence": {"target": target, "port": port, "banner": banner or None, "bindings": sorted(addrs) if addrs else None},
-        })
+        result["findings"].append(create_finding(
+            "NET-PORT-001",
+            severity=risk,
+            title_ar=f"منفذ مفتوح: {service} ({port}/{proto})",
+            detail="\n".join(detail),
+            fix=info["fix"] if risk != "info" else "لا إجراء: الخدمة محلية فقط.",
+            evidence={"target": target, "port": port, "banner": banner or None, "bindings": sorted(addrs) if addrs else None},
+            stable_key=f"{target}:{port}",
+        ))
     for note in notes:
-        result["findings"].append({"severity": "info", "title": "فحص جزئي: النطاق مقتطع", "category": "ports", "detail": note, "fix": "sudo apt install nmap"})
+        result["findings"].append(create_finding(
+            "NET-PORT-001",
+            severity="info",
+            title_ar="فحص جزئي: النطاق مقتطع",
+            detail=note,
+            fix="sudo apt install nmap",
+            stable_key="partial_scan_note",
+        ))
     if not ports_found:
-        result["findings"].append({
-            "severity": "info", "title": f"لا منافذ مفتوحة في النطاق {port_range}", "category": "ports", "confidence": 0.8,
-            "detail": "لم يستجب أي منفذ في النطاق المفحوص. الجدار قد يُخفي المنافذ (filtered) بدل أن يُغلقها.",
-            "fix": "لا إجراء. يمكن توسيع النطاق أو استخدام nmap للتأكد.",
-        })
+        result["findings"].append(create_finding(
+            "NET-PORT-001",
+            severity="info",
+            title_ar=f"لا منافذ مفتوحة في النطاق {port_range}",
+            detail="لم يستجب أي منفذ في النطاق المفحوص. الجدار قد يُخفي المنافذ (filtered) بدل أن يُغلقها.",
+            fix="لا إجراء. يمكن توسيع النطاق أو استخدام nmap للتأكد.",
+            stable_key=f"no_ports:{port_range}",
+        ))
 
     result["open_ports"].sort(key=lambda x: int(str(x["port"]).split("/")[0]))
     return result
