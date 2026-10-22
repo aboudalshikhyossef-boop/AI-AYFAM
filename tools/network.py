@@ -473,13 +473,23 @@ def scan_ports(target: str, port_range: str = "1-1024") -> dict:
             stable_key=f"{target}:{port}",
         ))
     for note in notes:
-        result["findings"].append({"severity": "info", "title": "فحص جزئي: النطاق مقتطع", "category": "ports", "detail": note, "fix": "sudo apt install nmap"})
+        result["findings"].append(create_finding(
+            "NET-PORT-001",
+            severity="info",
+            title_ar="فحص جزئي: النطاق مقتطع",
+            detail=note,
+            fix="sudo apt install nmap",
+            stable_key="partial_scan_note",
+        ))
     if not ports_found:
-        result["findings"].append({
-            "severity": "info", "title": f"لا منافذ مفتوحة في النطاق {port_range}", "category": "ports", "confidence": 0.8,
-            "detail": "لم يستجب أي منفذ في النطاق المفحوص. الجدار قد يُخفي المنافذ (filtered) بدل أن يُغلقها.",
-            "fix": "لا إجراء. يمكن توسيع النطاق أو استخدام nmap للتأكد.",
-        })
+        result["findings"].append(create_finding(
+            "NET-PORT-001",
+            severity="info",
+            title_ar=f"لا منافذ مفتوحة في النطاق {port_range}",
+            detail="لم يستجب أي منفذ في النطاق المفحوص. الجدار قد يُخفي المنافذ (filtered) بدل أن يُغلقها.",
+            fix="لا إجراء. يمكن توسيع النطاق أو استخدام nmap للتأكد.",
+            stable_key=f"no_ports:{port_range}",
+        ))
 
     result["open_ports"].sort(key=lambda x: int(str(x["port"]).split("/")[0]))
     return result

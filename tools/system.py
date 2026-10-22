@@ -247,7 +247,7 @@ def check_running_processes() -> dict:
                     detail=f"User: {user} | CMD: {cmd[:150]}",
                     fix=f"sudo kill -9 {pid}",
                     evidence={"pid": pid, "user": user, "cmd": cmd},
-                    stable_key=f"{user}:{cmd[:50]}",
+                    stable_key=f"{user}:{cmd.split()[0]}",
                 ))
                 break
         try:
@@ -261,7 +261,7 @@ def check_running_processes() -> dict:
                     detail=f"PID:{pid} | User:{user}",
                     fix=f"sudo strace -p {pid} 2>&1 | head -10",
                     evidence={"pid": pid, "cpu": cpu},
-                    stable_key=f"{pid}:{cmd[:50]}",
+                    stable_key=f"{user}:{cmd.split()[0]}",
                 ))
         except ValueError:
             pass

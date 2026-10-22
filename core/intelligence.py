@@ -106,34 +106,14 @@ CORRELATION_RULES = [
 ]
 
 
-_LEGACY_TITLE_KEYWORDS = {
-    "ssh_root_login":      ["SSH يسمح بدخول root", "PermitRootLogin"],
-    "ssh_password_auth":   ["SSH يقبل كلمات المرور", "PasswordAuthentication"],
-    "firewall_disabled":   ["جدار الحماية UFW معطَّل", "UFW Firewall is disabled"],
-    "dangerous_port_open": ["منفذ خطير مفتوح", "خدمة مكشوفة على جميع الواجهات"],
-    "brute_force":         ["هجوم Brute Force", "هجوم تخمين"],
-    "successful_root_ssh": ["دخول root ناجح عبر SSH"],
-    "rogue_uid0_user":     ["مستخدم بـ UID=0 غير root"],
-    "malicious_cron":      ["Cron خبيث"],
-    "dangerous_suid":      ["SUID في مكان خطير جداً"],
-    "world_writable":      ["ملف نظام قابل للكتابة من الجميع"],
-}
-
 def _tag_findings(findings: List[Dict]) -> Dict[str, List[Dict]]:
-    """يُرجع dict: وسم -> قائمة النتائج المطابقة له بحسب rule_id أو tags مع دعم التوافق العكسي للأناوين."""
+    """يُرجع dict: وسم -> قائمة النتائج المطابقة له بحسب rule_id أو tags فقط (بدون أي مطابقة نصية للعنوان)."""
     tagged: Dict[str, List[Dict]] = {}
     for f in findings:
         r_id = f.get("rule_id", "")
         f_tags = f.get("tags") or []
-        title = f.get("title", "")
         for tag, rule_ids in _RULE_ID_TAGS.items():
-            # Match by rule_id, tags, or legacy keywords fallback
-            matched = (
-                r_id in rule_ids
-                or any(t in f_tags for t in rule_ids)
-                or any(kw in title for kw in _LEGACY_TITLE_KEYWORDS.get(tag, []))
-            )
-            if matched:
+            if r_id in rule_ids or any(t in f_tags for t in rule_ids):
                 tagged.setdefault(tag, []).append(f)
     return tagged
 
