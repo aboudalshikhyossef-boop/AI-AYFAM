@@ -13,6 +13,8 @@ build/
 
 # Config (contains tokens)
 ~/.ayfam/
+.ayfam_parts/
+.aistudio/
 
 # Reports (generated locally)
 *.md.bak

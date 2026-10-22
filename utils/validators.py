@@ -14,6 +14,7 @@ AI AYFAM - Central Input Validators
 import ipaddress
 import os
 import re
+import stat
 
 _HOSTNAME_RE = re.compile(
     r"^(?=.{1,253}$)(?!-)[A-Za-z0-9-]{1,63}(?<!-)(\.(?!-)[A-Za-z0-9-]{1,63}(?<!-))*$"
@@ -144,6 +145,13 @@ def validate_device_path(value: str):
     v = (value or "").strip()
     if not v.startswith("/dev/") or ".." in v or "\x00" in v:
         return False, f"مسار جهاز غير صالح: '{value}'"
+    if os.path.exists(v):
+        try:
+            st = os.stat(v)
+            if not stat.S_ISBLK(st.st_mode) and not stat.S_ISCHR(st.st_mode):
+                return False, f"المسار ليس جهاز كتلة أو محرفي صالح: '{value}'"
+        except OSError as exc:
+            return False, f"فشل التحقق من نوع الجهاز: {exc}"
     return True, v
 
 

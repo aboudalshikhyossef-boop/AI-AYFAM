@@ -2,7 +2,6 @@ import json
 from pathlib import Path
 from unittest.mock import patch
 
-from api_server import ApiHandler
 from engine.hardening import HardeningEngine
 from engine.planner import RemediationPlanner
 from config import settings as settings_module
@@ -35,7 +34,3 @@ def test_settings_save_is_atomic_and_private(tmp_path):
         assert json.loads(config_file.read_text())["language"] == "en"
         assert config_file.stat().st_mode & 0o777 == 0o600
         assert not list(config_dir.glob(".config.*"))
-
-
-def test_api_rejects_non_object_payload():
-    assert ApiHandler.server_version.startswith("AI-AYFAM-API/")

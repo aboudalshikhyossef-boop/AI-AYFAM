@@ -271,10 +271,10 @@ class TelemetryChart(QFrame):
         p.fillRect(self.rect(), QColor(15, 23, 42, 160))
         p.setPen(QPen(QColor(255, 255, 255, 25), 1))
         p.drawRoundedRect(QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5), 14, 14)
-        p.setPen(QColor("#f8fafc"))
+        p.setPen(QColor(TEXT_PRIMARY))
         p.setFont(p.font())
         p.drawText(QRectF(18, 8, self.width() - 36, 22), Qt.AlignmentFlag.AlignRight, self.title)
-        p.setPen(QColor("#64748b"))
+        p.setPen(QColor(TEXT_MUTED))
 
         rect = self._plot_rect()
         for step in range(5):

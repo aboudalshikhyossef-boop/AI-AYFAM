@@ -431,6 +431,7 @@ one recommendation, and at most 2 authoritative source URLs. Return [] when evid
             close = getattr(self._client, "close", None)
             if callable(close):
                 close()
+            self._client = None
 
 
 def validate_threat_feed(data: Any, window_hours: int = 48) -> dict[str, Any]:

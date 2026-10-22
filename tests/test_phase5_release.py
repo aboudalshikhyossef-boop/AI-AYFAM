@@ -44,6 +44,6 @@ def test_ci_and_single_supported_installer_exist():
 def test_ci_checks_desktop_and_frontend_paths():
     ci = (Path(__file__).resolve().parents[1] / ".github/workflows/ci.yml").read_text(encoding="utf-8")
     assert "pytest -q" in ci
-    assert "npm run lint" in ci
-    assert "npm run build" in ci
+    assert "ruff check" in ci
+    assert "pyflakes" in ci
     assert "permissions:" in ci

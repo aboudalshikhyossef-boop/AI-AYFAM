@@ -648,8 +648,34 @@ def web_search(query: str, max_results: int = 8) -> list:
     return (instant + rest)[:max_results]
 
 
-def fetch_page_content(url: str, max_length: int = 3000) -> dict:
-    """Fetch and extract text content from a webpage"""
+def is_safe_public_url(url: str) -> tuple[bool, str]:
+    """Validate that the URL is strictly HTTP/HTTPS and resolves to a public IP address."""
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        return False, f"Unsupported scheme '{parsed.scheme}'; only http and https are allowed."
+    host = parsed.hostname
+    if not host:
+        return False, "Invalid URL host."
+    try:
+        infos = socket.getaddrinfo(host, parsed.port or (443 if parsed.scheme == "https" else 80), type=socket.SOCK_STREAM)
+        for family, socktype, proto, canonname, sockaddr in infos:
+            ip_str = sockaddr[0]
+            ip_obj = socket.inet_pton(family, ip_str) if hasattr(socket, "inet_pton") else None
+            import ipaddress
+            addr = ipaddress.ip_address(ip_str)
+            if addr.is_loopback or addr.is_private or addr.is_link_local or addr.is_reserved or addr.is_multicast:
+                return False, f"Target IP {ip_str} is private or restricted."
+    except Exception as exc:
+        return False, f"DNS resolution failed for {host}: {exc}"
+    return True, ""
+
+
+def fetch_page_content(url: str, max_length: int = 3000, allow_private: bool = False) -> dict:
+    """Fetch and extract text content from a webpage with SSRF protection for local IP ranges."""
+    if not allow_private:
+        safe, reason = is_safe_public_url(url)
+        if not safe:
+            return {"success": False, "error": f"SSRF Protection: {reason}"}
     try:
         r = requests.get(url, headers=HEADERS, timeout=12)
         if r.status_code != 200:
