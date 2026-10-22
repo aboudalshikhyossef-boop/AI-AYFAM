@@ -9,11 +9,14 @@ from PyQt6.QtCore import QByteArray, QRectF, Qt
 from PyQt6.QtGui import QColor, QIcon, QLinearGradient, QPainter, QPen, QPixmap
 from PyQt6.QtSvg import QSvgRenderer
 
+from ui.theme import ACCENT, COLOR_ICON_INACTIVE, COLOR_ICON_ACTIVE
+
 ICON_DIR = Path(__file__).resolve().parents[1] / "resources" / "icons"
 ICON_COLORS = {
-    "dashboard": "#2dd4bf", "scans": "#34d399", "usb": "#60a5fa", "tools": "#f59e0b",
-    "chat": "#a78bfa", "playbooks": "#fb923c", "library": "#5eead4", "reports": "#f87171",
-    "settings": "#8fb3d1", "send": "#5eead4",
+    "dashboard": COLOR_ICON_INACTIVE, "scans": COLOR_ICON_INACTIVE, "usb": COLOR_ICON_INACTIVE,
+    "tools": COLOR_ICON_INACTIVE, "chat": COLOR_ICON_INACTIVE, "playbooks": COLOR_ICON_INACTIVE,
+    "library": COLOR_ICON_INACTIVE, "reports": COLOR_ICON_INACTIVE, "settings": COLOR_ICON_INACTIVE,
+    "send": COLOR_ICON_ACTIVE,
 }
 
 
@@ -37,7 +40,7 @@ def _draw(name: str, color: str, size: int, strength: float, framed: bool) -> QP
         fill = QLinearGradient(0, 0, size, size)
         top, bottom = QColor(base), QColor(base)
         top.setAlpha(int(75 * strength))
-        bottom.setAlpha(int(24 * strength))
+        top.setAlpha(int(24 * strength))
         fill.setColorAt(0, top)
         fill.setColorAt(1, bottom)
         p.setBrush(fill)
@@ -59,17 +62,17 @@ def _draw(name: str, color: str, size: int, strength: float, framed: bool) -> QP
 
 @lru_cache(maxsize=128)
 def framed_icon(name: str, color: str | None = None, size: int = 30) -> QIcon:
-    color = color or ICON_COLORS.get(name, "#2dd4bf")
+    color = color or ICON_COLORS.get(name, COLOR_ICON_INACTIVE)
     icon = QIcon()
     icon.addPixmap(_draw(name, color, size, 0.78, True), QIcon.Mode.Normal, QIcon.State.Off)
-    icon.addPixmap(_draw(name, color, size, 1.0, True), QIcon.Mode.Active, QIcon.State.Off)
-    icon.addPixmap(_draw(name, color, size, 1.0, True), QIcon.Mode.Normal, QIcon.State.On)
-    icon.addPixmap(_draw(name, color, size, 1.0, True), QIcon.Mode.Active, QIcon.State.On)
+    icon.addPixmap(_draw(name, COLOR_ICON_ACTIVE, size, 1.0, True), QIcon.Mode.Active, QIcon.State.Off)
+    icon.addPixmap(_draw(name, COLOR_ICON_ACTIVE, size, 1.0, True), QIcon.Mode.Normal, QIcon.State.On)
+    icon.addPixmap(_draw(name, COLOR_ICON_ACTIVE, size, 1.0, True), QIcon.Mode.Active, QIcon.State.On)
     icon.addPixmap(_draw(name, color, size, 0.35, True), QIcon.Mode.Disabled, QIcon.State.Off)
     return icon
 
 
 @lru_cache(maxsize=64)
 def glyph_icon(name: str, color: str | None = None, size: int = 18) -> QIcon:
-    color = color or ICON_COLORS.get(name, "#2dd4bf")
+    color = color or ICON_COLORS.get(name, ACCENT)
     return QIcon(_draw(name, color, size, 1.0, False))

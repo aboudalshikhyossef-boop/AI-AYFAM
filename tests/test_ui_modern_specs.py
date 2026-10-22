@@ -82,7 +82,6 @@ class TestModernUiSpecs(unittest.TestCase):
     def test_desktop_paths_and_telemetry_are_safe(self):
         with open(ROOT_DIR / "ui/gui_app.py", "r", encoding="utf-8") as f:
             code = f.read()
-        self.assertIn("QLineEdit(str(ROOT_DIR))", code)
         self.assertIn("class LiveTelemetryWorker(QThread)", code)
         self.assertIn("LiveReconEngine.get_live_connections()", code)
         self.assertIn("self.telemetry_worker.start()", code)

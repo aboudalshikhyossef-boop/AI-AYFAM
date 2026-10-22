@@ -49,8 +49,16 @@ CARD_ACCENTS = {
     "score": SEV_SAFE,
 }
 
+# ── الأيقونات والألوان التكتيكية الموحدة ──
+COLOR_ICON_INACTIVE = "#8fb3d1"
+COLOR_ICON_ACTIVE = ACCENT
+COLOR_PRIMARY_START = "#0d9488"
+COLOR_PRIMARY_END = "#0f766e"
+COLOR_PRIMARY_HOVER_START = "#14b8a6"
+COLOR_PRIMARY_HOVER_END = "#0d9488"
+
 # ── الخطوط والأبعاد القياسية (Apple Enterprise Typography) ──
-FONT_FAMILY = '"Inter", "SF Pro Display", "-apple-system", "BlinkMacSystemFont", "Cairo", "Segoe UI", sans-serif'
+FONT_FAMILY = '"Tajawal", "Inter", "SF Pro Display", "-apple-system", "BlinkMacSystemFont", "Cairo", "Segoe UI", sans-serif'
 FONT_SIZE_BASE = 13
 FONT_SIZE_SMALL = 11
 FONT_SIZE_TITLE = 18
@@ -395,7 +403,7 @@ QTableWidget {{
 
 QTableWidget::item {{
     padding: 8px 10px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    border-bottom: none;
 }}
 
 QTableWidget::item:hover {{

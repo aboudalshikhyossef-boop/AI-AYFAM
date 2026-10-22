@@ -53,7 +53,7 @@ DEFAULT_SETTINGS = {
     "openai_model": "gpt-4o-mini",
     "gemini_model": "gemini-3.8-flash",
     "auto_fix": False,
-    "sound_ux": True,
+    "sound_ux": False,
     "sound_profile": "soft",
     "dark_mode": True,
     "report_dir": str(Path.home() / "ayfam-reports"),

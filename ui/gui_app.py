@@ -292,7 +292,7 @@ class UnifiedCockpitWindow(QMainWindow):
         self.page_veil_animation: QPropertyAnimation | None = None
         self._telemetry_history = {
             "الجاهزية الأمنية (%)": [],
-            "النشاط التشغيلي (%)": [46, 51, 49, 56, 54, 61, 58, 64, 60, 67, 65, 70],
+            "النشاط التشغيلي (%)": [],
         }
         self.init_ui()
         self.timer = QTimer(self)
@@ -748,13 +748,14 @@ class UnifiedCockpitWindow(QMainWindow):
         metrics.setHorizontalSpacing(SP_MD)
         metrics.setVerticalSpacing(SP_MD)
         self.metric_labels: dict[str, QLabel] = {}
+        self.metric_tags: dict[str, QLabel] = {}
         metric_data = [
-            ("connections", "اتصالات الشبكة", "مقابس الشبكة النشطة والمراقبة", SEV_LOW),
-            ("processes", "العمليات الحية", "أعلى العمليات استهلاكاً للموارد", CARD_ACCENTS["processes"]),
-            ("findings", "الثغرات المكتشفة", "في آخر فحص مكتمل للمنظومة", SEV_MEDIUM),
-            ("score", "الجاهزية الأمنية", "مؤشر تقييم خطوط الدفاع العام", SEV_SAFE),
+            ("connections", "اتصالات الشبكة", "مقابس الشبكة النشطة والمراقبة", SEV_LOW, "مباشر"),
+            ("processes", "العمليات الحية", "أعلى العمليات استهلاكاً للموارد", CARD_ACCENTS["processes"], "نشط"),
+            ("findings", "الثغرات المكتشفة", "في آخر فحص مكتمل للمنظومة", SEV_MEDIUM, "لم يُفحص"),
+            ("score", "الجاهزية الأمنية", "مؤشر تقييم خطوط الدفاع العام", SEV_SAFE, "غير مقيّم"),
         ]
-        for col, (key, label, note, accent) in enumerate(metric_data):
+        for col, (key, label, note, accent, initial_tag) in enumerate(metric_data):
             card = QFrame(objectName="card")
             card.setMinimumHeight(104)
             card.setStyleSheet(f"QFrame#card {{ border: 1px solid {alpha(accent, 140)}; }}")
@@ -768,7 +769,7 @@ class UnifiedCockpitWindow(QMainWindow):
             header_row.addWidget(lbl)
             header_row.addStretch()
 
-            tag = QLabel("نشط")
+            tag = QLabel(initial_tag)
             tag.setStyleSheet(f"""
                 color: {accent};
                 background: {alpha(accent, 25)};
@@ -791,6 +792,7 @@ class UnifiedCockpitWindow(QMainWindow):
             box.addWidget(nt)
 
             self.metric_labels[key] = val
+            self.metric_tags[key] = tag
             metrics.addWidget(card, 0, col)
             metrics.setColumnStretch(col, 1)
         layout.addLayout(metrics)
@@ -878,9 +880,17 @@ class UnifiedCockpitWindow(QMainWindow):
         self.ip_target.setPlaceholderText("عنوان IP عام")
         self.website_input = QLineEdit()
         self.website_input.setPlaceholderText("https://example.com")
-        self.path_input = QLineEdit(str(ROOT_DIR))
+        self.path_input = QLineEdit(os.path.expanduser("~/Downloads"))
         self.path_input.setAccessibleName("مسار فحص YARA")
-        self.path_input.setPlaceholderText("مسار الفحص")
+        self.path_input.setPlaceholderText("مسار الفحص (افتراضي: ~/Downloads)")
+
+        yara_path_box = QHBoxLayout()
+        yara_path_box.setSpacing(SP_SM)
+        yara_path_box.addWidget(self.path_input, 1)
+        btn_browse_yara = QPushButton("تصفّح")
+        btn_browse_yara.setToolTip("اختيار المجلد المطلوب فحصه بقواعد YARA")
+        btn_browse_yara.clicked.connect(self._browse_yara_path)
+        yara_path_box.addWidget(btn_browse_yara)
 
         grid.addWidget(QLabel("هدف المنافذ:"), 0, 0)
         grid.addWidget(self.scan_target, 0, 1)
@@ -891,7 +901,7 @@ class UnifiedCockpitWindow(QMainWindow):
         grid.addWidget(QLabel("فحص موقع:"), 2, 0)
         grid.addWidget(self.website_input, 2, 1, 1, 3)
         grid.addWidget(QLabel("مسار YARA:"), 3, 0)
-        grid.addWidget(self.path_input, 3, 1, 1, 3)
+        grid.addLayout(yara_path_box, 3, 1, 1, 3)
 
         buttons = [
             ("فحص الشبكة", "primary", lambda: self.run_background_task(lambda: self.agent._scan_network(), "فحص الشبكة")),
@@ -1162,9 +1172,12 @@ class UnifiedCockpitWindow(QMainWindow):
 
         path_row = QHBoxLayout()
         path_row.addWidget(QLabel("مسار الفحص للأدوات:"))
-        self.tool_path = QLineEdit(str(ROOT_DIR))
-        self.tool_path.setPlaceholderText("مسار الفحص (افتراضي: المجلد الحالي .)")
+        self.tool_path = QLineEdit(os.path.expanduser("~/Downloads"))
+        self.tool_path.setPlaceholderText("مسار الفحص (افتراضي: ~/Downloads)")
+        btn_browse_tool_path = QPushButton("تصفّح")
+        btn_browse_tool_path.clicked.connect(self._browse_tool_path)
         path_row.addWidget(self.tool_path)
+        path_row.addWidget(btn_browse_tool_path)
         layout.addLayout(path_row)
 
         groups_layout = QHBoxLayout()
@@ -1174,14 +1187,15 @@ class UnifiedCockpitWindow(QMainWindow):
         g_audit = QGroupBox("التدقيق والتحصين")
         l_audit = QVBoxLayout(g_audit)
         audit_btns = [
-            ("فحص CIS Hardening", lambda: self._run_tool_and_display(self.agent._run_deep_audit, "فحص CIS Hardening")),
-            ("فحص Lynis Audit", lambda: self._run_tool_and_display(self.agent._run_lynis_cli, "فحص Lynis")),
-            ("تعلّم خط الأساس", lambda: self._run_tool_and_display(self.agent._run_baseline_learn_cli, "تعلّم خط الأساس")),
-            ("فحص شذوذ النظام", lambda: self._run_tool_and_display(self.agent._run_baseline_check_cli, "فحص الشذوذ")),
-            ("خطة المعالجة", lambda: self._run_tool_and_display(self.agent._generate_remediation_plan, "خطة المعالجة")),
+            ("فحص CIS Hardening", lambda: self._run_tool_and_display(self.agent._run_deep_audit, "فحص CIS Hardening"), "فحص إعدادات التحصين وفق معايير CIS. يستغرق نحو دقيقة • يتطلب صلاحيات root", True),
+            ("فحص Lynis Audit", lambda: self._run_tool_and_display(self.agent._run_lynis_cli, "فحص Lynis"), "تدقيق أمني شامل لمنظومة النظام عبر Lynis. يستغرق 1-2 دقيقة • يتطلب صلاحيات root", True),
+            ("تعلّم خط الأساس", lambda: self._run_tool_and_display(self.agent._run_baseline_learn_cli, "تعلّم خط الأساس"), "حفظ الحالة الطبيعية للعمليات والخدمات والمنافذ الحالية. يستغرق بضع ثوانٍ", False),
+            ("فحص شذوذ النظام", lambda: self._run_tool_and_display(self.agent._run_baseline_check_cli, "فحص الشذوذ"), "مقارنة حالة النظام الحالية مع خط الأساس المحفوظ لكشف أي تغيير غريب. يستغرق بضع ثوانٍ", False),
+            ("خطة المعالجة", lambda: self._run_tool_and_display(self.agent._generate_remediation_plan, "خطة المعالجة"), "توليد خطة خطوة بخطوة لمعالجة الثغرات المكتشفة مؤخراً. يستغرق بضع ثوانٍ", False),
         ]
-        for name, fn in audit_btns:
-            btn = QPushButton(name)
+        for name, fn, tip, needs_root in audit_btns:
+            btn = QPushButton(name + (" 🔒" if needs_root else ""))
+            btn.setToolTip(tip)
             btn.clicked.connect(fn)
             self.task_buttons.append(btn)
             l_audit.addWidget(btn)
@@ -1192,13 +1206,14 @@ class UnifiedCockpitWindow(QMainWindow):
         g_scan = QGroupBox("كشف التهديدات والأسرار")
         l_scan = QVBoxLayout(g_scan)
         scan_btns = [
-            ("فحص YARA", lambda: self._run_tool_and_display(lambda: self.agent._run_yara_cli(self.tool_path.text().strip() or "."), "فحص YARA")),
-            ("كشف الأسرار", lambda: self._run_tool_and_display(lambda: self.agent._scan_secrets_cli(self.tool_path.text().strip() or "."), "كشف الأسرار")),
-            ("فحص Rootkit", lambda: self._run_tool_and_display(self.agent._run_rootkit_cli, "فحص Rootkit")),
-            ("توليد قواعد التفاعل", lambda: self._run_tool_and_display(self.agent._run_synthesize_rules_cli, "توليد قواعد")),
+            ("فحص YARA", lambda: self._run_tool_and_display(lambda: self.agent._run_yara_cli(self.tool_path.text().strip() or "."), "فحص YARA"), "فحص المسار المحدد بقواعد YARA لكشف الملفات الخبيثة. يستغرق 10-30 ثانية", False),
+            ("كشف الأسرار", lambda: self._run_tool_and_display(lambda: self.agent._scan_secrets_cli(self.tool_path.text().strip() or "."), "كشف الأسرار"), "البحث عن المفاتيح وكلمات المرور والأسرار المسربة في المسار المحدد. يستغرق 5-15 ثانية", False),
+            ("فحص Rootkit", lambda: self._run_tool_and_display(self.agent._run_rootkit_cli, "فحص Rootkit"), "فحص نواة النظام للكشف عن أدوات الإخفاء برمجيات Rootkit. يستغرق نحو دقيقة • يتطلب صلاحيات root", True),
+            ("توليد قواعد التفاعل", lambda: self._run_tool_and_display(self.agent._run_synthesize_rules_cli, "توليد قواعد"), "إنشاء قواعد YARA وSuricata تلقائياً من نتائج التحليل المتاحة. يستغرق بضع ثوانٍ", False),
         ]
-        for name, fn in scan_btns:
-            btn = QPushButton(name)
+        for name, fn, tip, needs_root in scan_btns:
+            btn = QPushButton(name + (" 🔒" if needs_root else ""))
+            btn.setToolTip(tip)
             btn.clicked.connect(fn)
             self.task_buttons.append(btn)
             l_scan.addWidget(btn)
@@ -1209,14 +1224,15 @@ class UnifiedCockpitWindow(QMainWindow):
         g_intel = QGroupBox("استخبارات التهديدات")
         l_intel = QVBoxLayout(g_intel)
         intel_btns = [
-            ("تحديث التهديدات (KEV/Exploit-DB)", lambda: self._run_tool_and_display(self.agent._update_intel, "تحديث التهديدات")),
-            ("Gemini CTI (48h)", lambda: self._run_tool_and_display(lambda: self.agent.run_gemini_threat_scan(48), "Gemini CTI")),
-            ("تصدير تقرير HTML", lambda: self._run_tool_and_display(self.agent._export_html_report, "تصدير HTML")),
+            ("تحديث التهديدات (KEV/Exploit-DB)", lambda: self._run_tool_and_display(self.agent._update_intel, "تحديث التهديدات"), "تحديث قاعدة بيانات الثغرات المستغلة من CISA KEV وExploit-DB. يستغرق 10-20 ثانية", False),
+            ("Gemini CTI (48h)", lambda: self._run_tool_and_display(lambda: self.agent.run_gemini_threat_scan(48), "Gemini CTI"), "استعلام الذكاء الاصطناعي عن أحدث التهديدات المستجدة في آخر 48 ساعة. يستغرق 10-20 ثانية", False),
+            ("تصدير تقرير HTML", lambda: self._run_tool_and_display(self.agent._export_html_report, "تصدير HTML"), "تصدير تقرير أمني شامل بصيغة HTML مفصلة إلى مجلد التقارير. يستغرق بضع ثوانٍ", False),
         ]
-        for name, fn in intel_btns:
-            btn = QPushButton(name)
+        for name, fn, tip, needs_root in intel_btns:
+            btn = QPushButton(name + (" 🔒" if needs_root else ""))
             if "Gemini" in name:
                 btn.setObjectName("primary")
+            btn.setToolTip(tip)
             btn.clicked.connect(fn)
             self.task_buttons.append(btn)
             l_intel.addWidget(btn)
@@ -1233,6 +1249,11 @@ class UnifiedCockpitWindow(QMainWindow):
         self.tool_output.setMinimumHeight(200)
         out_layout.addWidget(self.tool_output)
         layout.addWidget(out_box, 1)
+
+    def _browse_tool_path(self) -> None:
+        path = QFileDialog.getExistingDirectory(self, "اختر مسار الفحص", self.tool_path.text())
+        if path:
+            self.tool_path.setText(path)
 
     def _run_tool_and_display(self, fn: Callable[[], Any], title: str) -> None:
         self.tool_output.setPlainText(f"[تشغيل] جارٍ تشغيل {title}...\n")
@@ -1316,6 +1337,29 @@ class UnifiedCockpitWindow(QMainWindow):
         intro.setStyleSheet(f"color: {TEXT_SECONDARY}; font-size: {FONT_SIZE_SMALL}px;")
         layout.addWidget(intro)
 
+        # Preset clickable cards for common playbooks
+        presets_label = QLabel("الخطط الجاهزة للأدوات والمهام الشائعة:")
+        presets_label.setStyleSheet(f"color: {ACCENT}; font-weight: 700; font-size: {FONT_SIZE_SMALL}px;")
+        layout.addWidget(presets_label)
+
+        presets_layout = QHBoxLayout()
+        presets_layout.setSpacing(SP_SM)
+        preset_items = [
+            ("تأمين SSH", "ssh"),
+            ("جدار الحماية UFW", "ufw"),
+            ("تصعيد الصلاحيات", "privilege_escalation"),
+            ("فحص الشبكة Nmap", "nmap"),
+            ("تحليل الذاكرة Volatility", "volatility"),
+        ]
+        for label, topic in preset_items:
+            btn = QPushButton(label)
+            btn.setObjectName("pillButton")
+            btn.setToolTip(f"استخراج خطة عمل لـ {label}")
+            btn.clicked.connect(lambda checked=False, t=topic: self._trigger_preset_playbook(t))
+            presets_layout.addWidget(btn)
+        presets_layout.addStretch()
+        layout.addLayout(presets_layout)
+
         row = QHBoxLayout()
         row.setSpacing(SP_SM)
         self.pb_input = QLineEdit()
@@ -1328,8 +1372,12 @@ class UnifiedCockpitWindow(QMainWindow):
         layout.addLayout(row)
 
         self.pb_text = QPlainTextEdit(readOnly=True)
-        self.pb_text.setPlaceholderText("ستظهر هنا خطة العمل المهيكلة مع الأوامر والمصادر.")
+        self.pb_text.setPlaceholderText("اختر إحدى الخطط الجاهزة أعلاه أو أدخل اسم الأداة/الموضوع لاستخراج خطة العمل المنظمة مع الأوامر والمصادر.")
         layout.addWidget(self.pb_text)
+
+    def _trigger_preset_playbook(self, topic: str) -> None:
+        self.pb_input.setText(topic)
+        self.load_playbook()
 
     # ═══════════════════════════════════════════════════════════════════════════
     #  REPORTS PAGE
@@ -1782,10 +1830,12 @@ class UnifiedCockpitWindow(QMainWindow):
             for values in self._telemetry_history.values():
                 del values[:-24]
             if hasattr(self, "telemetry_chart"):
-                self.telemetry_chart.set_data({
-                    "الجاهزية الأمنية (%)": (self._telemetry_history["الجاهزية الأمنية (%)"], "#2dd4bf"),
-                    "النشاط التشغيلي (%)": (self._telemetry_history["النشاط التشغيلي (%)"], "#a78bfa"),
-                })
+                active_series = {}
+                if self._telemetry_history["الجاهزية الأمنية (%)"]:
+                    active_series["الجاهزية الأمنية (%)"] = (self._telemetry_history["الجاهزية الأمنية (%)"], ACCENT)
+                if self._telemetry_history["النشاط التشغيلي (%)"]:
+                    active_series["النشاط التشغيلي (%)"] = (self._telemetry_history["النشاط التشغيلي (%)"], ACCENT_SECONDARY)
+                self.telemetry_chart.set_data(active_series)
         except Exception as exc:
             self.chat_display.append(f"[تحذير الرادار] {exc}")
 
@@ -2085,6 +2135,11 @@ class UnifiedCockpitWindow(QMainWindow):
     def start_yara_scan(self) -> None:
         path = self.tool_path.text().strip() or "."
         self.run_background_task(lambda: self.agent._run_yara_cli(path), "YARA")
+
+    def _browse_yara_path(self) -> None:
+        path = QFileDialog.getExistingDirectory(self, "اختر مسار فحص YARA", self.path_input.text())
+        if path:
+            self.path_input.setText(path)
 
     def start_secret_scan(self) -> None:
         path = self.tool_path.text().strip() or "."
@@ -2513,19 +2568,31 @@ class UnifiedCockpitWindow(QMainWindow):
     def _update_score(self, findings: list) -> None:
         evaluation = RiskEngine.evaluate(findings)
         self.metric_labels["findings"].setText(str(len(findings)))
+        if hasattr(self, "metric_tags"):
+            if not findings:
+                self.metric_tags["findings"].setText("سليم")
+            elif any(_sev_key(f) in ("critical", "high") for f in findings):
+                self.metric_tags["findings"].setText("يحتاج مراجعة")
+            else:
+                self.metric_tags["findings"].setText("ملاحظات خفيفة")
+
         score = evaluation.get('score', 100)
         grade = evaluation.get('grade', 'A+')
         self.metric_labels["score"].setText(f"{score}/100")
+        if hasattr(self, "metric_tags"):
+            self.metric_tags["score"].setText("تم التقييم")
         self.score_badge.setText(f"الدرجة: {score}/100 ({grade})")
         self.mission_kicker.setText("حالة الدفاع التكتيكية  •  LOCAL DEFENSE POSTURE: ASSESSED")
         self.security_gauge.set_value(score)
         self._telemetry_history["الجاهزية الأمنية (%)"].append(float(score))
         del self._telemetry_history["الجاهزية الأمنية (%)"][:-24]
         if hasattr(self, "telemetry_chart"):
-            self.telemetry_chart.set_data({
-                "الجاهزية الأمنية (%)": (self._telemetry_history["الجاهزية الأمنية (%)"], "#2dd4bf"),
-                "النشاط التشغيلي (%)": (self._telemetry_history["النشاط التشغيلي (%)"], "#a78bfa"),
-            })
+            active_series = {}
+            if self._telemetry_history["الجاهزية الأمنية (%)"]:
+                active_series["الجاهزية الأمنية (%)"] = (self._telemetry_history["الجاهزية الأمنية (%)"], ACCENT)
+            if self._telemetry_history["النشاط التشغيلي (%)"]:
+                active_series["النشاط التشغيلي (%)"] = (self._telemetry_history["النشاط التشغيلي (%)"], ACCENT_SECONDARY)
+            self.telemetry_chart.set_data(active_series)
         # Color the score badge based on score
         score_color = SEV_SAFE if score >= 85 else SEV_MEDIUM if score >= 70 else SEV_HIGH if score >= 50 else SEV_CRITICAL
         self.score_badge.setStyleSheet(
@@ -2563,10 +2630,12 @@ class UnifiedCockpitWindow(QMainWindow):
         directory = Path(self.reports_dir.text()).expanduser()
         self.reports_table.setRowCount(0)
         if not directory.exists():
+            self.report_preview.setPlaceholderText("المجلد المحدد غير موجود. حدد مجلداً صالحاً للتقارير.")
             return
-        for path in sorted(directory.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True):
-            if not path.is_file():
-                continue
+        files = [p for p in directory.iterdir() if p.is_file()]
+        if not files:
+            self.report_preview.setPlaceholderText("لا توجد تقارير أمنية في هذا المجلد حالياً. يمكنك تصدير تقرير جديد من تبويب ترسانة الأدوات.")
+        for path in sorted(files, key=lambda p: p.stat().st_mtime, reverse=True):
             row = self.reports_table.rowCount()
             self.reports_table.insertRow(row)
             self.reports_table.setItem(row, 0, QTableWidgetItem(str(path)))
@@ -2625,6 +2694,10 @@ class UnifiedCockpitWindow(QMainWindow):
     def refresh_library(self) -> None:
         documents = self.agent.kb.list_library_documents()
         self.library_table.setRowCount(0)
+        if not documents:
+            self.library_results.setPlaceholderText("المكتبة المحلية فارغة حالياً. اضغط على «إضافة كتب» لاستيعاب وفهرسة مراجعك الأمنية.")
+        else:
+            self.library_results.setPlaceholderText("ستظهر المقاطع المطابقة مع اسم الكتاب ورقم الصفحة هنا.")
         for doc in documents:
             row = self.library_table.rowCount()
             self.library_table.insertRow(row)
@@ -2636,7 +2709,9 @@ class UnifiedCockpitWindow(QMainWindow):
             for col, item in enumerate(values):
                 self.library_table.setItem(row, col, item)
 
-        if relevance_engine.is_index_current(self.agent.kb):
+        if not documents:
+            status = "[المكتبة] لا توجد كتب مفهرسة حتى الآن"
+        elif relevance_engine.is_index_current(self.agent.kb):
             meta = relevance_engine.get_index_meta()
             status = f"[المكتبة] {len(documents)} كتاب | الفهرس مبني: {meta.get('chunks_indexed', 0)} مقطع"
         elif relevance_engine.is_index_built():
@@ -2762,12 +2837,24 @@ class AuroraSplash(QSplashScreen):
         self.close()
 
 
+def load_application_fonts() -> None:
+    """Load embedded OFL fonts (Tajawal) before creating UI widgets."""
+    from PyQt6.QtGui import QFontDatabase
+    fonts_dir = ROOT_DIR / "resources" / "fonts"
+    if fonts_dir.exists():
+        for font_file in ("Tajawal-Regular.ttf", "Tajawal-Bold.ttf"):
+            path = fonts_dir / font_file
+            if path.exists():
+                QFontDatabase.addApplicationFont(str(path))
+
+
 def launch_gui() -> None:
     preflight = check_requirements({"gui"})
     if not preflight.ok:
         print(preflight.text(), file=sys.stderr)
         raise SystemExit(2)
     app = QApplication.instance() or QApplication(sys.argv)
+    load_application_fonts()
     splash = AuroraSplash()
     splash.show()
     app.processEvents()
