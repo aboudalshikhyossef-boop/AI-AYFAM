@@ -6,8 +6,13 @@ import sys
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from PyQt6.QtWidgets import QApplication
-from ui.gui_app import UnifiedCockpitWindow
+import pytest
+
+try:
+    from PyQt6.QtWidgets import QApplication
+    from ui.gui_app import UnifiedCockpitWindow
+except (ImportError, OSError) as exc:
+    pytest.skip(f"Qt runtime is unavailable ({exc})", allow_module_level=True)
 
 
 def test_honest_state_indicators_and_empty_views():
