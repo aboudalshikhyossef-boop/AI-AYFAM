@@ -185,9 +185,9 @@ class KernelChecker:
         # Check installed linux-image packages
         installed_kernels = []
         try:
-            r = subprocess.run(["dpkg-query", "-W", "-f=${Package}\t${Version}\n", "linux-image-*"],
-                               capture_output=True, text=True, timeout=10)
-            if r.returncode == 0:
+            from utils import safe_exec
+            r = safe_exec.run(["dpkg-query", "-W", "-f=${Package}\t${Version}\n", "linux-image-*"], timeout=10, check_binary=False)
+            if r.ok and r.stdout:
                 for line in r.stdout.splitlines():
                     parts = line.split("\t")
                     if len(parts) == 2 and not parts[0].endswith("-generic-hwe") and "unsigned" not in parts[0]:

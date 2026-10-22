@@ -168,8 +168,9 @@ class FileIntegrityMonitor:
     def check_dpkg_verify(self) -> List[Finding]:
         findings = []
         try:
-            r = subprocess.run(["dpkg", "--verify"], capture_output=True, text=True, timeout=60)
-            if r.stdout:
+            from utils import safe_exec
+            r = safe_exec.run(["dpkg", "--verify"], timeout=60, check_binary=False)
+            if r.ok and r.stdout:
                 for line in r.stdout.splitlines():
                     line = line.strip()
                     if not line or len(line) < 12:
