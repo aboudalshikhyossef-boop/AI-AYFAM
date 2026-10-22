@@ -25,7 +25,7 @@ def test_hidden_modules_detection():
 
     findings = checker.check_hidden_modules(proc_modules=proc_mods, sys_modules=sys_mods)
     assert len(findings) == 1
-    assert findings[0]["rule_id"] == "SYS-WRITE-001"
+    assert findings[0]["rule_id"] == "KERN-HIDDEN-001"
     assert "rootkit_hidden_mod" in findings[0]["title"]
 
 def test_sysctl_hardening_audit():

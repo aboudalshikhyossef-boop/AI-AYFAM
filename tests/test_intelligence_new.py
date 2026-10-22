@@ -15,8 +15,8 @@ intel = SecurityIntelligence(language="ar")
 # ── compound risk: SSH root login + password auth ──────────────────────
 print("\n[1] detect_compound_risks — SSH root+password")
 findings = [
-    {"rule_id": "SSH-001", "severity": "high", "title": "SSH يسمح بدخول root مباشر!", "detail": "", "fix": ""},
-    {"rule_id": "SSH-002", "severity": "medium", "title": "SSH يقبل كلمات المرور — استخدم SSH keys", "detail": "", "fix": ""},
+    {"rule_id": "SSH-ROOT-001", "severity": "high", "title": "SSH يسمح بدخول root مباشر!", "detail": "", "fix": ""},
+    {"rule_id": "SSH-PASS-001", "severity": "medium", "title": "SSH يقبل كلمات المرور — استخدم SSH keys", "detail": "", "fix": ""},
 ]
 compound = intel.detect_compound_risks(findings)
 check("exactly 1 compound finding produced", len(compound) == 1)
@@ -25,7 +25,7 @@ check("marked as compound", compound[0].get("compound") is True)
 check("mentions both source titles", "SSH يسمح بدخول root" in compound[0]["detail"] and "SSH يقبل كلمات المرور" in compound[0]["detail"])
 
 print("\n[2] detect_compound_risks — no match when only one condition present")
-partial = intel.detect_compound_risks([{"rule_id": "SSH-001", "severity": "high", "title": "SSH يسمح بدخول root مباشر!", "detail": "", "fix": ""}])
+partial = intel.detect_compound_risks([{"rule_id": "SSH-ROOT-001", "severity": "high", "title": "SSH يسمح بدخول root مباشر!", "detail": "", "fix": ""}])
 check("no compound finding for a single condition", len(partial) == 0)
 
 print("\n[3] detect_compound_risks — firewall disabled + dangerous port")
@@ -37,8 +37,8 @@ check("firewall+port rule fires", len(fw_case) == 1 and fw_case[0]["severity"] =
 
 print("\n[4] detect_compound_risks — multiple rules can fire simultaneously")
 multi = intel.detect_compound_risks([
-    {"rule_id": "SSH-001", "severity": "high", "title": "SSH يسمح بدخول root مباشر!", "detail": "", "fix": ""},
-    {"rule_id": "SSH-002", "severity": "medium", "title": "SSH يقبل كلمات المرور — استخدم SSH keys", "detail": "", "fix": ""},
+    {"rule_id": "SSH-ROOT-001", "severity": "high", "title": "SSH يسمح بدخول root مباشر!", "detail": "", "fix": ""},
+    {"rule_id": "SSH-PASS-001", "severity": "medium", "title": "SSH يقبل كلمات المرور — استخدم SSH keys", "detail": "", "fix": ""},
     {"rule_id": "FIREWALL-001", "severity": "high", "title": "جدار الحماية UFW معطَّل / UFW Firewall is disabled", "detail": "", "fix": ""},
     {"rule_id": "NET-PORT-001", "severity": "high", "title": "منفذ خطير مفتوح: Telnet (23)", "detail": "", "fix": ""},
 ])
