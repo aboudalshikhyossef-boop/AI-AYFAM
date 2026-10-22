@@ -10,10 +10,10 @@ from core.intelligence import SecurityIntelligence
 
 
 def test_finding_rule_id_and_fingerprint():
-    f1 = create_finding("SSH-001", detail="Detail 1", stable_key="permitroot")
-    f2 = create_finding("SSH-001", detail="Detail 2", stable_key="permitroot")
+    f1 = create_finding("SSH-ROOT-001", detail="Detail 1", stable_key="permitroot")
+    f2 = create_finding("SSH-ROOT-001", detail="Detail 2", stable_key="permitroot")
 
-    assert f1.rule_id == "SSH-001"
+    assert f1.rule_id == "SSH-ROOT-001"
     assert f1.category == "ssh"
     assert "ssh" in f1["tags"]
     # Same rule_id + stable_key must produce identical fingerprint regardless of detail
@@ -33,7 +33,7 @@ def test_rules_registry_lookup():
 
 
 def test_correlation_by_rule_id():
-    f_ssh = create_finding("SSH-001", detail="Root allowed", stable_key="ssh_root")
+    f_ssh = create_finding("SSH-ROOT-001", detail="Root allowed", stable_key="ssh_root")
     f_brute = create_finding("LOG-SSH-BRUTE", detail="from 192.168.1.100", stable_key="brute_192")
 
     engine = CorrelationEngine()
@@ -47,7 +47,7 @@ def test_correlation_by_rule_id():
 def test_compare_scans_uses_fingerprint():
     intel = SecurityIntelligence()
     f1 = create_finding("FIREWALL-001", stable_key="ufw")
-    f2 = create_finding("SSH-001", stable_key="ssh")
+    f2 = create_finding("SSH-ROOT-001", stable_key="ssh")
 
     scan1 = {"findings": [f1, f2], "risk": {"score": 100, "level": "high"}}
     scan2 = {"findings": [f1], "risk": {"score": 40, "level": "low"}}
@@ -56,4 +56,4 @@ def test_compare_scans_uses_fingerprint():
     assert cmp_res is not None
     assert cmp_res["trend"] == "improved"
     assert len(cmp_res["resolved"]) == 1
-    assert cmp_res["resolved"][0].rule_id == "SSH-001"
+    assert cmp_res["resolved"][0].rule_id == "SSH-ROOT-001"

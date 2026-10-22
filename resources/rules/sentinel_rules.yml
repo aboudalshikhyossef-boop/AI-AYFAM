@@ -1,0 +1,24 @@
+rules:
+  - id: RULE-INOTIFY-001
+    name: Critical File Modified
+    source: inotify
+    severity: critical
+    condition:
+      path_contains: ["/etc/passwd", "/etc/shadow", "/etc/sudoers", "/etc/ld.so.preload"]
+    action: notify
+
+  - id: RULE-PROC-001
+    name: Suspicious Process Executed from Temp
+    source: proc_diff
+    severity: high
+    condition:
+      path_contains: ["/tmp/", "/dev/shm/", "/var/tmp/"]
+    action: notify
+
+  - id: RULE-AUTH-001
+    name: Sudo Privilege Escalation Failure
+    source: journald
+    severity: medium
+    condition:
+      text_contains: ["authentication failure", "incorrect password"]
+    action: notify

@@ -36,13 +36,13 @@ ARABIC_SEVERITY = {
 # ─────────────────────────────────────────────────────────────────────────
 
 _RULE_ID_TAGS = {
-    "ssh_root_login":      ["SSH-001"],
-    "ssh_password_auth":   ["SSH-002"],
+    "ssh_root_login":      ["SSH-ROOT-001"],
+    "ssh_password_auth":   ["SSH-PASS-001"],
     "firewall_disabled":   ["FIREWALL-001"],
     "dangerous_port_open": ["NET-PORT-001"],
     "brute_force":         ["LOG-SSH-BRUTE"],
-    "successful_root_ssh": ["SSH-001"],
-    "rogue_uid0_user":     ["SYS-USER-001"],
+    "successful_root_ssh": ["SSH-ROOT-001"],
+    "rogue_uid0_user":     ["SYS-USER-ROOT0"],
     "malicious_cron":      ["NET-SUSP-PROC"],
     "dangerous_suid":      ["SYS-SUID-001"],
     "world_writable":      ["SYS-WRITE-001"],

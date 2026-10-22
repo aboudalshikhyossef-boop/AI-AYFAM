@@ -64,7 +64,7 @@ class KernelChecker:
                     reasons.append(f"bit {bit}: {desc}")
 
             findings.append(create_finding(
-                rule_id="SYS-WRITE-001",
+                rule_id="KERN-TAINTED-001",
                 severity="medium",
                 title_ar=f"النواة ملوثة (Tainted Kernel Value: {taint_val})",
                 title_en=f"Tainted kernel detected (Value: {taint_val})",
@@ -108,7 +108,7 @@ class KernelChecker:
         hidden = [m for m in s_mods if m not in p_mods and not m.startswith(".")]
         for m in hidden:
             findings.append(create_finding(
-                rule_id="SYS-WRITE-001",
+                rule_id="KERN-HIDDEN-001",
                 severity="critical",
                 title_ar=f"وحدة نواة مخفية مشبوهة (Hidden Kernel Module): {m}",
                 title_en=f"Hidden Kernel Module detected: {m}",

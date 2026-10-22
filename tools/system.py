@@ -281,7 +281,7 @@ def check_users_and_groups() -> dict:
         result["users"].append({"user": user, "uid": uid, "shell": shell})
         if uid_int == 0 and user != "root":
             result["findings"].append(create_finding(
-                "SYS-USER-001",
+                "SYS-USER-ROOT0",
                 severity="critical",
                 title_ar=f"🔴 مستخدم بـ UID=0 غير root: {user}",
                 detail="يمتلك صلاحيات root كاملة!",
@@ -291,7 +291,7 @@ def check_users_and_groups() -> dict:
             ))
         elif uid_int >= 1000 and uid_int != 65534 and shell not in ("/bin/false", "/usr/sbin/nologin", "/sbin/nologin", "") and user != current_user:
             result["findings"].append(create_finding(
-                "SYS-USER-001",
+                "SYS-USER-SHELL",
                 severity="info",
                 title_ar=f"مستخدم بصلاحية تسجيل دخول: {user} (UID:{uid})",
                 detail=f"Shell: {shell}",
@@ -336,7 +336,7 @@ def check_ssh_config() -> dict:
     cfg = result["config"]
     if cfg.get("permitrootlogin", "").lower() not in ("no", "prohibit-password", "forced-commands-only"):
         result["findings"].append(create_finding(
-            "SSH-001",
+            "SSH-ROOT-001",
             severity="high",
             title_ar="SSH يسمح بدخول root مباشر!",
             detail=f"PermitRootLogin = {cfg.get('permitrootlogin','default')}",
@@ -345,7 +345,7 @@ def check_ssh_config() -> dict:
         ))
     if cfg.get("passwordauthentication", "yes").lower() == "yes":
         result["findings"].append(create_finding(
-            "SSH-002",
+            "SSH-PASS-001",
             severity="medium",
             title_ar="SSH يقبل كلمات المرور — استخدم SSH keys",
             detail="PasswordAuthentication yes",
@@ -354,7 +354,7 @@ def check_ssh_config() -> dict:
         ))
     if cfg.get("port", "22") == "22":
         result["findings"].append(create_finding(
-            "SSH-001",
+            "SSH-PORT-001",
             severity="low",
             title_ar="SSH على المنفذ الافتراضي 22",
             detail="تغيير المنفذ يقلل Brute Force التلقائي",
@@ -533,7 +533,7 @@ def analyze_logs() -> dict:
         if "Accepted" in line and "for root" in line:
             result["successful_root_logins"] += 1
             result["findings"].append(create_finding(
-                "SSH-001",
+                "SSH-ROOT-001",
                 severity="high",
                 title_ar="دخول root ناجح عبر SSH",
                 detail=line.strip()[:200],
@@ -574,7 +574,7 @@ def analyze_logs() -> dict:
         ))
     for entry in result["new_users"][-3:]:
         result["findings"].append(create_finding(
-            "SYS-USER-001",
+            "SYS-USER-SHELL",
             severity="medium",
             title_ar="إنشاء مستخدم جديد في السجلات",
             detail=entry,

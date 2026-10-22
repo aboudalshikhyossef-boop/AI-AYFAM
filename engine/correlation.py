@@ -56,7 +56,7 @@ def _extract_paths(text: str) -> List[str]:
 def _rule_ssh_compromise_path(findings: List[Finding]) -> List[Finding]:
     """
     سلسلة هجوم SSH الكاملة:
-    1) SSH يسمح بكلمة المرور أو root (SSH-001 / SSH-002)
+    1) SSH يسمح بكلمة المرور أو root (SSH-ROOT-001 / SSH-PASS-001)
     2) هجوم brute force مسجّل في السجلات (LOG-SSH-BRUTE)
     3) → مسار اختراق مباشر عبر SSH
     """
@@ -64,7 +64,7 @@ def _rule_ssh_compromise_path(findings: List[Finding]) -> List[Finding]:
 
     ssh_weak = [
         f for f in findings
-        if f.get("rule_id") in ("SSH-001", "SSH-002") or "ssh" in (f.get("tags") or [])
+        if f.get("rule_id") in ("SSH-ROOT-001", "SSH-PASS-001") or "ssh" in (f.get("tags") or [])
     ]
 
     brute = [
