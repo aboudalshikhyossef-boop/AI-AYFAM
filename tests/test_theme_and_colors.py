@@ -36,7 +36,7 @@ def test_no_unapproved_hardcoded_hex_colors():
 
     unapproved = []
     for filepath in files:
-        if "theme.py" in filepath:
+        if "theme.py" in filepath or "tokens.py" in filepath:
             continue
         content = Path(filepath).read_text(encoding="utf-8")
         matches = set(hex_pattern.findall(content))

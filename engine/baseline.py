@@ -11,6 +11,7 @@ import hmac
 import time
 import json
 from typing import List, Dict, Any, Optional
+from engine.rules_registry import create_finding
 
 DB_PATH = "/var/lib/ayfam/baseline_v2.db" if os.geteuid() == 0 else os.path.expanduser("~/.ayfam/baseline_v2.db")
 KEY_PATH = "/etc/ayfam/baseline.key" if os.geteuid() == 0 else os.path.expanduser("~/.ayfam/baseline.key")
