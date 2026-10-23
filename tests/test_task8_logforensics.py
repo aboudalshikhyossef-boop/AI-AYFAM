@@ -20,13 +20,22 @@ def test_log_sanitization_and_ip_parsing():
 
 def test_file_log_reader_and_forensics_engine():
     sample_log = os.path.abspath(os.path.join(os.path.dirname(__file__), "data", "sample_auth.log"))
-    reader = LogSourceReader()
-    events = reader.read_file_logs(log_path=sample_log)
+    file_reader = LogSourceReader()
+    events = file_reader.read_file_logs(log_path=sample_log)
 
     assert len(events) >= 6
     assert any(e["ip"] == "192.168.1.50" for e in events)
 
+    # Keep the detector test fixture-only; never invoke the host journal in CI.
+    class FixtureReader(LogSourceReader):
+        def read_journal_json(self, since="-7d", limit=3000):
+            return []
+
+        def read_file_logs(self, log_path="/var/log/auth.log", limit=3000):
+            return events
+
     # Test Forensics Engine on sample
+    reader = FixtureReader()
     engine = LogForensicsEngine(reader=reader)
     findings = engine.analyze_all_logs(window_minutes=1000000)
 
