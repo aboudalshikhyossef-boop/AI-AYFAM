@@ -7,10 +7,25 @@ import tempfile
 import pytest
 from engine.finding import Finding
 from engine.rules_registry import create_finding
+from engine.baseline import BaselineEngine
 from engine.baseline import BaselineEngineV2
 from engine.timeline import IncidentTimeline
 from engine.anomaly import AnomalyEngine
 from engine.explanation import ExplanationEngine
+from engine.sysreader import FakeSystem
+
+def test_legacy_baseline_compatibility_is_not_a_noop():
+    fake_sys = FakeSystem(files={"/etc/passwd": "root:x:0:0::/root:/bin/bash"})
+    with tempfile.TemporaryDirectory() as tmpdir:
+        engine = BaselineEngine(
+            db_path=os.path.join(tmpdir, "baseline.db"),
+            sys_reader=fake_sys,
+        )
+        assert engine.save_baseline() is True
+        fake_sys.files["/etc/passwd"] += "\nhacker:x:0:0::/root:/bin/bash"
+        findings = engine.check_deviations()
+        assert findings
+        assert findings[0]["severity"] == "critical"
 
 def test_baseline_v2_and_accept_as_expected():
     with tempfile.TemporaryDirectory() as tmpdir:

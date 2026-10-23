@@ -11,6 +11,8 @@ import hmac
 import time
 import json
 from typing import List, Dict, Any, Optional
+from engine.rules_registry import create_finding
+from engine.sysreader import SystemReader
 
 DB_PATH = "/var/lib/ayfam/baseline_v2.db" if os.geteuid() == 0 else os.path.expanduser("~/.ayfam/baseline_v2.db")
 KEY_PATH = "/etc/ayfam/baseline.key" if os.geteuid() == 0 else os.path.expanduser("~/.ayfam/baseline.key")
@@ -18,26 +20,79 @@ KEY_PATH = "/etc/ayfam/baseline.key" if os.geteuid() == 0 else os.path.expanduse
 class BaselineEngine:
     """Legacy class providing backward compatibility for old baseline calls."""
     def __init__(self, *args, **kwargs):
-        self.v2 = BaselineEngineV2()
+        db_path = kwargs.pop("db_path", None)
+        self.sys = kwargs.pop("sys_reader", None) or SystemReader()
+        self.v2 = BaselineEngineV2(db_path=db_path or DB_PATH)
+
+    def capture_current_state(self) -> Dict[str, Any]:
+        """Capture the legacy components through the injectable system reader."""
+        users = set()
+        for line in self.sys.read_text("/etc/passwd").splitlines():
+            parts = line.split(":")
+            if len(parts) >= 3:
+                users.add(f"{parts[0]}:{parts[2]}")
+
+        listening_ports = set()
+        ok, output, _ = self.sys.run_cmd(["ss", "-tulpn"])
+        if ok:
+            for line in output.splitlines():
+                if "LISTEN" in line:
+                    parts = line.split()
+                    if len(parts) >= 5:
+                        listening_ports.add(parts[4])
+
+        suid_files = set()
+        ok, output, _ = self.sys.run_cmd(
+            ["find", "/usr/bin", "/usr/sbin", "/bin", "/sbin", "-perm", "-4000"]
+        )
+        if ok:
+            suid_files = set(output.splitlines())
+
+        return {
+            "users": sorted(users),
+            "listening_ports": sorted(listening_ports),
+            "suid_files": sorted(suid_files),
+        }
 
     def save_baseline(self, *args, **kwargs) -> bool:
-        return True
+        try:
+            self.v2.save_snapshot(self.capture_current_state())
+            return True
+        except (OSError, sqlite3.Error, TypeError, ValueError):
+            return False
 
     def compare_against_baseline(self, *args, **kwargs) -> Dict[str, Any]:
-        return {"new_items": [], "removed_items": [], "modified_items": []}
+        current = self.capture_current_state()
+        baseline = self.v2.get_latest_snapshot()
+        result = {"new_items": [], "removed_items": [], "modified_items": []}
+        if not baseline:
+            return result
+        for component, values in current.items():
+            current_values = set(values)
+            baseline_values = set(baseline.get(component, []))
+            result["new_items"].extend(
+                {"component": component, "value": value}
+                for value in sorted(current_values - baseline_values)
+            )
+            result["removed_items"].extend(
+                {"component": component, "value": value}
+                for value in sorted(baseline_values - current_values)
+            )
+        return result
 
     def check_deviations(self, *args, **kwargs) -> List[Any]:
-        new_items = self.v2.get_new_components_since(0)
+        new_items = self.compare_against_baseline()["new_items"]
         findings = []
         for item in new_items:
-            ctype = item["component_type"]
-            key = item["key"]
+            ctype = item["component"]
+            key = item["value"]
+            severity = "critical" if ctype == "users" and key.endswith(":0") else "high"
             findings.append(create_finding(
                 rule_id="SYS-WRITE-001",
-                severity="medium",
+                severity=severity,
                 title_ar=f"عنصر جديد غير متوقع في خط الأساس: [{ctype}] {key}",
                 title_en=f"New unexpected baseline component: [{ctype}] {key}",
-                detail=f"تم رصد المكون لأول مرة في: {time.ctime(item['first_seen'])}",
+                detail=f"تم رصد المكون الجديد في خط الأساس: {ctype}={key}",
                 fix="راجع المكون وقم بقبوله في خط الأساس إن كان شرعياً.",
                 evidence=item,
                 stable_key=f"baseline_dev:{ctype}:{key}",
@@ -159,6 +214,31 @@ class BaselineEngineV2:
             """, (expiry, user, hmac_val, component_type, key))
             conn.commit()
         return True
+
+    def save_snapshot(self, state: Dict[str, Any]) -> bool:
+        """Persist a complete snapshot while retaining previous snapshot history."""
+        snapshot_json = json.dumps(state, sort_keys=True)
+        component_count = sum(len(values) for values in state.values())
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute(
+                "INSERT INTO snapshots (scanned_at, component_count, snapshot_json) VALUES (?, ?, ?)",
+                (time.time(), component_count, snapshot_json),
+            )
+            conn.commit()
+        return True
+
+    def get_latest_snapshot(self) -> Dict[str, Any]:
+        """Return the newest complete snapshot, or an empty state if none exists."""
+        with sqlite3.connect(self.db_path) as conn:
+            row = conn.execute(
+                "SELECT snapshot_json FROM snapshots ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+        if not row:
+            return {}
+        try:
+            return json.loads(row[0])
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return {}
 
     def get_new_components_since(self, since_time: float) -> List[Dict[str, Any]]:
         new_items = []
