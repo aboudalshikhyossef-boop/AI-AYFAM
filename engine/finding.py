@@ -109,6 +109,14 @@ class Finding(dict):
         return self["title"]
 
     @property
+    def detail(self) -> str:
+        return self["detail"]
+
+    @property
+    def fix(self) -> str:
+        return self["fix"]
+
+    @property
     def score(self) -> int:
         return self["score"]
 

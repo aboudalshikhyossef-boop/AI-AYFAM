@@ -182,7 +182,6 @@ class KernelChecker:
         if running_version is None:
             running_version = os.uname().release
 
-        # Check installed linux-image packages
         installed_kernels = []
         try:
             from utils import safe_exec
@@ -191,7 +190,20 @@ class KernelChecker:
                 for line in r.stdout.splitlines():
                     parts = line.split("\t")
                     if len(parts) == 2 and not parts[0].endswith("-generic-hwe") and "unsigned" not in parts[0]:
-                        installed_kernels.append(parts[0].replace("linux-image-", ""))
+                        k_ver = parts[0].replace("linux-image-", "")
+                        installed_kernels.append(k_ver)
+
+                if installed_kernels and running_version not in installed_kernels[0]:
+                    findings.append(create_finding(
+                        rule_id="SYS-UPDATE-001",
+                        severity="medium",
+                        title_ar="النواة المشغلة مختلفة عن آخر نواة مثبتة (يلزم إعادة التشغيل)",
+                        title_en="Running kernel differs from installed kernel (reboot required)",
+                        detail=f"النواة المشغلة حالياً: {running_version}\nآخر نواة مثبتة: {installed_kernels[0]}",
+                        fix="قم بإعادة تشغيل الجهاز لتفعيل النواة الجديدة: sudo reboot",
+                        evidence={"running": running_version, "installed": installed_kernels[0]},
+                        stable_key="reboot_required_kernel",
+                    ))
         except Exception:
             pass
 
