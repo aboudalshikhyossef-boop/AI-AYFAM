@@ -1,0 +1,6 @@
+Oct 23 10:00:01 testhost sshd[1001]: Failed password for invalid user admin from 192.168.1.50 port 2201 ssh2
+Oct 23 10:00:04 testhost sshd[1002]: Failed password for invalid user root from 192.168.1.50 port 2202 ssh2
+Oct 23 10:00:08 testhost sshd[1003]: Failed password for user from 192.168.1.50 port 2203 ssh2
+Oct 23 10:00:12 testhost sshd[1004]: Failed password for user from 192.168.1.50 port 2204 ssh2
+Oct 23 10:00:20 testhost sshd[1005]: Accepted publickey for root from 192.168.1.50 port 2205 ssh2
+Oct 23 10:01:00 testhost sudo: testuser : authentication failure; logname=testuser uid=1000
