@@ -14,6 +14,7 @@ from ui.views.sentinel import SentinelView
 from ui.views.knowledge import KnowledgeView
 from ui.views.settings import SettingsView
 from ui.views.attack_graph import AttackChainGraphView
+from ui.gui_app import NAV_ITEMS
 
 @pytest.fixture(scope="module")
 def qapp():
@@ -27,6 +28,11 @@ def test_tokens_definition():
     assert Tokens.DARK_BG_PRIMARY == "#0D1117"
     stylesheet = Tokens.get_qss_stylesheet()
     assert "font-family" in stylesheet
+    assert Tokens.get_qss_stylesheet(dark_mode=False) != stylesheet
+
+def test_views_are_reachable_from_main_navigation():
+    nav_keys = {key for key, _label in NAV_ITEMS}
+    assert {"findings", "timeline", "sentinel", "attack_graph"}.issubset(nav_keys)
 
 def test_ui_views_instantiation(qapp):
     dashboard = DashboardView()

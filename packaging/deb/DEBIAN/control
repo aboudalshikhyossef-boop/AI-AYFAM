@@ -2,7 +2,7 @@ Package: ai-ayfam
 Version: 5.0.0
 Section: utils
 Priority: optional
-Architecture: amd64
+Architecture: all
 Maintainer: AI AYFAM Team <security@ayfam.local>
 Depends: python3 (>= 3.10), python3-pyqt6, yara, ufw, fail2ban
 Description: AI AYFAM - Local Defensive Security Agent for Linux Mint

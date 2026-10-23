@@ -9,6 +9,11 @@ class Tokens:
     DARK_BG_SECONDARY = "#161B22"
     DARK_BG_GLASS = "rgba(22, 27, 34, 0.75)"
     DARK_BORDER_GLASS = "rgba(255, 255, 255, 0.12)"
+    LIGHT_BG_PRIMARY = "#F6F8FA"
+    LIGHT_BG_SECONDARY = "#FFFFFF"
+    LIGHT_BORDER_GLASS = "rgba(27, 31, 36, 0.18)"
+    LIGHT_TEXT_PRIMARY = "#1F2328"
+    LIGHT_TEXT_SECONDARY = "#59636E"
 
     TEXT_PRIMARY = "#F0F6FC"
     TEXT_SECONDARY = "#8B949E"
@@ -43,16 +48,21 @@ class Tokens:
 
     @classmethod
     def get_qss_stylesheet(cls, dark_mode: bool = True) -> str:
+        bg_primary = cls.DARK_BG_PRIMARY if dark_mode else cls.LIGHT_BG_PRIMARY
+        bg_secondary = cls.DARK_BG_SECONDARY if dark_mode else cls.LIGHT_BG_SECONDARY
+        border = cls.DARK_BORDER_GLASS if dark_mode else cls.LIGHT_BORDER_GLASS
+        text_primary = cls.TEXT_PRIMARY if dark_mode else cls.LIGHT_TEXT_PRIMARY
+        text_secondary = cls.TEXT_SECONDARY if dark_mode else cls.LIGHT_TEXT_SECONDARY
         return f"""
         QWidget {{
-            background-color: {cls.DARK_BG_PRIMARY};
-            color: {cls.TEXT_PRIMARY};
+            background-color: {bg_primary};
+            color: {text_primary};
             font-family: {cls.FONT_FAMILY_AR};
             font-size: {cls.FONT_SIZE_BODY};
         }}
         QFrame.glass-card {{
-            background-color: {cls.DARK_BG_SECONDARY};
-            border: 1px solid {cls.DARK_BORDER_GLASS};
+            background-color: {bg_secondary};
+            border: 1px solid {border};
             border-radius: {cls.RADIUS_CARD};
             padding: {cls.PADDING_CARD};
         }}
@@ -65,5 +75,17 @@ class Tokens:
         }}
         QPushButton:hover {{
             background-color: #79C0FF;
+        }}
+        QLabel, QTextEdit, QListWidget {{
+            color: {text_primary};
+        }}
+        QLineEdit, QTextEdit, QListWidget {{
+            background-color: {bg_secondary};
+            border: 1px solid {border};
+        }}
+        QToolTip {{
+            color: {text_primary};
+            background-color: {bg_secondary};
+            border: 1px solid {border};
         }}
         """

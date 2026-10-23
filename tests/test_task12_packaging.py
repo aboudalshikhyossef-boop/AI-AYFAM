@@ -33,3 +33,10 @@ def test_uninstall_and_setup_scripts_exist():
 
     assert os.path.exists(setup_path)
     assert os.path.exists(uninstall_path)
+
+def test_debian_build_script_exists():
+    build_path = os.path.join(
+        os.path.dirname(__file__), "..", "packaging", "build-deb.sh"
+    )
+    assert os.path.exists(build_path)
+    assert os.access(build_path, os.X_OK)
