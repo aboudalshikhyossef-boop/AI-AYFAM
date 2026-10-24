@@ -348,6 +348,7 @@ class UnifiedCockpitWindow(QMainWindow):
     # ═══════════════════════════════════════════════════════════════════════════
     def init_ui(self) -> None:
         central = QWidget(objectName="appRoot")
+        central.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
         root = QHBoxLayout(central)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
@@ -436,7 +437,7 @@ class UnifiedCockpitWindow(QMainWindow):
 
         title_box = QVBoxLayout()
         title_box.setSpacing(1)
-        page_eyebrow = self.page_eyebrow = QLabel("AI AYFAM  /  DASHBOARD")
+        page_eyebrow = self.page_eyebrow = QLabel("AI AYFAM  /  غرفة العمليات")
         page_eyebrow.setObjectName("eyebrow")
         title_box.addWidget(page_eyebrow)
         self.page_title = QLabel("غرفة العمليات")
@@ -498,7 +499,7 @@ class UnifiedCockpitWindow(QMainWindow):
         self.status_badge.setProperty("state", "idle")
         header_layout.addWidget(self.status_badge)
 
-        mode_badge = QLabel("DARK / OBSIDIAN")
+        mode_badge = QLabel("الوضع الداكن الزجاجي")
         mode_badge.setObjectName("modeBadge")
         mode_badge.setToolTip("يمكن تغيير الوضع والصوت من صفحة إعدادات النظام")
         header_layout.addWidget(mode_badge)
@@ -565,15 +566,15 @@ class UnifiedCockpitWindow(QMainWindow):
         dock_layout = QHBoxLayout(dock)
         dock_layout.setContentsMargins(SP_MD, 5, SP_MD, 5)
         dock_layout.setSpacing(SP_SM)
-        signal = QLabel("●  AYFAM LIVE DEFENSE")
+        signal = QLabel("●  الدفاع المباشر أيفام")
         signal.setObjectName("dockSignal")
         dock_layout.addWidget(signal)
-        for text in ("LOCAL PROCESSING", "USB SENTRY", "AI READY"):
+        for text in ("معالجة محلية", "حارس USB", "الذكاء الاصطناعي جاهز"):
             item = QLabel(text)
             item.setObjectName("dockItem")
             dock_layout.addWidget(item)
         dock_layout.addStretch()
-        self.dock_state = QLabel("SYSTEM READY")
+        self.dock_state = QLabel("النظام جاهز")
         self.dock_state.setObjectName("dockState")
         dock_layout.addWidget(self.dock_state)
         main_layout.addWidget(dock)
@@ -647,7 +648,7 @@ class UnifiedCockpitWindow(QMainWindow):
                 animation.start()
                 self.content_scroll.verticalScrollBar().setValue(0)
             self.page_title.setText(title_map.get(key, ""))
-            self.page_eyebrow.setText(f"AI AYFAM  /  {key.upper()}")
+            self.page_eyebrow.setText(f"AI AYFAM  /  {title_map.get(key, key)}")
             for name, page in page_map.items():
                 page.setSizePolicy(QSizePolicy.Policy.Preferred if name == key else QSizePolicy.Policy.Ignored,
                                    QSizePolicy.Policy.Preferred if name == key else QSizePolicy.Policy.Ignored)
@@ -722,7 +723,7 @@ class UnifiedCockpitWindow(QMainWindow):
         mission_layout.setSpacing(SP_LG)
         mission_copy = QVBoxLayout()
         mission_copy.setSpacing(SP_XS)
-        self.mission_kicker = QLabel("حالة الدفاع التكتيكية  •  LOCAL DEFENSE POSTURE: AWAITING FIRST SCAN")
+        self.mission_kicker = QLabel("حالة الدفاع التكتيكية  •  بانتظار الفحص الأول")
         self.mission_kicker.setObjectName("eyebrow")
         mission_copy.addWidget(self.mission_kicker)
         mission_title = QLabel("مركز المراقبة والتحكم الأمني المتقدم")
@@ -2076,7 +2077,7 @@ class UnifiedCockpitWindow(QMainWindow):
     def set_activity_state(self, state: str, text: str) -> None:
         self.status_badge.setText(text)
         if hasattr(self, "dock_state"):
-            self.dock_state.setText({"idle": "SYSTEM READY", "running": "LIVE ANALYSIS", "error": "ATTENTION REQUIRED"}.get(state, "SYSTEM READY"))
+            self.dock_state.setText({"idle": "النظام جاهز", "running": "تحليل مباشر", "error": "انتباه مطلوب"}.get(state, "النظام جاهز"))
             self.dock_state.setProperty("state", state)
             self.dock_state.style().unpolish(self.dock_state)
             self.dock_state.style().polish(self.dock_state)
@@ -2582,7 +2583,7 @@ class UnifiedCockpitWindow(QMainWindow):
         if hasattr(self, "metric_tags"):
             self.metric_tags["score"].setText("تم التقييم")
         self.score_badge.setText(f"الدرجة: {score}/100 ({grade})")
-        self.mission_kicker.setText("حالة الدفاع التكتيكية  •  LOCAL DEFENSE POSTURE: ASSESSED")
+        self.mission_kicker.setText("حالة الدفاع التكتيكية  •  تم تقييم الوضع الأمني")
         self.security_gauge.set_value(score)
         self._telemetry_history["الجاهزية الأمنية (%)"].append(float(score))
         del self._telemetry_history["الجاهزية الأمنية (%)"][:-24]

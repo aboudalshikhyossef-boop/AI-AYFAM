@@ -69,7 +69,7 @@ class TestModernUiSpecs(unittest.TestCase):
     def test_score_is_pending_until_a_scan_completes(self):
         with open(ROOT_DIR / "ui/gui_app.py", "r", encoding="utf-8") as f:
             code = f.read()
-        self.assertIn("AWAITING FIRST SCAN", code)
+        self.assertIn("بانتظار الفحص الأول", code)
         self.assertIn("self.security_gauge.set_pending()", code)
         self.assertNotIn("96.0 - external_penalty", code)
         self.assertNotIn("ACTIVE & SECURED", code)

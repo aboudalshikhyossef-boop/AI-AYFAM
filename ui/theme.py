@@ -120,34 +120,36 @@ QScrollArea > QWidget > QWidget {{
     background: transparent;
 }}
 
-/* ── الشريط الجانبي الفخم ── */
+/* ── الشريط الجانبي الفخم (RTL Right-Side Glass Bar) ── */
 QFrame#sidebar {{
-    background: rgba(10, 15, 30, 0.72);
-    border-right: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(10, 15, 30, 0.82);
+    border-left: 1px solid rgba(255, 255, 255, 0.12);
+    border-right: none;
 }}
 
 QPushButton#navButton {{
-    background: transparent;
+    background: rgba(255, 255, 255, 0.03);
     color: {TEXT_SECONDARY};
-    border: 1px solid transparent;
-    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 12px;
     padding: 10px 14px;
-    text-align: left;
-    min-height: 24px;
+    text-align: right;
+    min-height: 26px;
     font-weight: 500;
 }}
 
 QPushButton#navButton:hover {{
-    color: {TEXT_PRIMARY};
-    background: rgba(255, 255, 255, 0.06);
-    border-color: rgba(255, 255, 255, 0.10);
+    color: #ffffff;
+    background: rgba(45, 212, 191, 0.12);
+    border: 1px solid rgba(45, 212, 191, 0.35);
 }}
 
 QPushButton#navButton:checked {{
     color: #ffffff;
-    background: rgba(45, 212, 191, 0.16);
-    border: 1px solid rgba(45, 212, 191, 0.45);
-    font-weight: 600;
+    background: qlineargradient(x1:1, y1:0, x2:0, y2:0,
+        stop:0 rgba(45, 212, 191, 0.30), stop:1 rgba(15, 23, 42, 0.60));
+    border: 1px solid rgba(45, 212, 191, 0.65);
+    font-weight: 700;
 }}
 
 QLabel#navGroupLabel {{
