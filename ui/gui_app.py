@@ -44,6 +44,10 @@ from ui.widgets import (
     SecurityGauge, SoundUX, TelemetryChart,
 )
 from ui.intro_splash import AyfamIntroSplash, SystemOverviewDialog
+from ui.views.findings import FindingsView
+from ui.views.timeline import TimelineView
+from ui.views.sentinel import SentinelView
+from ui.views.attack_graph import AttackChainGraphView
 from ui.theme import (
     QSS, get_qss, ACCENT, ACCENT_SECONDARY, ACCENT_SOFT, ACCENT_HUES, BG_BASE, BG_SURFACE, BG_ELEVATED, BG_HOVER,
     BORDER, BORDER_FOCUS, TEXT_PRIMARY, TEXT_SECONDARY, TEXT_MUTED,
@@ -63,6 +67,10 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 NAV_ITEMS = [
     ("dashboard", "غرفة العمليات"),
     ("scans",     "الفحوصات الأمنية"),
+    ("findings",  "النتائج الموحدة"),
+    ("timeline",  "الخط الزمني"),
+    ("sentinel",  "الحارس اللحظي"),
+    ("attack_graph", "سلاسل الهجوم"),
     ("usb",       "الأجهزة المتصلة"),
     ("tools",     "ترسانة الأدوات"),
     ("chat",      "المحادثة الأمنية"),
@@ -382,12 +390,18 @@ class UnifiedCockpitWindow(QMainWindow):
         self.nav_button_map: dict[str, QPushButton] = {}
         icons_dir = ROOT_DIR / "resources" / "icons"
         nav_groups = [
-            ("المراقبة", ("dashboard", "scans", "usb")),
-            ("التحليل والاستجابة", ("tools", "chat", "playbooks")),
+            ("المراقبة", ("dashboard", "scans", "findings", "timeline", "sentinel", "usb")),
+            ("التحليل والاستجابة", ("attack_graph", "tools", "chat", "playbooks")),
             ("المعرفة والتقارير", ("library", "reports")),
             ("النظام", ("settings",)),
         ]
         labels = dict(NAV_ITEMS)
+        icon_aliases = {
+            "findings": "scans",
+            "timeline": "reports",
+            "sentinel": "dashboard",
+            "attack_graph": "playbooks",
+        }
         for group_title, keys in nav_groups:
             group_label = QLabel(group_title.upper())
             group_label.setObjectName("navGroupLabel")
@@ -396,7 +410,7 @@ class UnifiedCockpitWindow(QMainWindow):
                 btn = QPushButton(f"  {labels[key]}")
                 btn.setObjectName("navButton")
                 btn.setCheckable(True)
-                btn.setIcon(framed_icon(key))
+                btn.setIcon(framed_icon(icon_aliases.get(key, key)))
                 btn.setIconSize(QSize(30, 30))
                 btn.clicked.connect(lambda checked=False, k=key: self.switch_page(k))
                 sidebar_layout.addWidget(btn)
@@ -517,6 +531,10 @@ class UnifiedCockpitWindow(QMainWindow):
 
         self.page_dashboard = QWidget()
         self.page_scans = QWidget()
+        self.page_findings = FindingsView()
+        self.page_timeline = TimelineView()
+        self.page_sentinel = SentinelView()
+        self.page_attack_graph = AttackChainGraphView()
         self.page_usb = QWidget()
         self.page_tools = QWidget()
         self.page_chat = QWidget()
@@ -537,6 +555,10 @@ class UnifiedCockpitWindow(QMainWindow):
 
         self.stack.addWidget(self.page_dashboard)
         self.stack.addWidget(self.page_scans)
+        self.stack.addWidget(self.page_findings)
+        self.stack.addWidget(self.page_timeline)
+        self.stack.addWidget(self.page_sentinel)
+        self.stack.addWidget(self.page_attack_graph)
         self.stack.addWidget(self.page_usb)
         self.stack.addWidget(self.page_tools)
         self.stack.addWidget(self.page_chat)
@@ -615,6 +637,8 @@ class UnifiedCockpitWindow(QMainWindow):
     def switch_page(self, key: str) -> None:
         page_map = {
             "dashboard": self.page_dashboard, "scans": self.page_scans,
+            "findings": self.page_findings, "timeline": self.page_timeline,
+            "sentinel": self.page_sentinel, "attack_graph": self.page_attack_graph,
             "usb": self.page_usb, "tools": self.page_tools,
             "chat": self.page_chat, "library": self.page_library,
             "playbooks": self.page_playbooks, "reports": self.page_reports,
@@ -622,6 +646,8 @@ class UnifiedCockpitWindow(QMainWindow):
         }
         title_map = {
             "dashboard": "غرفة العمليات", "scans": "الفحوصات الأمنية",
+            "findings": "النتائج الأمنية الموحدة", "timeline": "الخط الزمني للحوادث",
+            "sentinel": "الحارس اللحظي", "attack_graph": "سلاسل الهجوم المرتبطة",
             "usb": "الأجهزة المتصلة", "tools": "ترسانة الأدوات المتقدمة",
             "chat": "المحادثة الذكية", "library": "مكتبة المعرفة",
             "playbooks": "خطط العمل الأمنية", "reports": "التقارير",

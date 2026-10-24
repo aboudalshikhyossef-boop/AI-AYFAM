@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=AI AYFAM Security Center
+Name[ar]=مركز AI AYFAM الأمني
+Comment=Local defensive cybersecurity agent for Linux Mint
+Exec=ayfam-gui
+Icon=security-high
+Terminal=false
+Type=Application
+Categories=System;Security;
+Keywords=security;antivirus;firewall;audit;ayfam;
+StartupNotify=true
