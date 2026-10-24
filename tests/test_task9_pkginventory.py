@@ -3,11 +3,56 @@ Unit tests for Task 9 — Package Inventory, Version Comparison, and Rules Bundl
 """
 
 import os
+import json
 import tempfile
 import pytest
 from engine.pkginventory import PackageInventoryEngine
 from tools.dev.sign_bundle import generate_keypair, sign_rules_bundle
 from cryptography.hazmat.primitives import serialization
+
+def test_osv_ecosystem_detection_mapping():
+    engine = PackageInventoryEngine()
+    # Test mapping
+    assert engine.detect_os_ecosystem() in [
+        "Ubuntu:24.04:LTS", "Ubuntu:22.04:LTS", "Ubuntu:20.04:LTS", "Ubuntu"
+    ] or engine.detect_os_ecosystem().startswith("Ubuntu:")
+
+def test_query_osv_batch_chunks_and_network_error():
+    engine = PackageInventoryEngine()
+    pkgs = {f"pkg-{i}": "1.0.0" for i in range(150)}
+
+    # Mocking network response
+    from unittest.mock import patch, MagicMock
+    import urllib.error
+
+    # Simulate network error
+    with patch("urllib.request.urlopen", side_effect=urllib.error.URLError("Network Unreachable")):
+        findings, err = engine.query_osv_batch(pkgs, batch_size=50)
+        assert len(findings) == 0
+        assert err is not None
+        assert "OSV.dev" in err or "انقطاع الشبكة" in err
+
+    # Simulate successful batch response
+    sample_resp = MagicMock()
+    sample_resp.read.return_value = json.dumps({
+        "results": [
+            {
+                "vulns": [
+                    {
+                        "id": "GHSA-1234",
+                        "details": "Critical issue"
+                    }
+                ]
+            }
+            for _ in range(50)
+        ]
+    }).encode("utf-8")
+    sample_resp.__enter__.return_value = sample_resp
+
+    with patch("urllib.request.urlopen", return_value=sample_resp):
+        findings, err = engine.query_osv_batch(pkgs, batch_size=50)
+        assert err is None
+        assert len(findings) > 0
 
 def test_version_comparison_via_dpkg():
     engine = PackageInventoryEngine()

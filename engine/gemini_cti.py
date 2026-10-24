@@ -22,6 +22,7 @@ from typing import Any, Iterable, Mapping
 
 from utils import http_client as requests
 from engine.gemini_rate_limit import DEFAULT_GEMINI_MODEL, LEGACY_GEMINI_MODELS, compact_text, gemini_model_name, wait_for_slot
+from brain.context_engine import ContextEngine
 
 THREAT_SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -260,6 +261,9 @@ class GeminiThreatClient:
 
     def ask_assistant(self, prompt: str, system_context: str = "") -> str:
         """Make exactly one compact Gemini request; no SDK/model fallback burst."""
+        prompt = ContextEngine.sanitize_privacy_data(prompt)
+        system_context = ContextEngine.sanitize_privacy_data(system_context)
+
         sys_instruction = (
             "You are AI AYFAM, a senior cybersecurity expert for Linux Mint and Ubuntu. "
             "Answer briefly with evidence, impact, confidence limits, and one safe next step. "

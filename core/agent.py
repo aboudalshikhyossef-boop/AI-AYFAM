@@ -35,6 +35,7 @@ from reports.generator import generate_markdown_report, save_report
 from brain import library
 from brain import relevance_engine
 from engine.correlation import CorrelationEngine, SmartRemediationAdvisor
+from engine.pkginventory import PackageInventoryEngine
 from utils import safe_exec
 from engine.gemini_cti import GeminiCTIError, GeminiThreatClient, LocalThreatMatcher, ThreatHistory, markdown_report, resolve_api_key
 from engine.ai_assistant import AssistantConfig, AssistantError, build_provider
@@ -83,8 +84,9 @@ class AYFAMAgent(AgentV5Mixin):
         self._last_intent  = None
         self._last_entities = {}
 
-        # ── Attack Chain Correlation Engine ──
+        # ── Attack Chain Correlation Engine & Package Inventory Engine ──
         self.correlation = CorrelationEngine()
+        self.pkg_engine = PackageInventoryEngine()
 
     def _t(self, ar: str, en: str) -> str:
         return ar if self.lang == "ar" else en
@@ -1349,12 +1351,20 @@ You can type any of these or anything similar in plain language:
 
         # ربط تلقائي بين حزم النظام القابلة للترقية وقاعدة CVE/CISA KEV
         try:
-            self.ui.info(f"  🔍 {self._t('مطابقة الحزم مع قاعدة CVE','Cross-checking packages against CVE database')}...")
+            self.ui.info(f"  🔍 {self._t('مطابقة الحزم مع قاعدة CVE و OSV.dev','Cross-checking packages against CVE & OSV.dev')}...")
             pkg_check = system.list_upgradable_security_packages()
             cve_findings = self._enrich_packages_with_cve(pkg_check.get("packages", []))
             all_findings.extend(cve_findings)
+
+            # OSV.dev Batch Scan
+            installed_pkgs = self.pkg_engine.get_installed_packages()
+            osv_findings, osv_err = self.pkg_engine.query_osv_batch(installed_pkgs)
+            if osv_err:
+                self.ui.warning(f"  OSV: {osv_err}")
+            else:
+                all_findings.extend(osv_findings)
         except Exception as e:
-            self.ui.warning(f"  CVE cross-check: {e}")
+            self.ui.warning(f"  CVE/OSV cross-check: {e}")
 
         all_findings = self.intel.correlate_findings(all_findings)
         all_findings += self.intel.detect_compound_risks(all_findings)

@@ -330,3 +330,38 @@ class ContextEngine:
             f"جدار الحماية: {'🟢 نشط' if self.network.get('firewall_active') else '🔴 معطَّل'}\n"
             f"اتصالات نشطة: {self.network.get('active_connections', '?')}"
         )
+
+    @classmethod
+    def sanitize_privacy_data(cls, text: str, hostname: str = "", username: str = "") -> str:
+        """
+        طبقة تمويه وتعمية حماية الخصوصية قبل إرسال النص إلى مزودات AI الخارجية (Gemini).
+        تستبدل اسم الجهاز واسم المستخدم برمزين عامين [HOST] و [USER]، مع تعمية مسارات /home/<user>.
+        """
+        if not text:
+            return ""
+
+        # Auto-detect hostname if not provided
+        if not hostname:
+            try:
+                hostname = socket.gethostname()
+            except Exception:
+                hostname = ""
+
+        # Auto-detect username if not provided
+        if not username:
+            try:
+                username = pwd.getpwuid(os.getuid()).pw_name
+            except Exception:
+                username = os.environ.get("USER", "")
+
+        result = text
+        if hostname and len(hostname) > 1:
+            result = result.replace(hostname, "[HOST]")
+
+        if username and len(username) > 1:
+            # Mask user's home directory pattern /home/username
+            home_path = f"/home/{username}"
+            result = result.replace(home_path, "/home/[USER]")
+            result = result.replace(username, "[USER]")
+
+        return result

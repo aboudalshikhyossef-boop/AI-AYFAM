@@ -13,6 +13,7 @@ from typing import Any, Mapping, Protocol
 
 from utils import http_client
 from engine.gemini_rate_limit import DEFAULT_GEMINI_MODEL, compact_text, gemini_model_name, wait_for_slot
+from brain.context_engine import ContextEngine
 
 
 class AssistantError(RuntimeError):
@@ -126,6 +127,11 @@ class GeminiAssistant:
     def ask(self, prompt: str, *, system_context: str = "") -> str:
         if not _text(prompt):
             raise AssistantError("Prompt is empty")
+
+        # Privacy anonymization scrubbing before outbound API transmission
+        prompt = ContextEngine.sanitize_privacy_data(prompt)
+        system_context = ContextEngine.sanitize_privacy_data(system_context)
+
         prompt = compact_text(prompt, 3600)
         context = compact_text(system_context, 600)
         instruction = (
