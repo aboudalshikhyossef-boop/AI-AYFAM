@@ -4,19 +4,23 @@ Unit tests for Task 11 — UI Tokens, Views, and Offscreen Verification
 
 import os
 import pytest
-from PyQt6.QtWidgets import QApplication, QWidget
-from ui.tokens import Tokens
-from ui.views.dashboard import DashboardView
-from ui.views.scan import ScanView
-from ui.views.findings import FindingsView
-from ui.views.timeline import TimelineView
-from ui.views.sentinel import SentinelView
-from ui.views.knowledge import KnowledgeView
-from ui.views.settings import SettingsView
-from ui.views.attack_graph import AttackChainGraphView
-from ui.gui_app import NAV_ITEMS
-from ui.icons import ICON_COLORS
-from ui.widgets import SoundUX
+
+try:
+    from PyQt6.QtWidgets import QApplication, QWidget
+    from ui.tokens import Tokens
+    from ui.views.dashboard import DashboardView
+    from ui.views.scan import ScanView
+    from ui.views.findings import FindingsView
+    from ui.views.timeline import TimelineView
+    from ui.views.sentinel import SentinelView
+    from ui.views.knowledge import KnowledgeView
+    from ui.views.settings import SettingsView
+    from ui.views.attack_graph import AttackChainGraphView
+    from ui.gui_app import NAV_ITEMS
+    from ui.icons import ICON_COLORS
+    from ui.widgets import SoundUX
+except (ImportError, OSError) as exc:
+    pytest.skip(f"Qt runtime is unavailable ({exc})", allow_module_level=True)
 
 @pytest.fixture(scope="module")
 def qapp():

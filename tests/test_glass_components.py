@@ -5,11 +5,15 @@
 from pathlib import Path
 
 import pytest
-from PyQt6.QtGui import QIcon
-from PyQt6.QtTest import QTest
-from PyQt6.QtWidgets import QApplication
-from ui.gui_app import NAV_ITEMS, UnifiedCockpitWindow
-from ui.widgets import Glass, GlassAnalogClock, NavigationWheel
+
+try:
+    from PyQt6.QtGui import QIcon
+    from PyQt6.QtTest import QTest
+    from PyQt6.QtWidgets import QApplication
+    from ui.gui_app import NAV_ITEMS, UnifiedCockpitWindow
+    from ui.widgets import Glass, GlassAnalogClock, NavigationWheel
+except (ImportError, OSError) as exc:
+    pytest.skip(f"Qt runtime is unavailable ({exc})", allow_module_level=True)
 
 
 @pytest.fixture
