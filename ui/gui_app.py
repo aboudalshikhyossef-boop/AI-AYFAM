@@ -543,8 +543,6 @@ class UnifiedCockpitWindow(QMainWindow):
         # ── Live Glass Analog Clock & Date ──
         clock_container = QHBoxLayout()
         clock_container.setSpacing(SP_SM)
-        self.analog_clock = GlassAnalogClock()
-        clock_container.addWidget(self.analog_clock)
 
         self.clock_box = QVBoxLayout()
         self.clock_box.setSpacing(0)
@@ -557,6 +555,10 @@ class UnifiedCockpitWindow(QMainWindow):
         self.clock_box.addWidget(self.clock_time_label)
         self.clock_box.addWidget(self.clock_date_label)
         clock_container.addLayout(self.clock_box)
+
+        self.analog_clock = GlassAnalogClock()
+        clock_container.addWidget(self.analog_clock)
+
         header_layout.addLayout(clock_container)
 
         # Update clock every second
