@@ -16,7 +16,7 @@ from PyQt6.QtGui import QColor, QDesktopServices, QFont, QIcon, QAction, QShortc
 from PyQt6.QtWidgets import (
     QApplication, QComboBox, QFileDialog, QFrame, QGraphicsOpacityEffect, QGridLayout, QGroupBox,
     QHBoxLayout, QHeaderView, QLabel, QLineEdit, QMainWindow, QMessageBox,
-    QPlainTextEdit, QProgressBar, QPushButton, QSplitter, QStackedWidget,
+    QPlainTextEdit, QProgressBar, QPushButton, QSplitter, QStackedWidget, QTabWidget,
     QTableWidget, QTableWidgetItem, QTextEdit, QVBoxLayout, QWidget, QScrollArea, QSizePolicy,
     QInputDialog, QCheckBox,
     QSplashScreen,
@@ -262,14 +262,16 @@ def _storage_size_text(value, size_bytes=None) -> str:
     return f"{amount:.1f} {units[unit]}"
 
 
-def table_cell(text, color: str | None = None, center: bool = False, bold: bool = False, tip: str | None = None) -> QTableWidgetItem:
+def table_cell(text, color: str | None = None, center: bool = False, bold: bool = False, tip: str | None = None, mono: bool = False) -> QTableWidgetItem:
     item = QTableWidgetItem(str(text))
     if color:
         item.setForeground(QColor(color))
+    font = item.font()
     if bold:
-        font = item.font()
         font.setBold(True)
-        item.setFont(font)
+    if mono:
+        font.setFamily("monospace")
+    item.setFont(font)
     if center:
         item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
     else:
@@ -540,9 +542,11 @@ class UnifiedCockpitWindow(QMainWindow):
         self.activity_animation.start()
         header_layout.addWidget(self.activity_lamp)
 
-        # ── Live Glass Analog Clock & Date ──
-        clock_container = QHBoxLayout()
-        clock_container.setSpacing(SP_SM)
+        # ── Live Glass Analog Clock & Date Pill ──
+        clock_pill = QFrame(objectName="clockGlassPill")
+        clock_pill_layout = QHBoxLayout(clock_pill)
+        clock_pill_layout.setContentsMargins(12, 4, 12, 4)
+        clock_pill_layout.setSpacing(SP_SM)
 
         self.clock_box = QVBoxLayout()
         self.clock_box.setSpacing(0)
@@ -554,12 +558,12 @@ class UnifiedCockpitWindow(QMainWindow):
         self.clock_date_label.setAlignment(Qt.AlignmentFlag.AlignRight)
         self.clock_box.addWidget(self.clock_time_label)
         self.clock_box.addWidget(self.clock_date_label)
-        clock_container.addLayout(self.clock_box)
+        clock_pill_layout.addLayout(self.clock_box)
 
-        self.analog_clock = GlassAnalogClock()
-        clock_container.addWidget(self.analog_clock)
+        self.analog_clock = GlassAnalogClock(size=44)
+        clock_pill_layout.addWidget(self.analog_clock)
 
-        header_layout.addLayout(clock_container)
+        header_layout.addWidget(clock_pill)
 
         # Update clock every second
         self.clock_timer = QTimer(self)
@@ -1016,8 +1020,14 @@ class UnifiedCockpitWindow(QMainWindow):
         layout.setContentsMargins(SP_XL, SP_LG, SP_XL, SP_LG)
         layout.setSpacing(SP_LG)
 
-        # Form card
-        form = QGroupBox("تهيئة الفحص")
+        self.scan_tabs = QTabWidget()
+
+        # Tab 1: Scan Execution
+        tab_exec = QWidget()
+        l_exec = QVBoxLayout(tab_exec)
+        l_exec.setSpacing(SP_MD)
+
+        form = QGroupBox("تهيئة وإطلاق الفحص")
         grid = QGridLayout(form)
         grid.setSpacing(SP_MD)
         self.scan_target = QLineEdit("127.0.0.1")
@@ -1081,21 +1091,27 @@ class UnifiedCockpitWindow(QMainWindow):
             btn.clicked.connect(callback)
             self.task_buttons.append(btn)
             button_grid.addWidget(btn, i // 4, i % 4)
-        layout.addWidget(form)
+        l_exec.addWidget(form)
 
         # Progress
         self.scan_progress = QProgressBar()
         self.scan_progress.setTextVisible(False)
         self.scan_progress.setRange(0, 0)
         self.scan_progress.hide()
-        layout.addWidget(self.scan_progress)
+        l_exec.addWidget(self.scan_progress)
 
         self.scan_hint = QLabel("اختر نوع الفحص المناسب من الأزرار أعلاه.")
         self.scan_hint.setStyleSheet(f"color: {TEXT_SECONDARY}; font-size: {FONT_SIZE_SMALL}px;")
-        layout.addWidget(self.scan_hint)
+        l_exec.addWidget(self.scan_hint)
+        self.scan_tabs.addTab(tab_exec, "تشغيل الفحوصات")
 
-        # Findings table
-        self.setup_findings_table(layout)
+        # Tab 2: Findings
+        tab_results = QWidget()
+        l_results = QVBoxLayout(tab_results)
+        self.setup_findings_table(l_results)
+        self.scan_tabs.addTab(tab_results, "سجل نتائج الفحص")
+
+        layout.addWidget(self.scan_tabs, 1)
 
     def setup_findings_table(self, layout: QVBoxLayout) -> None:
         group = QGroupBox("نتائج الفحص الأخيرة")
@@ -1248,6 +1264,12 @@ class UnifiedCockpitWindow(QMainWindow):
         heading.addWidget(self.usb_refresh_button)
         layout.addLayout(heading)
 
+        # Tabbed structure for USB
+        usb_tabs = QTabWidget()
+
+        # Tab 1: Devices
+        tab_devices = QWidget()
+        l_devices = QVBoxLayout(tab_devices)
         devices_group = QGroupBox("الأجهزة المتصلة بالنظام")
         devices_layout = QVBoxLayout(devices_group)
         self.usb_devices_table = QTableWidget(0, 5)
@@ -1261,15 +1283,41 @@ class UnifiedCockpitWindow(QMainWindow):
         self.usb_devices_table.cellClicked.connect(self.show_usb_device_details)
         self.usb_devices_table.itemSelectionChanged.connect(self._capture_usb_device_selection)
         devices_layout.addWidget(self.usb_devices_table)
-        layout.addWidget(devices_group, 2)
+        l_devices.addWidget(devices_group)
 
-        actions = QHBoxLayout()
-        actions.setSpacing(SP_SM)
-        self.usb_allow_button = QPushButton("السماح")
+        device_actions = QHBoxLayout()
+        device_actions.setSpacing(SP_SM)
+        self.usb_allow_button = QPushButton("السماح بالجهاز")
         self.usb_allow_button.clicked.connect(lambda: self.control_selected_usb_device(True))
-        self.usb_block_button = QPushButton("حجب")
+        self.usb_block_button = QPushButton("حجب الجهاز")
         self.usb_block_button.setObjectName("danger")
         self.usb_block_button.clicked.connect(lambda: self.control_selected_usb_device(False))
+        for button in (self.usb_allow_button, self.usb_block_button):
+            self.task_buttons.append(button)
+            device_actions.addWidget(button)
+        device_actions.addStretch()
+        l_devices.addLayout(device_actions)
+
+        # Tab 2: Drives & Storage Analysis
+        tab_drives = QWidget()
+        l_drives = QVBoxLayout(tab_drives)
+        drives_group = QGroupBox("وحدات التخزين وتحليلها")
+        drives_layout = QVBoxLayout(drives_group)
+        self.usb_drives_table = QTableWidget(0, 4)
+        self.usb_drives_table.setHorizontalHeaderLabels(["الجهاز", "الطراز", "الحجم", "نقطة التوصيل"])
+        self.usb_drives_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        self.usb_drives_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        self.usb_drives_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.usb_drives_table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
+        self.usb_drives_table.setAlternatingRowColors(True)
+        self.usb_drives_table.verticalHeader().setVisible(False)
+        self.usb_drives_table.verticalHeader().setDefaultSectionSize(32)
+        self.usb_drives_table.cellClicked.connect(self.show_usb_drive_details)
+        self.usb_drives_table.itemSelectionChanged.connect(self._capture_usb_partition_selection)
+        drives_layout.addWidget(self.usb_drives_table)
+
+        drive_actions = QHBoxLayout()
+        drive_actions.setSpacing(SP_SM)
         self.usb_scan_button = QPushButton("تحليل التخزين")
         self.usb_scan_button.setObjectName("primary")
         self.usb_scan_button.clicked.connect(self.scan_selected_usb_storage)
@@ -1285,32 +1333,22 @@ class UnifiedCockpitWindow(QMainWindow):
         self.usb_eject_button.setToolTip("فصل وحدة التخزين وإيقاف طاقتها بأمان")
         self.usb_eject_button.clicked.connect(self.eject_selected_usb_storage)
         for button in (
-            self.usb_allow_button, self.usb_block_button, self.usb_scan_button,
-            self.usb_deep_scan_button, self.usb_fix_button, self.usb_eject_button,
+            self.usb_scan_button, self.usb_deep_scan_button,
+            self.usb_fix_button, self.usb_eject_button,
         ):
             self.task_buttons.append(button)
-            actions.addWidget(button)
-        layout.addLayout(actions)
+            drive_actions.addWidget(button)
+        drives_layout.addLayout(drive_actions)
 
-        drives_group = QGroupBox("وحدات التخزين وتحليلها")
-        drives_layout = QVBoxLayout(drives_group)
-        self.usb_drives_table = QTableWidget(0, 4)
-        self.usb_drives_table.setHorizontalHeaderLabels(["الجهاز", "الطراز", "الحجم", "نقطة التوصيل"])
-        self.usb_drives_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        self.usb_drives_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
-        self.usb_drives_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self.usb_drives_table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
-        self.usb_drives_table.setAlternatingRowColors(True)
-        self.usb_drives_table.verticalHeader().setVisible(False)
-        self.usb_drives_table.verticalHeader().setDefaultSectionSize(32)
-        self.usb_drives_table.cellClicked.connect(self.show_usb_drive_details)
-        self.usb_drives_table.itemSelectionChanged.connect(self._capture_usb_partition_selection)
-        drives_layout.addWidget(self.usb_drives_table)
         self.usb_detail = QPlainTextEdit(readOnly=True)
         self.usb_detail.setPlaceholderText("حدد جهازاً أو وحدة تخزين لعرض التفاصيل والمخاطر.")
-        self.usb_detail.setMaximumHeight(160)
+        self.usb_detail.setMaximumHeight(140)
         drives_layout.addWidget(self.usb_detail)
-        layout.addWidget(drives_group, 2)
+        l_drives.addWidget(drives_group)
+
+        usb_tabs.addTab(tab_devices, "الأجهزة والتحكم")
+        usb_tabs.addTab(tab_drives, "وحدات التخزين والتحليل")
+        layout.addWidget(usb_tabs, 1)
 
     # ═══════════════════════════════════════════════════════════════════════════
     #  TOOLS PAGE
@@ -1330,12 +1368,11 @@ class UnifiedCockpitWindow(QMainWindow):
         path_row.addWidget(btn_browse_tool_path)
         layout.addLayout(path_row)
 
-        groups_layout = QHBoxLayout()
-        groups_layout.setSpacing(SP_MD)
+        tools_tabs = QTabWidget()
 
-        # 1. Audit & Hardening
-        g_audit = QGroupBox("التدقيق والتحصين")
-        l_audit = QVBoxLayout(g_audit)
+        # 1. Audit & Hardening Tab
+        tab_audit = QWidget()
+        l_audit = QVBoxLayout(tab_audit)
         audit_btns = [
             ("فحص CIS Hardening", lambda: self._run_tool_and_display(self.agent._run_deep_audit, "فحص CIS Hardening"), "فحص إعدادات التحصين وفق معايير CIS. يستغرق نحو دقيقة • يتطلب صلاحيات root", True),
             ("فحص Lynis Audit", lambda: self._run_tool_and_display(self.agent._run_lynis_cli, "فحص Lynis"), "تدقيق أمني شامل لمنظومة النظام عبر Lynis. يستغرق 1-2 دقيقة • يتطلب صلاحيات root", True),
@@ -1343,60 +1380,69 @@ class UnifiedCockpitWindow(QMainWindow):
             ("فحص شذوذ النظام", lambda: self._run_tool_and_display(self.agent._run_baseline_check_cli, "فحص الشذوذ"), "مقارنة حالة النظام الحالية مع خط الأساس المحفوظ لكشف أي تغيير غريب. يستغرق بضع ثوانٍ", False),
             ("خطة المعالجة", lambda: self._run_tool_and_display(self.agent._generate_remediation_plan, "خطة المعالجة"), "توليد خطة خطوة بخطوة لمعالجة الثغرات المكتشفة مؤخراً. يستغرق بضع ثوانٍ", False),
         ]
-        for name, fn, tip, needs_root in audit_btns:
+        grid_audit = QGridLayout()
+        grid_audit.setSpacing(SP_SM)
+        for idx, (name, fn, tip, needs_root) in enumerate(audit_btns):
             btn = QPushButton(name + (" 🔒" if needs_root else ""))
+            btn.setMinimumHeight(38)
             btn.setToolTip(tip)
             btn.clicked.connect(fn)
             self.task_buttons.append(btn)
-            l_audit.addWidget(btn)
-        l_audit.addStretch()
-        groups_layout.addWidget(g_audit)
+            grid_audit.addWidget(btn, idx // 2, idx % 2)
+        l_audit.addLayout(grid_audit)
+        tools_tabs.addTab(tab_audit, "التدقيق والتحصين")
 
-        # 2. Scanning & Malware
-        g_scan = QGroupBox("كشف التهديدات والأسرار")
-        l_scan = QVBoxLayout(g_scan)
+        # 2. Scanning & Malware Tab
+        tab_scan = QWidget()
+        l_scan = QVBoxLayout(tab_scan)
         scan_btns = [
             ("فحص YARA", lambda: self._run_tool_and_display(lambda: self.agent._run_yara_cli(self.tool_path.text().strip() or "."), "فحص YARA"), "فحص المسار المحدد بقواعد YARA لكشف الملفات الخبيثة. يستغرق 10-30 ثانية", False),
             ("كشف الأسرار", lambda: self._run_tool_and_display(lambda: self.agent._scan_secrets_cli(self.tool_path.text().strip() or "."), "كشف الأسرار"), "البحث عن المفاتيح وكلمات المرور والأسرار المسربة في المسار المحدد. يستغرق 5-15 ثانية", False),
             ("فحص Rootkit", lambda: self._run_tool_and_display(self.agent._run_rootkit_cli, "فحص Rootkit"), "فحص نواة النظام للكشف عن أدوات الإخفاء برمجيات Rootkit. يستغرق نحو دقيقة • يتطلب صلاحيات root", True),
             ("توليد قواعد التفاعل", lambda: self._run_tool_and_display(self.agent._run_synthesize_rules_cli, "توليد قواعد"), "إنشاء قواعد YARA وSuricata تلقائياً من نتائج التحليل المتاحة. يستغرق بضع ثوانٍ", False),
         ]
-        for name, fn, tip, needs_root in scan_btns:
+        grid_scan = QGridLayout()
+        grid_scan.setSpacing(SP_SM)
+        for idx, (name, fn, tip, needs_root) in enumerate(scan_btns):
             btn = QPushButton(name + (" 🔒" if needs_root else ""))
+            btn.setMinimumHeight(38)
             btn.setToolTip(tip)
             btn.clicked.connect(fn)
             self.task_buttons.append(btn)
-            l_scan.addWidget(btn)
-        l_scan.addStretch()
-        groups_layout.addWidget(g_scan)
+            grid_scan.addWidget(btn, idx // 2, idx % 2)
+        l_scan.addLayout(grid_scan)
+        tools_tabs.addTab(tab_scan, "كشف التهديدات والأسرار")
 
-        # 3. Threat Intel & CTI
-        g_intel = QGroupBox("استخبارات التهديدات")
-        l_intel = QVBoxLayout(g_intel)
+        # 3. Threat Intel & CTI Tab
+        tab_intel = QWidget()
+        l_intel = QVBoxLayout(tab_intel)
         intel_btns = [
             ("تحديث التهديدات (KEV/Exploit-DB)", lambda: self._run_tool_and_display(self.agent._update_intel, "تحديث التهديدات"), "تحديث قاعدة بيانات الثغرات المستغلة من CISA KEV وExploit-DB. يستغرق 10-20 ثانية", False),
             ("Gemini CTI (48h)", lambda: self._run_tool_and_display(lambda: self.agent.run_gemini_threat_scan(48), "Gemini CTI"), "استعلام الذكاء الاصطناعي عن أحدث التهديدات المستجدة في آخر 48 ساعة. يستغرق 10-20 ثانية", False),
             ("تصدير تقرير HTML", lambda: self._run_tool_and_display(self.agent._export_html_report, "تصدير HTML"), "تصدير تقرير أمني شامل بصيغة HTML مفصلة إلى مجلد التقارير. يستغرق بضع ثوانٍ", False),
         ]
-        for name, fn, tip, needs_root in intel_btns:
+        grid_intel = QGridLayout()
+        grid_intel.setSpacing(SP_SM)
+        for idx, (name, fn, tip, needs_root) in enumerate(intel_btns):
             btn = QPushButton(name + (" 🔒" if needs_root else ""))
+            btn.setMinimumHeight(38)
             if "Gemini" in name:
                 btn.setObjectName("primary")
             btn.setToolTip(tip)
             btn.clicked.connect(fn)
             self.task_buttons.append(btn)
-            l_intel.addWidget(btn)
-        l_intel.addStretch()
-        groups_layout.addWidget(g_intel)
+            grid_intel.addWidget(btn, idx // 2, idx % 2)
+        l_intel.addLayout(grid_intel)
+        tools_tabs.addTab(tab_intel, "استخبارات التهديدات CTI")
 
-        layout.addLayout(groups_layout)
+        layout.addWidget(tools_tabs)
 
         # Output viewer pane directly on Tools page
         out_box = QGroupBox("نتائج تشغيل الأدوات والمخرجات المباشرة")
         out_layout = QVBoxLayout(out_box)
         self.tool_output = QPlainTextEdit(readOnly=True)
-        self.tool_output.setPlaceholderText("اختر أداة تشغيل من المجموعات أعلاه لعرض نتائجها هنا مباشرة...")
-        self.tool_output.setMinimumHeight(200)
+        self.tool_output.setPlaceholderText("اختر أداة تشغيل من التبويبات أعلاه لعرض نتائجها هنا مباشرة...")
+        self.tool_output.setMinimumHeight(180)
         out_layout.addWidget(self.tool_output)
         layout.addWidget(out_box, 1)
 
@@ -1940,14 +1986,14 @@ class UnifiedCockpitWindow(QMainWindow):
                     state_color = CONN_STATE_COLORS.get(state.upper(), TEXT_SECONDARY)
                     remote = str(c.get("remote", ""))
                     cells = [
-                        table_cell(c.get("proto", ""), center=True),
+                        table_cell(c.get("proto", ""), center=True, mono=True),
                         table_cell(state, state_color, center=True, bold=True, tip=f"حالة الاتصال: {state}"),
                         table_cell("خارجي" if foreign else "محلي", SEV_HIGH if foreign else SEV_SAFE, center=True, bold=True,
                                    tip="اتصال بعنوان خارج الشبكة المحلية" if foreign else "اتصال داخل الجهاز أو الشبكة المحلية"),
-                        table_cell(c.get("local", "")),
-                        table_cell(remote, SEV_HIGH if foreign else None),
+                        table_cell(c.get("local", ""), mono=True),
+                        table_cell(remote, SEV_HIGH if foreign else None, mono=True),
                         table_cell(c.get("process", "") or "—"),
-                        table_cell(c.get("pid", ""), center=True),
+                        table_cell(c.get("pid", ""), center=True, mono=True),
                     ]
                     for col, cell in enumerate(cells):
                         self.table_conns.setItem(row, col, cell)
@@ -1957,10 +2003,10 @@ class UnifiedCockpitWindow(QMainWindow):
                     cmd_raw = str(p.get("command", ""))
                     cells = [
                         table_cell(p.get("user", "")),
-                        table_cell(p.get("pid", ""), center=True),
-                        table_cell(f"{cpu:g}%", SEV_CRITICAL if cpu >= 70 else SEV_HIGH if cpu >= 30 else None, center=True, bold=cpu >= 30),
-                        table_cell(f"{mem:g}%", SEV_CRITICAL if mem >= 70 else SEV_HIGH if mem >= 30 else None, center=True, bold=mem >= 30),
-                        table_cell(cmd_raw),
+                        table_cell(p.get("pid", ""), center=True, mono=True),
+                        table_cell(f"{cpu:g}%", SEV_CRITICAL if cpu >= 70 else SEV_HIGH if cpu >= 30 else None, center=True, bold=cpu >= 30, mono=True),
+                        table_cell(f"{mem:g}%", SEV_CRITICAL if mem >= 70 else SEV_HIGH if mem >= 30 else None, center=True, bold=mem >= 30, mono=True),
+                        table_cell(cmd_raw, mono=True),
                     ]
                     for col, cell in enumerate(cells):
                         self.table_procs.setItem(row, col, cell)

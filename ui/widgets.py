@@ -401,9 +401,9 @@ def chip(text: str, color: QColor) -> QLabel:
 class GlassAnalogClock(QWidget):
     """ساعة عقاربية زجاجية لحظية مع نبض دائري للمراقبة الأمنية."""
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, size: int = 68):
         super().__init__(parent)
-        self.setFixedSize(68, 68)
+        self.setFixedSize(size, size)
         self.now = datetime.now()
         self.timer = QTimer(self)
         self.timer.timeout.connect(self._tick)
@@ -418,22 +418,28 @@ class GlassAnalogClock(QWidget):
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         w, h = self.width(), self.height()
         center = QPointF(w / 2, h / 2)
-        r = min(w, h) / 2 - 3
+        r = min(w, h) / 2 - 2
 
-        # Dial backdrop
+        # Dial backdrop with subtle glass gradient
         g = QRadialGradient(center, r)
-        g.setColorAt(0, QColor(15, 23, 42, 220))
-        g.setColorAt(1, QColor(5, 9, 18, 240))
-        p.setPen(QPen(QColor(255, 255, 255, 45), 1.2))
+        g.setColorAt(0, QColor(25, 41, 66, 230))
+        g.setColorAt(0.7, QColor(15, 23, 42, 240))
+        g.setColorAt(1, QColor(5, 9, 18, 250))
+        p.setPen(QPen(QColor(255, 255, 255, 60), 1.2))
         p.setBrush(g)
         p.drawEllipse(center, r, r)
+
+        # Outer glowing accent rim
+        p.setPen(QPen(QColor(45, 212, 191, 100), 1.0))
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        p.drawEllipse(center, r - 1.5, r - 1.5)
 
         # Minute ticks
         for i in range(12):
             angle = math.radians(i * 30)
-            p1 = QPointF(center.x() + (r - 4) * math.cos(angle), center.y() + (r - 4) * math.sin(angle))
-            p2 = QPointF(center.x() + (r - 1.5) * math.cos(angle), center.y() + (r - 1.5) * math.sin(angle))
-            p.setPen(QPen(Tokens.TEAL if i % 3 == 0 else QColor(255, 255, 255, 70), 1.5 if i % 3 == 0 else 1.0))
+            p1 = QPointF(center.x() + (r - 3.5) * math.cos(angle), center.y() + (r - 3.5) * math.sin(angle))
+            p2 = QPointF(center.x() + (r - 1.2) * math.cos(angle), center.y() + (r - 1.2) * math.sin(angle))
+            p.setPen(QPen(Tokens.TEAL if i % 3 == 0 else QColor(255, 255, 255, 80), 1.4 if i % 3 == 0 else 0.8))
             p.drawLine(p1, p2)
 
         # Hands
@@ -444,7 +450,7 @@ class GlassAnalogClock(QWidget):
         # Hour hand
         ang_h = math.radians((hr * 30) - 90)
         ph = QPointF(center.x() + (r * 0.48) * math.cos(ang_h), center.y() + (r * 0.48) * math.sin(ang_h))
-        p.setPen(QPen(QColor("#f8fafc"), 2.4, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+        p.setPen(QPen(QColor("#f8fafc"), 2.2, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
         p.drawLine(center, ph)
 
         # Minute hand
