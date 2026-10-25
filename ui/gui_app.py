@@ -40,8 +40,8 @@ from tools.websearch import DEFAULT_GOOGLE_CSE_CX
 from ui.terminal import TerminalUI
 from ui.icons import ICON_COLORS, framed_icon, glyph_icon
 from ui.widgets import (
-    AccentLine, AmbientSurface, ChatView, HoverController, NavIndicator, PressFeedbackController,
-    SecurityGauge, SoundUX, TelemetryChart,
+    AccentLine, AmbientSurface, ChatView, Glass, GlassAnalogClock, HoverController,
+    NavIndicator, PressFeedbackController, SecurityGauge, SoundUX, TelemetryChart,
 )
 from ui.intro_splash import AyfamIntroSplash, SystemOverviewDialog
 from ui.views.findings import FindingsView
@@ -344,8 +344,30 @@ class UnifiedCockpitWindow(QMainWindow):
         self.update_live_telemetry()
         self._sync_control_labels()
 
+    def open_command_palette(self) -> None:
+        """شريط أوامر عائم زجاجي للوصول السريع للأدوات والوظائف."""
+        items = [
+            ("بدء فحص شامل", lambda: self.run_background_task(self.agent._full_scan, "الفحص الشامل")),
+            ("الانتقال لـ غرفة العمليات", lambda: self.switch_page("dashboard")),
+            ("الانتقال لـ الفحوصات الأمنية", lambda: self.switch_page("scans")),
+            ("الانتقال لـ ترسانة الأدوات", lambda: self.switch_page("tools")),
+            ("الانتقال لـ الأجهزة المتصلة USB", lambda: self.switch_page("usb")),
+            ("الانتقال لـ المحادثة الذكية", lambda: self.switch_page("chat")),
+            ("الانتقال لـ إعدادات النظام", lambda: self.switch_page("settings")),
+            ("تحديث الرادار والبيانات", self.update_live_telemetry),
+        ]
+        labels = [item[0] for item in items]
+        selected, ok = QInputDialog.getItem(self, "شريط الأوامر السريعة (Ctrl+K)", "اختر أمراً لتنفيذه مباشرة:", labels, 0, False)
+        if ok and selected:
+            for label, action in items:
+                if label == selected:
+                    action()
+                    break
+
     def _install_accessibility_shortcuts(self) -> None:
         """Keyboard access to common actions without changing mouse workflows."""
+        cmd_palette = QShortcut(QKeySequence("Ctrl+K"), self)
+        cmd_palette.activated.connect(self.open_command_palette)
         refresh = QShortcut(QKeySequence("Ctrl+R"), self)
         refresh.setObjectName("refreshTelemetryShortcut")
         refresh.setWhatsThis("تحديث بيانات الاتصالات والعمليات")
@@ -518,7 +540,12 @@ class UnifiedCockpitWindow(QMainWindow):
         self.activity_animation.start()
         header_layout.addWidget(self.activity_lamp)
 
-        # ── Live clock & date ──
+        # ── Live Glass Analog Clock & Date ──
+        clock_container = QHBoxLayout()
+        clock_container.setSpacing(SP_SM)
+        self.analog_clock = GlassAnalogClock()
+        clock_container.addWidget(self.analog_clock)
+
         self.clock_box = QVBoxLayout()
         self.clock_box.setSpacing(0)
         self.clock_time_label = QLabel("--:--:--")
@@ -529,7 +556,8 @@ class UnifiedCockpitWindow(QMainWindow):
         self.clock_date_label.setAlignment(Qt.AlignmentFlag.AlignRight)
         self.clock_box.addWidget(self.clock_time_label)
         self.clock_box.addWidget(self.clock_date_label)
-        header_layout.addLayout(self.clock_box)
+        clock_container.addLayout(self.clock_box)
+        header_layout.addLayout(clock_container)
 
         # Update clock every second
         self.clock_timer = QTimer(self)
