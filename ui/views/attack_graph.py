@@ -5,7 +5,7 @@ from __future__ import annotations
 import html
 
 from PyQt6.QtCore import QPointF, Qt
-from PyQt6.QtGui import QBrush, QColor, QFont, QPainter, QPen, QPolygonF
+from PyQt6.QtGui import QBrush, QColor, QFont, QPainter, QPainterPath, QPen, QPolygonF
 from PyQt6.QtWidgets import (
     QFrame,
     QGraphicsScene,
@@ -133,7 +133,9 @@ class AttackChainGraphView(QWidget):
         accent = QColor(color)
         fill = QColor(18, 29, 49, 235 if prominent else 205)
         pen = QPen(accent, 2.0 if prominent else 1.2)
-        rect = self.scene.addRoundedRect(x, y, self.NODE_WIDTH, self.NODE_HEIGHT, 14, 14, pen, QBrush(fill))
+        shape = QPainterPath()
+        shape.addRoundedRect(x, y, self.NODE_WIDTH, self.NODE_HEIGHT, 14, 14)
+        rect = self.scene.addPath(shape, pen, QBrush(fill))
         rect.setZValue(1)
         rect.setToolTip(html.escape((detail or title)[:1000]))
         title_item = self.scene.addText()

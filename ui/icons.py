@@ -9,25 +9,10 @@ from PyQt6.QtCore import QByteArray, QRectF, Qt
 from PyQt6.QtGui import QColor, QIcon, QLinearGradient, QPainter, QPen, QPixmap, QRadialGradient
 from PyQt6.QtSvg import QSvgRenderer
 
-from ui.theme import ACCENT, COLOR_ICON_INACTIVE, COLOR_ICON_ACTIVE
+from ui.theme import ACCENT, COLOR_ICON_INACTIVE, COLOR_ICON_ACTIVE, PAGE_ACCENTS
 
 ICON_DIR = Path(__file__).resolve().parents[1] / "resources" / "icons"
-ICON_COLORS = {
-    "dashboard": "#48ded0",
-    "scans": "#67b7ff",
-    "findings": "#ff7890",
-    "timeline": "#f4c86a",
-    "sentinel": "#57dfa8",
-    "attack_graph": "#b69aff",
-    "usb": "#57c9f4",
-    "tools": "#ffa86f",
-    "chat": "#d09aff",
-    "library": "#72d7b8",
-    "playbooks": "#f5a6d2",
-    "reports": "#85aaff",
-    "settings": "#b8c8df",
-    "send": COLOR_ICON_ACTIVE,
-}
+ICON_COLORS = {**PAGE_ACCENTS, "send": COLOR_ICON_ACTIVE}
 
 
 def _recolor(name: str, color: str) -> QByteArray:

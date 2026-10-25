@@ -20,7 +20,10 @@ try:
 except ImportError:  # pragma: no cover - minimal Qt installations may omit Multimedia
     QSoundEffect = None
 
-from ui.theme import ACCENT, BG_BASE, SEV_SAFE, TEXT_MUTED, TEXT_PRIMARY, TEXT_SECONDARY, alpha
+from ui.theme import (
+    ACCENT, BG_BASE, SEV_CRITICAL, SEV_HIGH, SEV_MEDIUM, SEV_SAFE,
+    TEXT_MUTED, TEXT_PRIMARY, TEXT_SECONDARY, alpha,
+)
 
 
 class AmbientSurface(QWidget):
@@ -417,11 +420,11 @@ class SecurityGauge(QFrame):
         p.setPen(QPen(QColor(255, 255, 255, 20), 12, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
         p.drawArc(base, 225 * 16, -270 * 16)
         color = QColor(
-            "#64748b" if self.pending
-            else "#34d399" if self.value >= 85
-            else "#f59e0b" if self.value >= 70
-            else "#fb923c" if self.value >= 50
-            else "#f43f5e"
+            TEXT_MUTED if self.pending
+            else SEV_SAFE if self.value >= 85
+            else SEV_MEDIUM if self.value >= 70
+            else SEV_HIGH if self.value >= 50
+            else SEV_CRITICAL
         )
         if not self.pending:
             glow = QColor(color)
@@ -514,7 +517,7 @@ class HaloOverlay(QWidget):
         path = QPainterPath()
         path.addRoundedRect(rect, self.radius, self.radius)
         p.setClipPath(path)
-        base = QColor(str(self.target.property("glowColor") or self.target.property("accentColor") or "#7dd3fc"))
+        base = QColor(str(self.target.property("glowColor") or self.target.property("accentColor") or ACCENT))
         light = QRadialGradient(self.pointer, min(180, self.width() * 0.65))
         center = QColor(base)
         center.setAlpha(int(30 * self.strength))
