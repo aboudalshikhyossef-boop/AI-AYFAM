@@ -455,19 +455,26 @@ class GlassAnalogClock(QWidget):
         center = QPointF(w / 2, h / 2)
         r = min(w, h) / 2 - 2
 
+        halo = QRadialGradient(center, r + 8)
+        halo.setColorAt(0.82, QColor(45, 212, 191, 16))
+        halo.setColorAt(1.0, QColor(45, 212, 191, 0))
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(halo)
+        p.drawEllipse(center, r + 7, r + 7)
+
         g = QRadialGradient(center, r)
-        g.setColorAt(0, QColor(4, 11, 20, 52))
-        g.setColorAt(0.78, QColor(4, 11, 20, 36))
-        g.setColorAt(1.0, QColor(4, 11, 20, 24))
+        g.setColorAt(0, QColor(4, 11, 20, 60))
+        g.setColorAt(0.78, QColor(4, 11, 20, 42))
+        g.setColorAt(1.0, QColor(4, 11, 20, 30))
         p.setPen(QPen(QColor(218, 244, 255, 56), 1.0))
         p.setBrush(g)
         p.drawEllipse(center, r, r)
 
         rim = QLinearGradient(0, 0, w, h)
-        rim.setColorAt(0.0, QColor(255, 255, 255, 76))
-        rim.setColorAt(0.48, QColor(45, 212, 191, 26))
-        rim.setColorAt(1.0, QColor(255, 255, 255, 34))
-        p.setPen(QPen(QBrush(rim), 1.2))
+        rim.setColorAt(0.0, QColor(226, 250, 255, 142))
+        rim.setColorAt(0.48, QColor(45, 212, 191, 76))
+        rim.setColorAt(1.0, QColor(226, 250, 255, 92))
+        p.setPen(QPen(QBrush(rim), 1.5))
         p.setBrush(Qt.BrushStyle.NoBrush)
         p.drawEllipse(center, r - 1.5, r - 1.5)
 
@@ -478,8 +485,8 @@ class GlassAnalogClock(QWidget):
             inner = outer - (7.0 if major else 3.0)
             p1 = QPointF(center.x() + inner * math.cos(angle), center.y() + inner * math.sin(angle))
             p2 = QPointF(center.x() + outer * math.cos(angle), center.y() + outer * math.sin(angle))
-            tick_color = QColor(45, 212, 191, 190) if major else QColor(226, 238, 250, 72)
-            p.setPen(QPen(tick_color, 1.35 if major else 0.65, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+            tick_color = QColor(93, 242, 224, 238) if major else QColor(226, 238, 250, 98)
+            p.setPen(QPen(tick_color, 1.7 if major else 0.8, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
             p.drawLine(p1, p2)
 
         sec = self.now.second + self.now.microsecond / 1_000_000
@@ -654,6 +661,18 @@ class NavigationWheel(QWidget):
     """قائمة تنقل دائرية تعرض الأيقونات على قوس بمنظور وحركة ثلاثية الأبعاد."""
 
     page_selected = pyqtSignal(str)
+    GROUP_LABELS = {
+        "dashboard": ("المراقبة", "MONITORING"), "scans": ("المراقبة", "MONITORING"),
+        "findings": ("المراقبة", "MONITORING"), "timeline": ("المراقبة", "MONITORING"),
+        "sentinel": ("المراقبة", "MONITORING"), "usb": ("المراقبة", "MONITORING"),
+        "attack_graph": ("التحليل والاستجابة", "ANALYSIS & RESPONSE"),
+        "tools": ("التحليل والاستجابة", "ANALYSIS & RESPONSE"),
+        "chat": ("التحليل والاستجابة", "ANALYSIS & RESPONSE"),
+        "playbooks": ("التحليل والاستجابة", "ANALYSIS & RESPONSE"),
+        "library": ("المعرفة والتقارير", "KNOWLEDGE & REPORTS"),
+        "reports": ("المعرفة والتقارير", "KNOWLEDGE & REPORTS"),
+        "settings": ("النظام", "SYSTEM"),
+    }
 
     def __init__(self, items: list[tuple[str, str, object, str]], parent=None):
         super().__init__(parent)
@@ -664,12 +683,17 @@ class NavigationWheel(QWidget):
         self.queued_steps: list[int] = []
         self.hovered_index = -1
         self.accent = QColor(items[0][3] if items else ACCENT)
-        self.setMinimumSize(154, 310)
+        self.setMinimumSize(154, 420)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setMouseTracking(True)
         self.setAccessibleName("عجلة التنقل بين صفحات التطبيق / Application navigation wheel")
         self.setToolTip("مرر عجلة الفأرة أو استخدم السهمين للتنقل / Scroll or use arrow keys to navigate")
+        self.pulse_phase = 0.0
+        self.pulse_timer = QTimer(self)
+        self.pulse_timer.setInterval(70)
+        self.pulse_timer.timeout.connect(self._tick_pulse)
+        self.pulse_timer.start()
 
         self.animation = QVariantAnimation(self)
         self.animation.setDuration(300)
@@ -678,7 +702,12 @@ class NavigationWheel(QWidget):
         self.animation.finished.connect(self._finish_step)
 
     def sizeHint(self) -> QSize:
-        return QSize(188, 390)
+        return QSize(200, 460)
+
+    def _tick_pulse(self) -> None:
+        if self.isVisible():
+            self.pulse_phase = (self.pulse_phase + 0.055) % math.tau
+            self.update()
 
     def _set_progress(self, value) -> None:
         self.progress = float(value)
@@ -732,8 +761,8 @@ class NavigationWheel(QWidget):
         return offset
 
     def _item_center(self, index: int) -> QPointF:
-        radius = min(112.0, max(74.0, (self.height() - 100) / 2))
-        center_y = self.height() / 2 - 20
+        radius = min(148.0, max(82.0, (self.height() - 130) / 2))
+        center_y = self.height() / 2 - 40
         angle = self._offset_for(index) * 0.56
         return QPointF(self.width() / 2, center_y + radius * math.sin(angle))
 
@@ -742,19 +771,28 @@ class NavigationWheel(QWidget):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         panel = QRectF(12, 8, self.width() - 24, self.height() - 16)
         panel_path = QPainterPath()
-        panel_path.addRoundedRect(panel, 28, 28)
+        panel_path.addRoundedRect(panel, 22, 22)
         panel_fill = QLinearGradient(panel.topLeft(), panel.bottomRight())
-        panel_fill.setColorAt(0, QColor(4, 12, 23, 102))
-        panel_fill.setColorAt(0.52, QColor(5, 14, 26, 72))
-        panel_fill.setColorAt(1, QColor(4, 10, 20, 92))
+        panel_fill.setColorAt(0, QColor(4, 12, 23, 72))
+        panel_fill.setColorAt(0.52, QColor(5, 14, 26, 44))
+        panel_fill.setColorAt(1, QColor(4, 10, 20, 62))
         painter.fillPath(panel_path, panel_fill)
         edge = QLinearGradient(panel.topLeft(), panel.bottomRight())
-        edge.setColorAt(0, QColor(220, 244, 255, 58))
-        edge.setColorAt(0.5, QColor(220, 244, 255, 15))
-        edge.setColorAt(1, QColor(220, 244, 255, 34))
+        edge.setColorAt(0, QColor(220, 244, 255, 76))
+        edge.setColorAt(0.5, QColor(220, 244, 255, 22))
+        edge.setColorAt(1, QColor(220, 244, 255, 48))
         painter.setPen(QPen(QBrush(edge), 1.0))
         painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawPath(panel_path)
+
+        current_key = self.items[self.current_index][0]
+        group_ar, group_en = self.GROUP_LABELS.get(current_key, ("التنقل", "NAVIGATION"))
+        painter.setPen(QColor(self.accent.red(), self.accent.green(), self.accent.blue(), 225))
+        painter.setFont(QFont("Tajawal", 9, QFont.Weight.DemiBold))
+        painter.drawText(QRectF(20, 16, self.width() - 40, 18), Qt.AlignmentFlag.AlignCenter, group_ar)
+        painter.setPen(QColor(226, 238, 250, 95))
+        painter.setFont(QFont("DejaVu Sans", 7, QFont.Weight.Medium))
+        painter.drawText(QRectF(20, 32, self.width() - 40, 14), Qt.AlignmentFlag.AlignCenter, group_en)
 
         painter.setPen(QPen(QColor(self.accent.red(), self.accent.green(), self.accent.blue(), 28), 1.0))
         painter.drawLine(QPointF(self.width() / 2, panel.top() + 24), QPointF(self.width() / 2, panel.bottom() - 50))
@@ -771,23 +809,31 @@ class NavigationWheel(QWidget):
             center = self._item_center(index)
             angle = offset * 0.56
             depth = max(0.0, math.cos(angle))
-            scale = 0.72 + 0.28 * depth
-            opacity = 0.42 + 0.58 * depth
-            icon_size = 54 * scale
             active = abs(offset) < 0.12
             hovered = index == self.hovered_index
+            pulse = math.sin(self.pulse_phase + index * 0.83)
+            scale = 0.76 + 0.24 * depth + 0.018 * pulse + (0.035 if active else 0)
+            opacity = 0.52 + 0.48 * depth
+            icon_size = 72 * scale
             painter.save()
             painter.setOpacity(opacity)
             painter.translate(center)
             painter.rotate(-offset * 7.0)
             painter.scale(scale, 0.68 + depth * 0.32)
+            color_value = QColor(color)
+            glow = QRadialGradient(QPointF(0, 0), 48)
+            glow.setColorAt(0, QColor(color_value.red(), color_value.green(), color_value.blue(), int(18 + 12 * pulse)))
+            glow.setColorAt(1, QColor(color_value.red(), color_value.green(), color_value.blue(), 0))
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(glow)
+            painter.drawEllipse(QPointF(0, 0), 48, 48)
             if active or hovered:
-                color_value = QColor(color)
-                fill = QColor(color_value.red(), color_value.green(), color_value.blue(), 32 if active else 18)
-                border = QColor(color_value.red(), color_value.green(), color_value.blue(), 155 if active else 82)
-                painter.setPen(QPen(border, 1.2 if active else 0.8))
+                fill = QColor(4, 12, 22, 54 if active else 34)
+                border = QColor(color_value.red(), color_value.green(), color_value.blue(), 175 if active else 112)
+                painter.setPen(QPen(border, 1.25 if active else 0.9))
                 painter.setBrush(fill)
-                painter.drawRoundedRect(QRectF(-31, -31, 62, 62), 20, 20)
+                tile_size = 80 if active else 74
+                painter.drawRoundedRect(QRectF(-tile_size / 2, -tile_size / 2, tile_size, tile_size), 22, 22)
             pixmap = icon.pixmap(QSize(max(18, int(icon_size)), max(18, int(icon_size))))
             painter.drawPixmap(QRectF(-icon_size / 2, -icon_size / 2, icon_size, icon_size), pixmap, QRectF(pixmap.rect()))
             painter.restore()
@@ -795,10 +841,10 @@ class NavigationWheel(QWidget):
         active_item = self.items[self.current_index]
         painter.setPen(QColor(active_item[3]))
         painter.setFont(QFont("Tajawal", 11, QFont.Weight.DemiBold))
-        painter.drawText(QRectF(18, self.height() - 54, self.width() - 36, 22), Qt.AlignmentFlag.AlignCenter, active_item[1])
+        painter.drawText(QRectF(18, self.height() - 58, self.width() - 36, 24), Qt.AlignmentFlag.AlignCenter, active_item[1])
         painter.setPen(QColor(226, 238, 250, 115))
         painter.setFont(QFont("Tajawal", 9))
-        painter.drawText(QRectF(18, self.height() - 33, self.width() - 36, 16), Qt.AlignmentFlag.AlignCenter,
+        painter.drawText(QRectF(18, self.height() - 34, self.width() - 36, 16), Qt.AlignmentFlag.AlignCenter,
                          f"{self.current_index + 1:02d}  /  {len(self.items):02d}")
 
     def mouseMoveEvent(self, event) -> None:
@@ -934,7 +980,7 @@ class TelemetryChart(Glass):
         self.series = {}
         self.hover_index = -1
         self.setObjectName("telemetryChart")
-        self.setMinimumHeight(220)
+        self.setMinimumHeight(180)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
     def set_data(self, series: dict[str, tuple[list[float], str]]) -> None:
@@ -1029,7 +1075,7 @@ class SecurityGauge(Glass):
         self.value = 0
         self.pending = True
         self.setObjectName("securityGauge")
-        self.setMinimumSize(210, 220)
+        self.setMinimumSize(190, 180)
 
     def set_value(self, value: float) -> None:
         self.value = max(0, min(100, float(value)))

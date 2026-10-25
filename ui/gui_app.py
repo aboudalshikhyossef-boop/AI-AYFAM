@@ -456,18 +456,19 @@ class UnifiedCockpitWindow(QMainWindow):
 
         # ── Header bar ──
         header = QFrame(objectName="headerBar")
-        header.setFixedHeight(88)
-        header_layout = QHBoxLayout(header)
+        header.setFixedHeight(104)
+        header_layout = QGridLayout(header)
         header_layout.setContentsMargins(SP_XL, SP_SM, SP_XL, SP_SM)
-        header_layout.setSpacing(SP_MD)
+        header_layout.setHorizontalSpacing(SP_MD)
+        header_layout.setColumnMinimumWidth(0, 260)
+        header_layout.setColumnStretch(0, 1)
+        header_layout.setColumnStretch(1, 0)
+        header_layout.setColumnMinimumWidth(2, 260)
+        header_layout.setColumnStretch(2, 1)
 
-        title_box = QVBoxLayout()
-        title_box.setSpacing(0)
         self.page_title = QLabel("غرفة العمليات")
         self.page_title.setObjectName("sectionTitle")
-        title_box.addWidget(self.page_title)
-        header_layout.addLayout(title_box)
-        header_layout.addStretch()
+        header_layout.addWidget(self.page_title, 0, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
 
         # Activity lamp
         self.activity_lamp = QFrame(objectName="activityLamp")
@@ -481,45 +482,28 @@ class UnifiedCockpitWindow(QMainWindow):
         self.activity_animation.setDuration(1800)
         self.activity_animation.setLoopCount(-1)
         self.activity_animation.start()
-        header_layout.addWidget(self.activity_lamp)
-
-        # ── Live Crystal Glass Clock & Date Pill ──
-        clock_pill = QFrame(objectName="clockGlassPill")
-        clock_pill_layout = QHBoxLayout(clock_pill)
-        clock_pill_layout.setContentsMargins(10, 4, 10, 4)
-        clock_pill_layout.setSpacing(SP_SM)
-
-        self.clock_box = QVBoxLayout()
-        self.clock_box.setSpacing(0)
-        self.clock_time_label = QLabel("--:--:--")
-        self.clock_time_label.setObjectName("clockTime")
-        self.clock_time_label.setAlignment(Qt.AlignmentFlag.AlignRight)
-        self.clock_date_label = QLabel("")
-        self.clock_date_label.setObjectName("clockDate")
-        self.clock_date_label.setAlignment(Qt.AlignmentFlag.AlignRight)
-        self.clock_box.addWidget(self.clock_time_label)
-        self.clock_box.addWidget(self.clock_date_label)
-        clock_pill_layout.addLayout(self.clock_box)
-
-        self.analog_clock = GlassAnalogClock(size=62)
-        clock_pill_layout.addWidget(self.analog_clock)
-
-        header_layout.addWidget(clock_pill)
-
-        # Update clock every second
-        self.clock_timer = QTimer(self)
-        self.clock_timer.timeout.connect(self.update_clock)
-        self.clock_timer.start(1000)
-        self.update_clock()
+        header_status = QHBoxLayout()
+        header_status.setSpacing(SP_MD)
+        header_status.addWidget(self.activity_lamp, 0, Qt.AlignmentFlag.AlignVCenter)
 
         self.status_badge = QLabel("جاهز")
         self.status_badge.setObjectName("statusBadge")
         self.status_badge.setProperty("state", "idle")
-        header_layout.addWidget(self.status_badge)
+        header_status.addWidget(self.status_badge)
 
         self.score_badge = QLabel("الدرجة —")
         self.score_badge.setObjectName("scoreBadge")
-        header_layout.addWidget(self.score_badge)
+        header_status.addWidget(self.score_badge)
+        header_layout.addLayout(header_status, 0, 2, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+
+        self.analog_clock = GlassAnalogClock(size=84)
+        self.analog_clock.setObjectName("headerAnalogClock")
+        header_layout.addWidget(self.analog_clock, 0, 1, Qt.AlignmentFlag.AlignCenter)
+
+        self.clock_timer = QTimer(self)
+        self.clock_timer.timeout.connect(self.update_clock)
+        self.clock_timer.start(1000)
+        self.update_clock()
 
         main_layout.addWidget(header)
         self.accent_line = AccentLine()
@@ -932,14 +916,19 @@ class UnifiedCockpitWindow(QMainWindow):
         conn_layout.addWidget(self.connection_summary)
         self.table_conns = QTableWidget(0, 7)
         self.table_conns.setHorizontalHeaderLabels(["البروتوكول", "الحالة", "النطاق", "المحلي", "البعيد", "العملية", "PID"])
-        self.table_conns.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
-        self.table_conns.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
-        self.table_conns.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)
-        self.table_conns.horizontalHeader().setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)
+        conn_header = self.table_conns.horizontalHeader()
+        conn_header.setMinimumSectionSize(76)
+        conn_header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        conn_header.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
+        conn_header.setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)
+        conn_header.setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)
         prepare_table(self.table_conns)
         for col in (0, 1, 2):
             self.table_conns.horizontalHeader().setSectionResizeMode(col, QHeaderView.ResizeMode.ResizeToContents)
+        self.table_conns.setTextElideMode(Qt.TextElideMode.ElideMiddle)
+        self.table_conns.setMinimumHeight(220)
         conn_layout.addWidget(self.table_conns)
+        conn_group.setMinimumHeight(278)
         self.dashboard_splitter.addWidget(conn_group)
 
         # Processes panel
@@ -956,13 +945,16 @@ class UnifiedCockpitWindow(QMainWindow):
         self.table_procs.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         for col in (2, 3):
             self.table_procs.horizontalHeader().setSectionResizeMode(col, QHeaderView.ResizeMode.ResizeToContents)
+        self.table_procs.horizontalHeader().setMinimumSectionSize(76)
+        self.table_procs.setMinimumHeight(220)
         proc_layout.addWidget(self.table_procs)
+        proc_group.setMinimumHeight(278)
         self.dashboard_splitter.addWidget(proc_group)
 
         self.dashboard_splitter.setStretchFactor(0, 3)
         self.dashboard_splitter.setStretchFactor(1, 2)
-        self.dashboard_splitter.setSizes([190, 150])
-        self.dashboard_splitter.setMinimumHeight(330)
+        self.dashboard_splitter.setSizes([300, 280])
+        self.dashboard_splitter.setMinimumHeight(570)
         layout.addWidget(self.dashboard_splitter, 1)
 
     # ═══════════════════════════════════════════════════════════════════════════
@@ -1869,10 +1861,9 @@ class UnifiedCockpitWindow(QMainWindow):
     def update_clock(self) -> None:
         from datetime import datetime
         now = datetime.now()
-        self.clock_time_label.setText(now.strftime("%H:%M:%S"))
         day = self.AR_DAYS.get(now.strftime("%A"), now.strftime("%A"))
         month = self.AR_MONTHS.get(now.month, now.strftime("%B"))
-        self.clock_date_label.setText(f"{day}، {now.day} {month} {now.year}")
+        self.analog_clock.setToolTip(f"{now.strftime('%H:%M:%S')}  •  {day}، {now.day} {month} {now.year}")
 
     def show_system_overview(self) -> None:
         dlg = SystemOverviewDialog(self)

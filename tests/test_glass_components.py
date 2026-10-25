@@ -52,6 +52,7 @@ def test_navigation_wheel_animates_between_pages(qapp):
     assert wheel.current_index == 1
     assert selected == ["scans"]
     assert wheel.accent.name() == "#67b7ff"
+    assert wheel.pulse_timer.interval() == 70
 
 
 def test_navigation_pages_have_distinct_icon_assets():
@@ -62,8 +63,13 @@ def test_navigation_pages_have_distinct_icon_assets():
 def test_cockpit_window_initialization(qapp):
     window = UnifiedCockpitWindow()
     assert window.windowTitle() == "AI AYFAM — Security Operations Center"
-    assert window.analog_clock.width() == 62
-    assert window.nav_wheel.minimumHeight() == 310
+    assert window.analog_clock.width() == 84
+    assert window.analog_clock.parentWidget().objectName() == "headerBar"
+    assert window.analog_clock.parentWidget().layout().columnMinimumWidth(0) == 260
+    assert window.analog_clock.parentWidget().layout().columnMinimumWidth(2) == 260
+    assert window.nav_wheel.minimumHeight() == 420
+    assert window.table_conns.minimumHeight() >= 220
+    assert window.table_procs.minimumHeight() >= 220
     assert window.table_findings.property("flow") == "#67b7ff"
     assert window.page_timeline.table.property("flow") == "#f4c86a"
     assert window.page_timeline.table.verticalHeader().defaultSectionSize() == 44
