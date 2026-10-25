@@ -140,8 +140,8 @@ QScrollArea > QWidget > QWidget {{
 /* ── الشريط الجانبي الفخم (RTL Right-Side Glass Bar) ── */
 QFrame#sidebar {{
     background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-        stop:0 rgba(18, 30, 52, 0.94), stop:0.52 rgba(10, 18, 36, 0.91), stop:1 rgba(15, 22, 45, 0.94));
-    border-left: 1px solid rgba(181, 215, 255, 0.16);
+        stop:0 rgba(18, 30, 52, 0.95), stop:0.52 rgba(10, 18, 36, 0.93), stop:1 rgba(15, 22, 45, 0.95));
+    border-left: 1px solid rgba(181, 215, 255, 0.18);
     border-right: none;
 }}
 
@@ -171,26 +171,26 @@ QPushButton#navButton {{
     background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
         stop:0 rgba(255, 255, 255, 0.045), stop:1 rgba(255, 255, 255, 0.012));
     color: {TEXT_SECONDARY};
-    border: 1px solid rgba(208, 228, 255, 0.07);
+    border: 1px solid rgba(208, 228, 255, 0.08);
     border-radius: 12px;
-    padding: 8px 12px;
+    padding: 8px 14px;
     text-align: right;
-    min-height: 30px;
+    min-height: 32px;
     font-weight: 500;
 }}
 
 QPushButton#navButton:hover {{
     color: #ffffff;
     background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-        stop:0 rgba(255, 255, 255, 0.11), stop:0.45 rgba(74, 130, 170, 0.12), stop:1 rgba(255, 255, 255, 0.035));
-    border: 1px solid rgba(180, 222, 255, 0.28);
+        stop:0 rgba(255, 255, 255, 0.12), stop:0.45 rgba(74, 130, 170, 0.15), stop:1 rgba(255, 255, 255, 0.04));
+    border: 1px solid rgba(180, 222, 255, 0.30);
 }}
 
 QPushButton#navButton:checked {{
     color: #ffffff;
     background: qlineargradient(x1:1, y1:0, x2:0, y2:0,
-        stop:0 rgba(91, 213, 203, 0.24), stop:0.45 rgba(56, 95, 137, 0.20), stop:1 rgba(15, 23, 42, 0.62));
-    border: 1px solid rgba(128, 229, 219, 0.48);
+        stop:0 rgba(45, 212, 191, 0.28), stop:0.45 rgba(56, 95, 137, 0.25), stop:1 rgba(15, 23, 42, 0.70));
+    border: 1px solid rgba(45, 212, 191, 0.55);
     font-weight: 700;
 }}
 
@@ -204,10 +204,10 @@ QLabel#navGroupLabel {{
 
 QPushButton#assistantNavButton {{
     background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-        stop:0 rgba(167, 139, 250, 0.20), stop:1 rgba(45, 212, 191, 0.15));
+        stop:0 rgba(167, 139, 250, 0.22), stop:1 rgba(45, 212, 191, 0.18));
     color: {SEV_SAFE};
-    border: 1px solid rgba(167, 139, 250, 0.35);
-    border-radius: 12px;
+    border: 1px solid rgba(167, 139, 250, 0.40);
+    border-radius: 14px;
     padding: 11px 14px;
     font-weight: 600;
     margin-top: 12px;
@@ -215,15 +215,24 @@ QPushButton#assistantNavButton {{
 
 QPushButton#assistantNavButton:hover {{
     background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-        stop:0 rgba(167, 139, 250, 0.35), stop:1 rgba(45, 212, 191, 0.25));
+        stop:0 rgba(167, 139, 250, 0.38), stop:1 rgba(45, 212, 191, 0.28));
     border-color: {SEV_SAFE};
     color: #ffffff;
 }}
 
-/* ── الشريط العلوي ── */
+/* ── الشريط العلوي والكبسولة الزجاجية للساعة ── */
 QFrame#headerBar {{
-    background: rgba(15, 23, 42, 0.55);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(15, 23, 42, 0.65);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.10);
+}}
+
+QFrame#clockGlassPill {{
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+        stop:0 rgba(255, 255, 255, 0.08), stop:1 rgba(255, 255, 255, 0.02));
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    border-top-color: rgba(255, 255, 255, 0.25);
+    border-radius: 20px;
+    padding: 4px 12px;
 }}
 
 QLabel#eyebrow {{
@@ -242,7 +251,7 @@ QLabel#brandMark {{
 
 QLabel#clockTime {{
     font-family: "SF Mono", "DejaVu Sans Mono", monospace;
-    font-size: 15px;
+    font-size: 16px;
     font-weight: 700;
     color: {TEXT_PRIMARY};
 }}
@@ -253,17 +262,48 @@ QLabel#clockDate {{
     font-weight: 500;
 }}
 
+/* ── التبويبات الفرعية الزجاجية الأفقية (Segmented Glass Sub-Tabs) ── */
+QTabBar {{
+    background: transparent;
+    border: none;
+}}
+
+QTabBar::tab {{
+    background: rgba(255, 255, 255, 0.06);
+    color: {TEXT_SECONDARY};
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 12px;
+    padding: 8px 18px;
+    margin-right: 6px;
+    font-size: 12px;
+    font-weight: 600;
+}}
+
+QTabBar::tab:hover {{
+    background: rgba(255, 255, 255, 0.12);
+    color: {TEXT_PRIMARY};
+    border-color: rgba(255, 255, 255, 0.25);
+}}
+
+QTabBar::tab:selected {{
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+        stop:0 rgba(45, 212, 191, 0.28), stop:1 rgba(15, 23, 42, 0.70));
+    color: #ffffff;
+    border: 1px solid {ACCENT};
+    font-weight: 700;
+}}
+
 /* ── بانر المهمة التكتيكي ── */
 QFrame#missionBanner {{
     background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-        stop:0 rgba(30, 41, 59, 0.70), stop:1 rgba(15, 23, 42, 0.60));
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    border-right: 3px solid {ACCENT};
-    border-radius: 16px;
+        stop:0 rgba(30, 41, 59, 0.75), stop:1 rgba(15, 23, 42, 0.65));
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-right: 4px solid {ACCENT};
+    border-radius: 18px;
 }}
 
 QFrame#missionBanner:hover {{
-    border-color: rgba(45, 212, 191, 0.40);
+    border-color: rgba(45, 212, 191, 0.45);
     border-right-color: {ACCENT_HOVER};
 }}
 
@@ -275,15 +315,15 @@ QLabel#missionTitle {{
 
 QFrame#pageHero, QFrame#emptyGlassCard {{
     background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-        stop:0 rgba(116, 165, 206, 0.13), stop:0.16 rgba(34, 59, 88, 0.56),
-        stop:0.58 rgba(23, 39, 66, 0.59), stop:1 rgba(13, 25, 48, 0.68));
-    border: 1px solid rgba(194, 222, 255, 0.16);
-    border-top-color: rgba(227, 241, 255, 0.24);
-    border-radius: 18px;
+        stop:0 rgba(116, 165, 206, 0.14), stop:0.16 rgba(34, 59, 88, 0.58),
+        stop:0.58 rgba(23, 39, 66, 0.62), stop:1 rgba(13, 25, 48, 0.70));
+    border: 1px solid rgba(194, 222, 255, 0.18);
+    border-top-color: rgba(227, 241, 255, 0.28);
+    border-radius: 20px;
 }}
 
 QFrame#pageHero:hover, QFrame#emptyGlassCard:hover {{
-    border-color: rgba(196, 224, 255, 0.25);
+    border-color: rgba(196, 224, 255, 0.30);
 }}
 
 QLabel#pageEyebrow {{
@@ -306,8 +346,8 @@ QLabel#secondaryText {{
 QLabel#glassBadge {{
     color: #dcecff;
     background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-        stop:0 rgba(154, 199, 235, 0.15), stop:1 rgba(61, 103, 150, 0.12));
-    border: 1px solid rgba(193, 224, 255, 0.17);
+        stop:0 rgba(154, 199, 235, 0.18), stop:1 rgba(61, 103, 150, 0.14));
+    border: 1px solid rgba(193, 224, 255, 0.20);
     border-radius: 10px;
     padding: 6px 10px;
     font-size: 11px;
@@ -320,8 +360,8 @@ QLabel#emptyState {{
 
 QPlainTextEdit#findingDetail {{
     background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-        stop:0 rgba(22, 38, 63, 0.74), stop:1 rgba(11, 20, 38, 0.84));
-    border: 1px solid rgba(179, 212, 245, 0.13);
+        stop:0 rgba(22, 38, 63, 0.80), stop:1 rgba(11, 20, 38, 0.88));
+    border: 1px solid rgba(179, 212, 245, 0.16);
     border-radius: 14px;
     padding: 12px;
     color: {TEXT_SECONDARY};
@@ -330,33 +370,33 @@ QPlainTextEdit#findingDetail {{
 QGraphicsView#attackGraphCanvas {{
     background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
         stop:0 rgba(8, 15, 30, 0.95), stop:0.52 rgba(13, 26, 48, 0.95), stop:1 rgba(15, 18, 43, 0.95));
-    border: 1px solid rgba(192, 218, 248, 0.16);
-    border-radius: 16px;
+    border: 1px solid rgba(192, 218, 248, 0.18);
+    border-radius: 18px;
 }}
 
-/* ── بطاقات العمليات والحاويات ── */
+/* ── بطاقات العمليات والحاويات الفاخرة ── */
 QFrame#card {{
     background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-        stop:0 rgba(130, 170, 212, 0.105), stop:0.18 rgba(37, 57, 83, 0.66),
-        stop:0.62 rgba(23, 38, 63, 0.70), stop:1 rgba(15, 26, 47, 0.78));
-    border: 1px solid rgba(191, 218, 248, 0.15);
-    border-top-color: rgba(225, 240, 255, 0.20);
-    border-radius: 16px;
+        stop:0 rgba(130, 170, 212, 0.11), stop:0.18 rgba(37, 57, 83, 0.68),
+        stop:0.62 rgba(23, 38, 63, 0.72), stop:1 rgba(15, 26, 47, 0.80));
+    border: 1px solid rgba(191, 218, 248, 0.16);
+    border-top-color: rgba(225, 240, 255, 0.24);
+    border-radius: 20px;
 }}
 
 QFrame#card:hover {{
-    border-color: rgba(163, 218, 241, 0.33);
+    border-color: rgba(163, 218, 241, 0.38);
     background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-        stop:0 rgba(142, 188, 225, 0.15), stop:0.18 rgba(42, 66, 96, 0.72),
-        stop:0.62 rgba(27, 45, 74, 0.75), stop:1 rgba(17, 30, 54, 0.82));
+        stop:0 rgba(142, 188, 225, 0.16), stop:0.18 rgba(42, 66, 96, 0.74),
+        stop:0.62 rgba(27, 45, 74, 0.78), stop:1 rgba(17, 30, 54, 0.85));
 }}
 
 QGroupBox {{
     background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-        stop:0 rgba(97, 143, 186, 0.11), stop:0.18 rgba(23, 39, 64, 0.70), stop:1 rgba(13, 23, 43, 0.78));
-    border: 1px solid rgba(183, 214, 247, 0.14);
-    border-top-color: rgba(220, 237, 255, 0.20);
-    border-radius: 14px;
+        stop:0 rgba(97, 143, 186, 0.12), stop:0.18 rgba(23, 39, 64, 0.72), stop:1 rgba(13, 23, 43, 0.80));
+    border: 1px solid rgba(183, 214, 247, 0.16);
+    border-top-color: rgba(220, 237, 255, 0.22);
+    border-radius: 16px;
     margin-top: 0;
     padding: 38px 16px 16px;
     font-weight: 600;
@@ -374,33 +414,33 @@ QGroupBox::title {{
 }}
 
 QGroupBox:hover {{
-    border-color: rgba(167, 139, 250, 0.35);
+    border-color: rgba(167, 139, 250, 0.38);
 }}
 
 /* ── الأزرار الفاخرة Apple-Style ── */
 QPushButton {{
-    background: rgba(255, 255, 255, 0.07);
+    background: rgba(255, 255, 255, 0.08);
     color: {TEXT_PRIMARY};
-    border: 1px solid rgba(255, 255, 255, 0.14);
-    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 12px;
     padding: 8px 16px;
-    min-height: 24px;
+    min-height: 26px;
     font-weight: 500;
 }}
 
 QPushButton:hover {{
-    background: rgba(255, 255, 255, 0.14);
-    border-color: rgba(255, 255, 255, 0.25);
+    background: rgba(255, 255, 255, 0.16);
+    border-color: rgba(255, 255, 255, 0.28);
     color: #ffffff;
 }}
 
 QPushButton:pressed {{
-    background: rgba(45, 212, 191, 0.30);
+    background: rgba(45, 212, 191, 0.32);
     border-color: {SEV_SAFE};
 }}
 
 QPushButton[pressingFx="true"] {{
-    background: rgba(45, 212, 191, 0.25);
+    background: rgba(45, 212, 191, 0.28);
     border-color: {ACCENT_HOVER};
     color: #ffffff;
 }}
@@ -413,25 +453,25 @@ QPushButton#primary {{
     background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
         stop:0 #0d9488, stop:1 #0f766e);
     color: #ffffff;
-    border: 1px solid rgba(255, 255, 255, 0.20);
+    border: 1px solid rgba(255, 255, 255, 0.22);
     font-weight: 600;
-    border-radius: 10px;
+    border-radius: 12px;
 }}
 
 QPushButton#primary:hover {{
     background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
         stop:0 #14b8a6, stop:1 #0d9488);
-    border-color: rgba(255, 255, 255, 0.40);
+    border-color: rgba(255, 255, 255, 0.45);
 }}
 
 QPushButton#danger {{
     color: #fecdd3;
-    border-color: rgba(244, 63, 94, 0.35);
-    background: rgba(244, 63, 94, 0.20);
+    border-color: rgba(244, 63, 94, 0.40);
+    background: rgba(244, 63, 94, 0.22);
 }}
 
 QPushButton#danger:hover {{
-    background: rgba(244, 63, 94, 0.35);
+    background: rgba(244, 63, 94, 0.38);
     border-color: {SEV_CRITICAL};
     color: #ffffff;
 }}
@@ -441,25 +481,25 @@ QPushButton#pillButton {{
     padding: 5px 12px;
     color: {TEXT_SECONDARY};
     font-size: 11px;
-    min-height: 20px;
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid rgba(255, 255, 255, 0.10);
+    min-height: 22px;
+    background: rgba(255, 255, 255, 0.07);
+    border: 1px solid rgba(255, 255, 255, 0.12);
 }}
 
 QPushButton#pillButton:hover {{
-    background: rgba(45, 212, 191, 0.18);
+    background: rgba(45, 212, 191, 0.20);
     color: {TEXT_PRIMARY};
-    border-color: rgba(45, 212, 191, 0.40);
+    border-color: rgba(45, 212, 191, 0.45);
 }}
 
 QPushButton#quietAction {{
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.10);
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.12);
 }}
 
 QPushButton#quietAction:hover {{
-    background: rgba(255, 255, 255, 0.12);
-    border-color: rgba(255, 255, 255, 0.22);
+    background: rgba(255, 255, 255, 0.14);
+    border-color: rgba(255, 255, 255, 0.25);
 }}
 
 QPushButton:disabled {{
@@ -471,22 +511,22 @@ QPushButton:disabled {{
 /* ── حقول الإدخال والكومبوبوكس ── */
 QLineEdit, QComboBox, QPlainTextEdit, QTextEdit {{
     background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-        stop:0 rgba(22, 39, 66, 0.82), stop:1 rgba(10, 19, 37, 0.88));
+        stop:0 rgba(22, 39, 66, 0.85), stop:1 rgba(10, 19, 37, 0.90));
     color: {TEXT_PRIMARY};
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 12px;
     padding: 9px 14px;
     selection-background-color: #0f766e;
     selection-color: #ffffff;
 }}
 
 QLineEdit:hover, QComboBox:hover, QPlainTextEdit:hover, QTextEdit:hover {{
-    border-color: rgba(45, 212, 191, 0.35);
+    border-color: rgba(45, 212, 191, 0.40);
 }}
 
 QLineEdit:focus, QComboBox:focus, QPlainTextEdit:focus, QTextEdit:focus {{
     border-color: {ACCENT};
-    background: rgba(15, 23, 42, 0.90);
+    background: rgba(15, 23, 42, 0.92);
 }}
 
 QComboBox::drop-down {{
@@ -503,94 +543,87 @@ QComboBox::down-arrow {{
 
 QComboBox QAbstractItemView {{
     background: rgba(12, 22, 41, 0.98);
-    border: 1px solid rgba(165, 208, 246, 0.24);
-    selection-background-color: rgba(45, 212, 191, 0.28);
-    border-radius: 10px;
+    border: 1px solid rgba(165, 208, 246, 0.26);
+    selection-background-color: rgba(45, 212, 191, 0.30);
+    border-radius: 12px;
     color: {TEXT_PRIMARY};
     outline: none;
     padding: 5px;
 }}
 
 QComboBox QAbstractItemView::item {{
-    min-height: 30px;
+    min-height: 32px;
     padding: 5px 10px;
-    border-radius: 7px;
+    border-radius: 8px;
 }}
 
 QMenu {{
     background: rgba(13, 23, 43, 0.98);
     color: {TEXT_PRIMARY};
-    border: 1px solid rgba(183, 214, 247, 0.21);
+    border: 1px solid rgba(183, 214, 247, 0.22);
     border-radius: 12px;
     padding: 5px;
 }}
 
 QMenu::item {{
     background: transparent;
-    border-radius: 7px;
+    border-radius: 8px;
     padding: 7px 26px 7px 12px;
 }}
 
 QMenu::item:selected {{
-    background: rgba(89, 157, 193, 0.24);
+    background: rgba(89, 157, 193, 0.26);
     color: #ffffff;
 }}
 
 QMenu::separator {{
     height: 1px;
-    background: rgba(185, 214, 244, 0.14);
+    background: rgba(185, 214, 244, 0.15);
     margin: 5px 8px;
 }}
 
-/* ── الجداول التكتيكية الزجاجية ── */
+/* ── الجداول التكتيكية الزجاجية (Glass Table Styling) ── */
 QTableWidget {{
     background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-        stop:0 rgba(18, 34, 57, 0.80), stop:1 rgba(9, 18, 36, 0.89));
+        stop:0 rgba(18, 34, 57, 0.82), stop:1 rgba(9, 18, 36, 0.91));
     color: {TEXT_PRIMARY};
-    alternate-background-color: rgba(30, 41, 59, 0.30);
+    alternate-background-color: rgba(30, 41, 59, 0.35);
     gridline-color: transparent;
-    border: 1px solid rgba(255, 255, 255, 0.10);
-    border-radius: 14px;
-    selection-background-color: rgba(45, 212, 191, 0.25);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 16px;
+    selection-background-color: rgba(45, 212, 191, 0.28);
     outline: none;
 }}
 
 QTableWidget::item {{
-    padding: 8px 10px;
-    border-bottom: none;
+    padding: 10px 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
 }}
 
 QTableWidget::item:hover {{
-    background: rgba(167, 139, 250, 0.15);
+    background: rgba(167, 139, 250, 0.18);
     color: {TEXT_PRIMARY};
 }}
 
 QTableWidget::item:selected {{
-    background: rgba(45, 212, 191, 0.30);
+    background: rgba(45, 212, 191, 0.32);
     color: #ffffff;
 }}
 
 QHeaderView::section {{
-    background: rgba(138, 176, 212, 0.11);
-    color: #c8d9ed;
-    border: none;
-    border-bottom: 1px solid rgba(184, 213, 244, 0.14);
-    padding: 9px 10px;
-    font-weight: 700;
-}}
-
-QHeaderView::section {{
-    background: rgba(30, 41, 59, 0.70);
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+        stop:0 rgba(30, 41, 59, 0.85), stop:1 rgba(15, 23, 42, 0.90));
     color: {TEXT_SECONDARY};
-    padding: 10px 8px;
+    padding: 12px 10px;
     border: none;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.10);
-    font-weight: 600;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+    font-weight: 700;
     font-size: 11px;
+    letter-spacing: 0.5px;
 }}
 
 QTableCornerButton::section {{
-    background: rgba(30, 41, 59, 0.70);
+    background: rgba(30, 41, 59, 0.85);
     border: none;
 }}
 
