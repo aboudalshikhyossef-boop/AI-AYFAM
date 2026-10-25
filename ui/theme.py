@@ -49,6 +49,23 @@ CARD_ACCENTS = {
     "score": SEV_SAFE,
 }
 
+# لون ثابت لكل مساحة عمل؛ يحافظ على هوية واضحة من دون خلط ألوان الحالة الأمنية.
+PAGE_ACCENTS = {
+    "dashboard": "#48ded0",
+    "scans": "#67b7ff",
+    "findings": "#ff7890",
+    "timeline": "#f4c86a",
+    "sentinel": "#57dfa8",
+    "attack_graph": "#b69aff",
+    "usb": "#57c9f4",
+    "tools": "#ffa86f",
+    "chat": "#d09aff",
+    "library": "#72d7b8",
+    "playbooks": "#f5a6d2",
+    "reports": "#85aaff",
+    "settings": "#b8c8df",
+}
+
 # ── الأيقونات والألوان التكتيكية الموحدة ──
 COLOR_ICON_INACTIVE = "#8fb3d1"
 COLOR_ICON_ACTIVE = ACCENT
@@ -99,7 +116,7 @@ QMainWindow, QDialog, QMessageBox {{
 
 QMainWindow#cockpitWindow {{
     background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-        stop:0 #030712, stop:0.45 #0b1329, stop:1 #030712);
+        stop:0 #050817, stop:0.36 #0b1830, stop:0.72 #10132e, stop:1 #050817);
 }}
 
 QWidget#appRoot, QWidget#mainArea {{
@@ -122,33 +139,58 @@ QScrollArea > QWidget > QWidget {{
 
 /* ── الشريط الجانبي الفخم (RTL Right-Side Glass Bar) ── */
 QFrame#sidebar {{
-    background: rgba(10, 15, 30, 0.82);
-    border-left: 1px solid rgba(255, 255, 255, 0.12);
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+        stop:0 rgba(18, 30, 52, 0.94), stop:0.52 rgba(10, 18, 36, 0.91), stop:1 rgba(15, 22, 45, 0.94));
+    border-left: 1px solid rgba(181, 215, 255, 0.16);
     border-right: none;
 }}
 
+QScrollArea#navigationScroll {{
+    background: transparent;
+    border: none;
+}}
+
+QScrollArea#navigationScroll QScrollBar:vertical {{
+    width: 5px;
+    margin: 4px 1px;
+    background: transparent;
+}}
+
+QScrollArea#navigationScroll QScrollBar::handle:vertical {{
+    background: rgba(173, 202, 237, 0.25);
+    border-radius: 2px;
+    min-height: 24px;
+}}
+
+QScrollArea#navigationScroll QScrollBar::add-line:vertical,
+QScrollArea#navigationScroll QScrollBar::sub-line:vertical {{
+    height: 0;
+}}
+
 QPushButton#navButton {{
-    background: rgba(255, 255, 255, 0.03);
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+        stop:0 rgba(255, 255, 255, 0.045), stop:1 rgba(255, 255, 255, 0.012));
     color: {TEXT_SECONDARY};
-    border: 1px solid rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(208, 228, 255, 0.07);
     border-radius: 12px;
-    padding: 10px 14px;
+    padding: 8px 12px;
     text-align: right;
-    min-height: 26px;
+    min-height: 30px;
     font-weight: 500;
 }}
 
 QPushButton#navButton:hover {{
     color: #ffffff;
-    background: rgba(45, 212, 191, 0.12);
-    border: 1px solid rgba(45, 212, 191, 0.35);
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+        stop:0 rgba(255, 255, 255, 0.11), stop:0.45 rgba(74, 130, 170, 0.12), stop:1 rgba(255, 255, 255, 0.035));
+    border: 1px solid rgba(180, 222, 255, 0.28);
 }}
 
 QPushButton#navButton:checked {{
     color: #ffffff;
     background: qlineargradient(x1:1, y1:0, x2:0, y2:0,
-        stop:0 rgba(45, 212, 191, 0.30), stop:1 rgba(15, 23, 42, 0.60));
-    border: 1px solid rgba(45, 212, 191, 0.65);
+        stop:0 rgba(91, 213, 203, 0.24), stop:0.45 rgba(56, 95, 137, 0.20), stop:1 rgba(15, 23, 42, 0.62));
+    border: 1px solid rgba(128, 229, 219, 0.48);
     font-weight: 700;
 }}
 
@@ -231,21 +273,89 @@ QLabel#missionTitle {{
     color: {TEXT_PRIMARY};
 }}
 
+QFrame#pageHero, QFrame#emptyGlassCard {{
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+        stop:0 rgba(116, 165, 206, 0.13), stop:0.16 rgba(34, 59, 88, 0.56),
+        stop:0.58 rgba(23, 39, 66, 0.59), stop:1 rgba(13, 25, 48, 0.68));
+    border: 1px solid rgba(194, 222, 255, 0.16);
+    border-top-color: rgba(227, 241, 255, 0.24);
+    border-radius: 18px;
+}}
+
+QFrame#pageHero:hover, QFrame#emptyGlassCard:hover {{
+    border-color: rgba(196, 224, 255, 0.25);
+}}
+
+QLabel#pageEyebrow {{
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.7px;
+}}
+
+QLabel#pageHeading {{
+    color: {TEXT_PRIMARY};
+    font-size: 21px;
+    font-weight: 700;
+}}
+
+QLabel#secondaryText {{
+    color: {TEXT_SECONDARY};
+    font-size: 12px;
+}}
+
+QLabel#glassBadge {{
+    color: #dcecff;
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+        stop:0 rgba(154, 199, 235, 0.15), stop:1 rgba(61, 103, 150, 0.12));
+    border: 1px solid rgba(193, 224, 255, 0.17);
+    border-radius: 10px;
+    padding: 6px 10px;
+    font-size: 11px;
+}}
+
+QLabel#emptyState {{
+    color: {TEXT_SECONDARY};
+    font-size: 13px;
+}}
+
+QPlainTextEdit#findingDetail {{
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+        stop:0 rgba(22, 38, 63, 0.74), stop:1 rgba(11, 20, 38, 0.84));
+    border: 1px solid rgba(179, 212, 245, 0.13);
+    border-radius: 14px;
+    padding: 12px;
+    color: {TEXT_SECONDARY};
+}}
+
+QGraphicsView#attackGraphCanvas {{
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+        stop:0 rgba(8, 15, 30, 0.95), stop:0.52 rgba(13, 26, 48, 0.95), stop:1 rgba(15, 18, 43, 0.95));
+    border: 1px solid rgba(192, 218, 248, 0.16);
+    border-radius: 16px;
+}}
+
 /* ── بطاقات العمليات والحاويات ── */
 QFrame#card {{
-    background: rgba(30, 41, 59, 0.55);
-    border: 1px solid rgba(255, 255, 255, 0.10);
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+        stop:0 rgba(130, 170, 212, 0.105), stop:0.18 rgba(37, 57, 83, 0.66),
+        stop:0.62 rgba(23, 38, 63, 0.70), stop:1 rgba(15, 26, 47, 0.78));
+    border: 1px solid rgba(191, 218, 248, 0.15);
+    border-top-color: rgba(225, 240, 255, 0.20);
     border-radius: 16px;
 }}
 
 QFrame#card:hover {{
-    border-color: rgba(45, 212, 191, 0.35);
-    background: rgba(30, 41, 59, 0.70);
+    border-color: rgba(163, 218, 241, 0.33);
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+        stop:0 rgba(142, 188, 225, 0.15), stop:0.18 rgba(42, 66, 96, 0.72),
+        stop:0.62 rgba(27, 45, 74, 0.75), stop:1 rgba(17, 30, 54, 0.82));
 }}
 
 QGroupBox {{
-    background: rgba(15, 23, 42, 0.60);
-    border: 1px solid rgba(255, 255, 255, 0.10);
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+        stop:0 rgba(97, 143, 186, 0.11), stop:0.18 rgba(23, 39, 64, 0.70), stop:1 rgba(13, 23, 43, 0.78));
+    border: 1px solid rgba(183, 214, 247, 0.14);
+    border-top-color: rgba(220, 237, 255, 0.20);
     border-radius: 14px;
     margin-top: 0;
     padding: 38px 16px 16px;
@@ -360,7 +470,8 @@ QPushButton:disabled {{
 
 /* ── حقول الإدخال والكومبوبوكس ── */
 QLineEdit, QComboBox, QPlainTextEdit, QTextEdit {{
-    background: rgba(15, 23, 42, 0.70);
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+        stop:0 rgba(22, 39, 66, 0.82), stop:1 rgba(10, 19, 37, 0.88));
     color: {TEXT_PRIMARY};
     border: 1px solid rgba(255, 255, 255, 0.12);
     border-radius: 10px;
@@ -381,19 +492,60 @@ QLineEdit:focus, QComboBox:focus, QPlainTextEdit:focus, QTextEdit:focus {{
 QComboBox::drop-down {{
     border: none;
     width: 24px;
+    subcontrol-origin: padding;
+    subcontrol-position: top left;
+}}
+
+QComboBox::down-arrow {{
+    width: 8px;
+    height: 8px;
 }}
 
 QComboBox QAbstractItemView {{
-    background: rgba(15, 23, 42, 0.95);
-    border: 1px solid rgba(45, 212, 191, 0.40);
-    selection-background-color: rgba(45, 212, 191, 0.25);
-    border-radius: 8px;
+    background: rgba(12, 22, 41, 0.98);
+    border: 1px solid rgba(165, 208, 246, 0.24);
+    selection-background-color: rgba(45, 212, 191, 0.28);
+    border-radius: 10px;
     color: {TEXT_PRIMARY};
+    outline: none;
+    padding: 5px;
+}}
+
+QComboBox QAbstractItemView::item {{
+    min-height: 30px;
+    padding: 5px 10px;
+    border-radius: 7px;
+}}
+
+QMenu {{
+    background: rgba(13, 23, 43, 0.98);
+    color: {TEXT_PRIMARY};
+    border: 1px solid rgba(183, 214, 247, 0.21);
+    border-radius: 12px;
+    padding: 5px;
+}}
+
+QMenu::item {{
+    background: transparent;
+    border-radius: 7px;
+    padding: 7px 26px 7px 12px;
+}}
+
+QMenu::item:selected {{
+    background: rgba(89, 157, 193, 0.24);
+    color: #ffffff;
+}}
+
+QMenu::separator {{
+    height: 1px;
+    background: rgba(185, 214, 244, 0.14);
+    margin: 5px 8px;
 }}
 
 /* ── الجداول التكتيكية الزجاجية ── */
 QTableWidget {{
-    background: rgba(15, 23, 42, 0.55);
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+        stop:0 rgba(18, 34, 57, 0.80), stop:1 rgba(9, 18, 36, 0.89));
     color: {TEXT_PRIMARY};
     alternate-background-color: rgba(30, 41, 59, 0.30);
     gridline-color: transparent;
@@ -416,6 +568,15 @@ QTableWidget::item:hover {{
 QTableWidget::item:selected {{
     background: rgba(45, 212, 191, 0.30);
     color: #ffffff;
+}}
+
+QHeaderView::section {{
+    background: rgba(138, 176, 212, 0.11);
+    color: #c8d9ed;
+    border: none;
+    border-bottom: 1px solid rgba(184, 213, 244, 0.14);
+    padding: 9px 10px;
+    font-weight: 700;
 }}
 
 QHeaderView::section {{

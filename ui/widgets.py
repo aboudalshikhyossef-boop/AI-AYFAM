@@ -7,7 +7,7 @@ import re
 from datetime import datetime
 from pathlib import Path
 
-from PyQt6.QtCore import QEasingCurve, QEvent, QObject, QPointF, QPropertyAnimation, QRect, QRectF, Qt, QTimer, QUrl
+from PyQt6.QtCore import QEasingCurve, QEvent, QObject, QPoint, QPointF, QPropertyAnimation, QRect, QRectF, Qt, QTimer, QUrl
 from PyQt6.QtGui import QColor, QConicalGradient, QCursor, QDesktopServices, QGuiApplication, QRegion, QTextBlockFormat, QTextCursor, QLinearGradient, QPainter, QPainterPath, QPen, QRadialGradient, QTextOption
 from PyQt6.QtWidgets import (
     QAbstractSpinBox, QApplication, QComboBox, QFrame, QGraphicsOpacityEffect, QGroupBox, QHBoxLayout, QLabel, QLineEdit,
@@ -20,7 +20,10 @@ try:
 except ImportError:  # pragma: no cover - minimal Qt installations may omit Multimedia
     QSoundEffect = None
 
-from ui.theme import ACCENT, BG_BASE, SEV_SAFE, TEXT_MUTED, TEXT_PRIMARY, TEXT_SECONDARY, alpha
+from ui.theme import (
+    ACCENT, BG_BASE, SEV_CRITICAL, SEV_HIGH, SEV_MEDIUM, SEV_SAFE,
+    TEXT_MUTED, TEXT_PRIMARY, TEXT_SECONDARY, alpha,
+)
 
 
 class AmbientSurface(QWidget):
@@ -127,12 +130,18 @@ class NavIndicator(QWidget):
         super().__init__(parent)
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         self.setGeometry(3, 0, 4, 0)
+        self.color = QColor(ACCENT)
         self.animation = QPropertyAnimation(self, b"geometry", self)
         self.animation.setDuration(260)
         self.animation.setEasingCurve(QEasingCurve.Type.OutBack)
 
     def move_to(self, button):
-        target = QRect(3, button.y() + 9, 4, max(10, button.height() - 18))
+        top_left = button.mapTo(self.parentWidget(), QPoint(0, 0))
+        target = QRect(3, top_left.y() + 8, 4, max(10, button.height() - 16))
+        raw_color = button.property("glowColor")
+        if raw_color:
+            self.color = QColor(str(raw_color))
+        self.update()
         if not self.isVisible() or self.height() == 0:
             self.setGeometry(target)
             self.show()
@@ -147,8 +156,12 @@ class NavIndicator(QWidget):
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         gradient = QLinearGradient(0, 0, 0, max(1, self.height()))
-        gradient.setColorAt(0, QColor("#5eead4"))
-        gradient.setColorAt(1, QColor("#a78bfa"))
+        start = self.color.lighter(128)
+        end = QColor(self.color)
+        start.setAlpha(235)
+        end.setAlpha(185)
+        gradient.setColorAt(0, start)
+        gradient.setColorAt(1, end)
         p.setPen(Qt.PenStyle.NoPen)
         p.setBrush(gradient)
         p.drawRoundedRect(QRectF(self.rect()), 2.0, 2.0)
@@ -173,7 +186,7 @@ class PressFeedbackController(QObject):
         button.setGraphicsEffect(effect)
         button.installEventFilter(self)
         self.effects[button] = effect
-        reflection = GlowReflection(button, ACCENT)
+        reflection = GlowReflection(button, str(button.property("glowColor") or ACCENT))
         reflection.setGeometry(8, max(0, button.height() - 2), max(4, button.width() - 16), 9)
         reflection.show()
         self.reflections[button] = reflection
@@ -268,8 +281,12 @@ class TelemetryChart(QFrame):
     def paintEvent(self, event):
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        p.fillRect(self.rect(), QColor(15, 23, 42, 160))
-        p.setPen(QPen(QColor(255, 255, 255, 25), 1))
+        background = QLinearGradient(0, 0, self.width(), self.height())
+        background.setColorAt(0, QColor(91, 137, 183, 32))
+        background.setColorAt(0.18, QColor(26, 45, 71, 206))
+        background.setColorAt(1, QColor(12, 23, 43, 220))
+        p.fillRect(self.rect(), background)
+        p.setPen(QPen(QColor(208, 231, 255, 38), 1))
         p.drawRoundedRect(QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5), 14, 14)
         p.setPen(QColor(TEXT_PRIMARY))
         p.setFont(p.font())
@@ -286,6 +303,8 @@ class TelemetryChart(QFrame):
 
         count = max((len(values) for values, _ in self.series.values()), default=0)
         if count < 2:
+            p.setPen(QColor(TEXT_MUTED))
+            p.drawText(rect, Qt.AlignmentFlag.AlignCenter, "تظهر حركة القياس بعد نقطتين أو أكثر / Trend appears after two readings")
             return
         colors = [QColor(color) for _, color in self.series.values()]
         for (values, _), color in zip(self.series.values(), colors):
@@ -299,13 +318,36 @@ class TelemetryChart(QFrame):
             path = QPainterPath(points[0])
             for point in points[1:]:
                 path.lineTo(point)
+
+            # Filled, tinted area and layered strokes create a restrained neon-glass glow.
+            area = QPainterPath(path)
+            area.lineTo(points[-1].x(), rect.bottom())
+            area.lineTo(points[0].x(), rect.bottom())
+            area.closeSubpath()
+            fill = QLinearGradient(0, rect.top(), 0, rect.bottom())
+            area_color = QColor(color)
+            area_color.setAlpha(72)
+            fill.setColorAt(0, area_color)
+            area_color.setAlpha(4)
+            fill.setColorAt(1, area_color)
+            p.fillPath(area, fill)
+
             p.setBrush(Qt.BrushStyle.NoBrush)
-            p.setPen(QPen(color, 2.2))
+            glow = QColor(color)
+            glow.setAlpha(35)
+            p.setPen(QPen(glow, 12, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
+            p.drawPath(path)
+            glow.setAlpha(80)
+            p.setPen(QPen(glow, 5, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
+            p.drawPath(path)
+            p.setPen(QPen(color, 2.2, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
             p.drawPath(path)
             p.setBrush(color)
             p.setPen(Qt.PenStyle.NoPen)
-            for point in points:
-                p.drawEllipse(point, 2.4, 2.4)
+            p.drawEllipse(points[-1], 5.4, 5.4)
+            core = QColor("#f8fafc")
+            p.setBrush(core)
+            p.drawEllipse(points[-1], 2.2, 2.2)
 
         p.setPen(QColor("#64748b"))
         for index, label in ((0, "قبل 72 ثانية"), (max(0, count // 3), "قبل 48ث"), (max(0, (count * 2) // 3), "قبل 24ث"), (count - 1, "الآن")):
@@ -365,15 +407,33 @@ class SecurityGauge(QFrame):
     def paintEvent(self, event):
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        p.fillRect(self.rect(), QColor(15, 23, 42, 160))
-        p.setPen(QPen(QColor(255, 255, 255, 25), 1))
+        background = QLinearGradient(0, 0, self.width(), self.height())
+        background.setColorAt(0, QColor(91, 137, 183, 32))
+        background.setColorAt(0.18, QColor(26, 45, 71, 206))
+        background.setColorAt(1, QColor(12, 23, 43, 220))
+        p.fillRect(self.rect(), background)
+        p.setPen(QPen(QColor(208, 231, 255, 38), 1))
         p.drawRoundedRect(QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5), 14, 14)
         center = QPointF(self.width() / 2, self.height() / 2 + 8)
         radius = min(self.width(), self.height()) * 0.31
         base = QRectF(center.x() - radius, center.y() - radius, radius * 2, radius * 2)
         p.setPen(QPen(QColor(255, 255, 255, 20), 12, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
         p.drawArc(base, 225 * 16, -270 * 16)
-        color = QColor("#64748b" if self.pending else "#34d399" if self.value >= 70 else "#f59e0b" if self.value >= 40 else "#f87171")
+        color = QColor(
+            TEXT_MUTED if self.pending
+            else SEV_SAFE if self.value >= 85
+            else SEV_MEDIUM if self.value >= 70
+            else SEV_HIGH if self.value >= 50
+            else SEV_CRITICAL
+        )
+        if not self.pending:
+            glow = QColor(color)
+            glow.setAlpha(42)
+            p.setPen(QPen(glow, 22, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+            p.drawArc(base, 225 * 16, int(-270 * 16 * self.value / 100))
+            glow.setAlpha(95)
+            p.setPen(QPen(glow, 5, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+            p.drawArc(base, 225 * 16, int(-270 * 16 * self.value / 100))
         p.setPen(QPen(color, 12, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
         if not self.pending:
             p.drawArc(base, 225 * 16, int(-270 * 16 * self.value / 100))
@@ -403,7 +463,7 @@ class SoundUX(QObject):
                 if path.exists():
                     effect = QSoundEffect(self)
                     effect.setSource(QUrl.fromLocalFile(str(path)))
-                    effect.setVolume(0.16 if name == "click" else 0.22)
+                    effect.setVolume(0.12 if name == "click" else 0.20)
                     self.effects[name] = effect
 
     def set_enabled(self, enabled: bool) -> None:
@@ -411,11 +471,15 @@ class SoundUX(QObject):
 
     def set_profile(self, profile: str) -> None:
         self.profile = profile if profile in {"soft", "confirm"} else "soft"
+        click = self.effects.get("click")
+        if click is not None:
+            click.setVolume(0.12 if self.profile == "soft" else 0.18)
 
     def play(self, name="click") -> None:
         if not self.enabled:
             return
-        effect_name = "success" if name == "success" or self.profile == "confirm" else "click"
+        # "confirm" changes click loudness only; success audio is reserved for actual success.
+        effect_name = "success" if name == "success" else "click"
         effect = self.effects.get(effect_name)
         if effect is not None:
             effect.play()
@@ -432,6 +496,7 @@ class HaloOverlay(QWidget):
 
     def __init__(self, target, radius=13):
         super().__init__(target)
+        self.target = target
         self.radius = radius
         self.pointer = QPointF(0, 0)
         self.strength = 0.0
@@ -452,14 +517,24 @@ class HaloOverlay(QWidget):
         path = QPainterPath()
         path.addRoundedRect(rect, self.radius, self.radius)
         p.setClipPath(path)
+        base = QColor(str(self.target.property("glowColor") or self.target.property("accentColor") or ACCENT))
         light = QRadialGradient(self.pointer, min(180, self.width() * 0.65))
-        light.setColorAt(0, QColor(125, 211, 252, int(24 * self.strength)))
-        light.setColorAt(1, QColor(125, 211, 252, 0))
+        center = QColor(base)
+        center.setAlpha(int(30 * self.strength))
+        light.setColorAt(0, center)
+        center.setAlpha(0)
+        light.setColorAt(1, center)
         p.fillPath(path, light)
         rim = QLinearGradient(0, 0, self.width(), self.height())
-        rim.setColorAt(0, QColor(45, 212, 191, int(200 * self.strength)))
-        rim.setColorAt(0.5 + 0.12 * math.sin(self.phase), QColor(185, 235, 255, int(210 * self.strength)))
-        rim.setColorAt(1, QColor(167, 139, 250, int(160 * self.strength)))
+        first = QColor(base)
+        first.setAlpha(int(150 * self.strength))
+        middle = base.lighter(150)
+        middle.setAlpha(int(190 * self.strength))
+        last = base.darker(115)
+        last.setAlpha(int(135 * self.strength))
+        rim.setColorAt(0, first)
+        rim.setColorAt(0.5 + 0.12 * math.sin(self.phase), middle)
+        rim.setColorAt(1, last)
         p.setPen(QPen(rim, 1.6))
         p.drawPath(path)
 

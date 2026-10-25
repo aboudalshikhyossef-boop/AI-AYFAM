@@ -38,7 +38,7 @@ from tools.usb_control import (
 )
 from tools.websearch import DEFAULT_GOOGLE_CSE_CX
 from ui.terminal import TerminalUI
-from ui.icons import framed_icon, glyph_icon
+from ui.icons import ICON_COLORS, framed_icon, glyph_icon
 from ui.widgets import (
     AccentLine, AmbientSurface, ChatView, HoverController, NavIndicator, PressFeedbackController,
     SecurityGauge, SoundUX, TelemetryChart,
@@ -55,7 +55,7 @@ from ui.theme import (
     STATUS_OK, STATUS_ERROR, STATUS_IDLE,
     FONT_FAMILY, FONT_SIZE_BASE, FONT_SIZE_SMALL, FONT_SIZE_TITLE, FONT_SIZE_HERO, FONT_SIZE_METRIC,
     SP_XS, SP_SM, SP_MD, SP_LG, SP_XL, SP_2XL,
-    CARD_ACCENTS, alpha, severity_color, severity_bg,
+    CARD_ACCENTS, PAGE_ACCENTS, alpha, severity_color, severity_bg,
 )
 from utils import safe_exec
 from utils.preflight import check_requirements, root_error, is_root
@@ -158,6 +158,17 @@ CONN_STATE_COLORS = {
 def _sev_key(finding: dict) -> str:
     key = str(finding.get("severity", "info")).lower()
     return key if key in SEV_ORDER else "info"
+
+
+def score_state_color(score: float) -> str:
+    """Map the posture score to the same semantic colors used by the dashboard."""
+    if score >= 85:
+        return SEV_SAFE
+    if score >= 70:
+        return SEV_MEDIUM
+    if score >= 50:
+        return SEV_HIGH
+    return SEV_CRITICAL
 
 
 def sort_findings(findings: list) -> list:
@@ -297,6 +308,7 @@ class UnifiedCockpitWindow(QMainWindow):
         self._selected_usb_partition_data: dict = {}
         self._usb_selection_source = "none"
         self.nav_buttons: list[QPushButton] = []
+        self._event_store = None
         self.page_veil_animation: QPropertyAnimation | None = None
         self._telemetry_history = {
             "الجاهزية الأمنية (%)": [],
@@ -363,7 +375,7 @@ class UnifiedCockpitWindow(QMainWindow):
 
         # ── Sidebar ──
         sidebar = QFrame(objectName="sidebar")
-        sidebar.setFixedWidth(244)
+        sidebar.setFixedWidth(228)
         sidebar_layout = QVBoxLayout(sidebar)
         sidebar_layout.setContentsMargins(SP_MD, SP_LG, SP_MD, SP_MD)
         sidebar_layout.setSpacing(SP_XS)
@@ -402,29 +414,46 @@ class UnifiedCockpitWindow(QMainWindow):
             "sentinel": "dashboard",
             "attack_graph": "playbooks",
         }
+        nav_content = QWidget()
+        nav_layout = QVBoxLayout(nav_content)
+        nav_layout.setContentsMargins(0, 0, 3, 0)
+        nav_layout.setSpacing(3)
         for group_title, keys in nav_groups:
             group_label = QLabel(group_title.upper())
             group_label.setObjectName("navGroupLabel")
-            sidebar_layout.addWidget(group_label)
+            nav_layout.addWidget(group_label)
             for key in keys:
                 btn = QPushButton(f"  {labels[key]}")
                 btn.setObjectName("navButton")
                 btn.setCheckable(True)
-                btn.setIcon(framed_icon(icon_aliases.get(key, key)))
-                btn.setIconSize(QSize(30, 30))
+                color = ICON_COLORS.get(key, ACCENT)
+                btn.setProperty("glowColor", color)
+                btn.setToolTip(labels[key])
+                btn.setIcon(framed_icon(icon_aliases.get(key, key), color))
+                btn.setIconSize(QSize(28, 28))
                 btn.clicked.connect(lambda checked=False, k=key: self.switch_page(k))
-                sidebar_layout.addWidget(btn)
+                nav_layout.addWidget(btn)
                 self.nav_button_map[key] = btn
                 self.nav_buttons.append(btn)
+        nav_layout.addStretch(1)
+
+        nav_scroll = QScrollArea()
+        nav_scroll.setObjectName("navigationScroll")
+        nav_scroll.setWidgetResizable(True)
+        nav_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        nav_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        nav_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        nav_scroll.setWidget(nav_content)
+        self.nav_scroll = nav_scroll
+        sidebar_layout.addWidget(nav_scroll, 1)
 
         assistant_btn = QPushButton("  افتح المساعد الذكي")
         assistant_btn.setObjectName("assistantNavButton")
+        assistant_btn.setProperty("glowColor", ICON_COLORS["chat"])
         assistant_btn.setIcon(glyph_icon("chat", "#34d399", 20))
         assistant_btn.setIconSize(QSize(20, 20))
         assistant_btn.clicked.connect(lambda: self.switch_page("chat"))
         sidebar_layout.addWidget(assistant_btn)
-
-        sidebar_layout.addStretch()
 
         # Status indicator at bottom of sidebar
         self.sidebar_status = QLabel("[ جاهز ]")
@@ -535,6 +564,8 @@ class UnifiedCockpitWindow(QMainWindow):
         self.page_timeline = TimelineView()
         self.page_sentinel = SentinelView()
         self.page_attack_graph = AttackChainGraphView()
+        self.page_findings.go_to_scans.connect(lambda: self.switch_page("scans"))
+        self.page_sentinel.refresh_requested.connect(self.refresh_sentinel_events)
         self.page_usb = QWidget()
         self.page_tools = QWidget()
         self.page_chat = QWidget()
@@ -664,8 +695,8 @@ class UnifiedCockpitWindow(QMainWindow):
                 effect = QGraphicsOpacityEffect(self.stack)
                 self.stack.setGraphicsEffect(effect)
                 animation = QPropertyAnimation(effect, b"opacity", self)
-                animation.setDuration(240)
-                animation.setStartValue(0.35)
+                animation.setDuration(190)
+                animation.setStartValue(0.84)
                 animation.setEndValue(1.0)
                 animation.setEasingCurve(QEasingCurve.Type.OutCubic)
                 # Remove the effect afterwards so normal text rendering and hover stay crisp.
@@ -675,6 +706,9 @@ class UnifiedCockpitWindow(QMainWindow):
                 self.content_scroll.verticalScrollBar().setValue(0)
             self.page_title.setText(title_map.get(key, ""))
             self.page_eyebrow.setText(f"AI AYFAM  /  {title_map.get(key, key)}")
+            page_accent = PAGE_ACCENTS.get(key, ACCENT)
+            self.page_eyebrow.setStyleSheet(f"color: {page_accent};")
+            self.page_title.setStyleSheet(f"border-right: 2px solid {page_accent}; padding-right: 8px;")
             for name, page in page_map.items():
                 page.setSizePolicy(QSizePolicy.Policy.Preferred if name == key else QSizePolicy.Policy.Ignored,
                                    QSizePolicy.Policy.Preferred if name == key else QSizePolicy.Policy.Ignored)
@@ -682,9 +716,20 @@ class UnifiedCockpitWindow(QMainWindow):
             for k, btn in self.nav_button_map.items():
                 btn.setChecked(k == key)
             self._current_nav = key
+            selected_button = self.nav_button_map.get(key)
+            if selected_button is not None:
+                self.nav_scroll.ensureWidgetVisible(selected_button, 6, 6)
             QTimer.singleShot(0, self._place_nav_indicator)
             if key == "usb" and not self.usb_inventory_loaded:
                 self.refresh_usb_inventory()
+            elif key == "findings":
+                self.page_findings.set_findings(self.all_findings)
+            elif key == "timeline":
+                self.refresh_timeline()
+            elif key == "sentinel":
+                self.refresh_sentinel_events()
+            elif key == "attack_graph":
+                self.refresh_attack_graph()
 
     def _run_page_transition(self) -> None:
         """Reveal the new page through a short, calm veil instead of a hard swap."""
@@ -695,11 +740,11 @@ class UnifiedCockpitWindow(QMainWindow):
         veil.show()
         veil.raise_()
         effect = QGraphicsOpacityEffect(veil)
-        effect.setOpacity(0.76)
+        effect.setOpacity(0.16)
         veil.setGraphicsEffect(effect)
         animation = QPropertyAnimation(effect, b"opacity", self)
-        animation.setDuration(220)
-        animation.setStartValue(0.76)
+        animation.setDuration(170)
+        animation.setStartValue(0.16)
         animation.setEndValue(0.0)
         animation.setEasingCurve(QEasingCurve.Type.OutCubic)
 
@@ -710,6 +755,54 @@ class UnifiedCockpitWindow(QMainWindow):
         animation.finished.connect(finish)
         self.page_veil_animation = animation
         animation.start()
+
+    def _get_event_store(self):
+        """Open the local event database only when an event-history view is requested."""
+        if self._event_store is None:
+            from engine.events import EventStore
+            self._event_store = EventStore()
+        return self._event_store
+
+    def refresh_timeline(self) -> None:
+        try:
+            from engine.finding import Finding
+            from engine.timeline import IncidentTimeline
+
+            findings = [Finding.from_dict(item) for item in self.all_findings if isinstance(item, dict)]
+            timeline = IncidentTimeline(self._get_event_store()).build_timeline(findings, limit=100)
+            self.page_timeline.set_events(timeline)
+        except Exception as exc:
+            self.page_timeline.set_error(str(exc))
+
+    def refresh_sentinel_events(self) -> None:
+        try:
+            events = self._get_event_store().query_recent_events(limit=100)
+            # This view is intentionally passive; opening it does not start a filesystem watcher.
+            self.page_sentinel.set_events(events, monitoring=False)
+        except Exception:
+            self.page_sentinel.set_events([])
+            self.page_sentinel.monitor_status.setText("تعذر تحميل السجل / History unavailable")
+
+    def refresh_attack_graph(self) -> None:
+        try:
+            from engine.finding import Finding
+
+            chains = [
+                item for item in self.all_findings
+                if isinstance(item, dict)
+                and (item.get("category") == "attack_chain" or "attack_chain" in (item.get("tags") or []))
+            ]
+            if not chains:
+                source = [
+                    Finding.from_dict(item) for item in self.all_findings
+                    if isinstance(item, dict)
+                    and item.get("category") != "attack_chain"
+                    and "attack_chain" not in (item.get("tags") or [])
+                ]
+                chains = self.agent.correlation.analyze(source)
+            self.page_attack_graph.render_chain(chains, self.all_findings)
+        except Exception:
+            self.page_attack_graph.render_chain([], self.all_findings)
 
     def _sync_control_labels(self) -> None:
         if hasattr(self, "setting_sound_ux"):
@@ -881,8 +974,8 @@ class UnifiedCockpitWindow(QMainWindow):
 
         self.dashboard_splitter.setStretchFactor(0, 3)
         self.dashboard_splitter.setStretchFactor(1, 2)
-        self.dashboard_splitter.setSizes([400, 260])
-        self.dashboard_splitter.setMinimumHeight(500)
+        self.dashboard_splitter.setSizes([190, 150])
+        self.dashboard_splitter.setMinimumHeight(330)
         layout.addWidget(self.dashboard_splitter, 1)
 
     # ═══════════════════════════════════════════════════════════════════════════
@@ -1859,7 +1952,9 @@ class UnifiedCockpitWindow(QMainWindow):
             if hasattr(self, "telemetry_chart"):
                 active_series = {}
                 if self._telemetry_history["الجاهزية الأمنية (%)"]:
-                    active_series["الجاهزية الأمنية (%)"] = (self._telemetry_history["الجاهزية الأمنية (%)"], ACCENT)
+                    last_score = self._telemetry_history["الجاهزية الأمنية (%)"][-1]
+                    active_series["الجاهزية الأمنية (%)"] = (
+                        self._telemetry_history["الجاهزية الأمنية (%)"], score_state_color(last_score))
                 if self._telemetry_history["النشاط التشغيلي (%)"]:
                     active_series["النشاط التشغيلي (%)"] = (self._telemetry_history["النشاط التشغيلي (%)"], ACCENT_SECONDARY)
                 self.telemetry_chart.set_data(active_series)
@@ -2552,6 +2647,8 @@ class UnifiedCockpitWindow(QMainWindow):
 
     def render_findings(self, findings: list) -> None:
         self.all_findings = sort_findings(findings)
+        if hasattr(self, "page_findings"):
+            self.page_findings.set_findings(self.all_findings)
         counts = {key: sum(1 for f in findings if _sev_key(f) == key) for key in SEV_ORDER}
         if findings:
             chips = "  ".join(
@@ -2611,17 +2708,18 @@ class UnifiedCockpitWindow(QMainWindow):
         self.score_badge.setText(f"الدرجة: {score}/100 ({grade})")
         self.mission_kicker.setText("حالة الدفاع التكتيكية  •  تم تقييم الوضع الأمني")
         self.security_gauge.set_value(score)
+        score_color = score_state_color(score)
         self._telemetry_history["الجاهزية الأمنية (%)"].append(float(score))
         del self._telemetry_history["الجاهزية الأمنية (%)"][:-24]
         if hasattr(self, "telemetry_chart"):
             active_series = {}
             if self._telemetry_history["الجاهزية الأمنية (%)"]:
-                active_series["الجاهزية الأمنية (%)"] = (self._telemetry_history["الجاهزية الأمنية (%)"], ACCENT)
+                active_series["الجاهزية الأمنية (%)"] = (
+                    self._telemetry_history["الجاهزية الأمنية (%)"], score_color)
             if self._telemetry_history["النشاط التشغيلي (%)"]:
                 active_series["النشاط التشغيلي (%)"] = (self._telemetry_history["النشاط التشغيلي (%)"], ACCENT_SECONDARY)
             self.telemetry_chart.set_data(active_series)
         # Color the score badge based on score
-        score_color = SEV_SAFE if score >= 85 else SEV_MEDIUM if score >= 70 else SEV_HIGH if score >= 50 else SEV_CRITICAL
         self.score_badge.setStyleSheet(
             f"color: {score_color}; font-weight: 700; padding: 8px 14px; "
             f"background: {alpha(score_color, 24)}; border: 1px solid {alpha(score_color, 140)}; border-radius: 15px;"
