@@ -25,8 +25,8 @@ def test_glass_widget_rendering(qapp):
 
 def test_glass_analog_clock(qapp):
     clock = GlassAnalogClock()
-    assert clock.width() == 68
-    assert clock.height() == 68
+    assert clock.width() == 58
+    assert clock.height() == 58
 
 
 def test_cockpit_window_initialization(qapp):

@@ -497,40 +497,22 @@ class UnifiedCockpitWindow(QMainWindow):
 
         # ── Header bar ──
         header = QFrame(objectName="headerBar")
-        header.setFixedHeight(78)
+        header.setFixedHeight(68)
         header_layout = QHBoxLayout(header)
-        header_layout.setContentsMargins(SP_XL, SP_MD, SP_XL, SP_MD)
-        header_layout.setSpacing(SP_LG)
+        header_layout.setContentsMargins(SP_XL, SP_SM, SP_XL, SP_SM)
+        header_layout.setSpacing(SP_MD)
 
         title_box = QVBoxLayout()
-        title_box.setSpacing(1)
-        page_eyebrow = self.page_eyebrow = QLabel("AI AYFAM  /  غرفة العمليات")
-        page_eyebrow.setObjectName("eyebrow")
-        title_box.addWidget(page_eyebrow)
+        title_box.setSpacing(0)
         self.page_title = QLabel("غرفة العمليات")
         self.page_title.setObjectName("sectionTitle")
         title_box.addWidget(self.page_title)
         header_layout.addLayout(title_box)
         header_layout.addStretch()
 
-        # Quick System Guide & Intro preview buttons
-        self.guide_btn = QPushButton("دليل المنظومة")
-        self.guide_btn.setObjectName("pillButton")
-        self.guide_btn.setIcon(glyph_icon("library", ACCENT, 16))
-        self.guide_btn.setToolTip("عرض هيكلية ومكونات المنظومة الأمنية")
-        self.guide_btn.clicked.connect(self.show_system_overview)
-        header_layout.addWidget(self.guide_btn)
-
-        self.intro_btn = QPushButton("عرض الترحيب")
-        self.intro_btn.setObjectName("pillButton")
-        self.intro_btn.setIcon(glyph_icon("dashboard", ACCENT_SECONDARY, 16))
-        self.intro_btn.setToolTip("إعادة عرض شاشة المقدمة وتسلسل الإقلاع التشخيصي")
-        self.intro_btn.clicked.connect(self.show_intro_splash)
-        header_layout.addWidget(self.intro_btn)
-
         # Activity lamp
         self.activity_lamp = QFrame(objectName="activityLamp")
-        self.activity_lamp.setFixedSize(10, 10)
+        self.activity_lamp.setFixedSize(8, 8)
         opacity = QGraphicsOpacityEffect(self.activity_lamp)
         self.activity_lamp.setGraphicsEffect(opacity)
         self.activity_animation = QPropertyAnimation(opacity, b"opacity", self)
@@ -542,7 +524,7 @@ class UnifiedCockpitWindow(QMainWindow):
         self.activity_animation.start()
         header_layout.addWidget(self.activity_lamp)
 
-        # ── Live Glass Analog Clock & Date Pill ──
+        # ── Live Crystal Glass Clock & Date Pill ──
         clock_pill = QFrame(objectName="clockGlassPill")
         clock_pill_layout = QHBoxLayout(clock_pill)
         clock_pill_layout.setContentsMargins(12, 4, 12, 4)
@@ -560,7 +542,7 @@ class UnifiedCockpitWindow(QMainWindow):
         self.clock_box.addWidget(self.clock_date_label)
         clock_pill_layout.addLayout(self.clock_box)
 
-        self.analog_clock = GlassAnalogClock(size=44)
+        self.analog_clock = GlassAnalogClock(size=42)
         clock_pill_layout.addWidget(self.analog_clock)
 
         header_layout.addWidget(clock_pill)
@@ -575,11 +557,6 @@ class UnifiedCockpitWindow(QMainWindow):
         self.status_badge.setObjectName("statusBadge")
         self.status_badge.setProperty("state", "idle")
         header_layout.addWidget(self.status_badge)
-
-        mode_badge = QLabel("الوضع الداكن الزجاجي")
-        mode_badge.setObjectName("modeBadge")
-        mode_badge.setToolTip("يمكن تغيير الوضع والصوت من صفحة إعدادات النظام")
-        header_layout.addWidget(mode_badge)
 
         self.score_badge = QLabel("الدرجة —")
         self.score_badge.setObjectName("scoreBadge")
@@ -739,9 +716,7 @@ class UnifiedCockpitWindow(QMainWindow):
                 animation.start()
                 self.content_scroll.verticalScrollBar().setValue(0)
             self.page_title.setText(title_map.get(key, ""))
-            self.page_eyebrow.setText(f"AI AYFAM  /  {title_map.get(key, key)}")
             page_accent = PAGE_ACCENTS.get(key, ACCENT)
-            self.page_eyebrow.setStyleSheet(f"color: {page_accent};")
             self.page_title.setStyleSheet(f"border-right: 2px solid {page_accent}; padding-right: 8px;")
             for name, page in page_map.items():
                 page.setSizePolicy(QSizePolicy.Policy.Preferred if name == key else QSizePolicy.Policy.Ignored,

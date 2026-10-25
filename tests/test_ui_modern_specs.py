@@ -63,8 +63,7 @@ class TestModernUiSpecs(unittest.TestCase):
         # primary action lives in the mission banner and tools remain in nav.
         self.assertNotIn("ترسانة العمليات التكتيكية السريعة", code)
         self.assertIn("مؤشرات الحالة الأمنية", code)
-        self.assertIn("guide_btn", code)
-        self.assertIn("intro_btn", code)
+        self.assertIn("clockGlassPill", code)
 
     def test_score_is_pending_until_a_scan_completes(self):
         with open(ROOT_DIR / "ui/gui_app.py", "r", encoding="utf-8") as f:
