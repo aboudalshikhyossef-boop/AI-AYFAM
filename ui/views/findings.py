@@ -112,6 +112,7 @@ class FindingsView(QWidget):
         # Table & Detail Splitter Glass Panel
         self.table = QTableWidget(0, 4)
         self.table.setHorizontalHeaderLabels(["الخطورة", "النتيجة", "الفئة", "الثقة"])
+        self.table.horizontalHeader().setDefaultAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
@@ -162,13 +163,21 @@ class FindingsView(QWidget):
                 severity_item.setForeground(QColor(SEVERITY_COLORS.get(severity_key, SEVERITY_COLORS["info"])))
                 severity_item.setToolTip(f"درجة الخطورة: {severity_label}")
                 severity_item.setData(Qt.ItemDataRole.UserRole, severity_key)
+                severity_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
                 self.table.setItem(row, 0, severity_item)
-                self.table.setItem(row, 1, QTableWidgetItem(str(finding.get("title", "—"))))
-                self.table.setItem(row, 2, QTableWidgetItem(str(finding.get("category", "—"))))
+                title_item = QTableWidgetItem(str(finding.get("title", "—")))
+                title_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+                self.table.setItem(row, 1, title_item)
+                cat_item = QTableWidgetItem(str(finding.get("category", "—")))
+                cat_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+                self.table.setItem(row, 2, cat_item)
                 confidence = finding.get("confidence")
                 confidence_text = f"{float(confidence):.0%}" if isinstance(confidence, (int, float)) else "—"
-                self.table.setItem(row, 3, QTableWidgetItem(confidence_text))
-                self.table.setRowHeight(row, 40)
+                conf_item = QTableWidgetItem(confidence_text)
+                conf_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                conf_item.setFont(QFont("SF Mono", 9))
+                self.table.setItem(row, 3, conf_item)
+                self.table.setRowHeight(row, 38)
         finally:
             self.table.setUpdatesEnabled(True)
 

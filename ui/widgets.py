@@ -39,15 +39,19 @@ T2 = "rgba(226, 238, 250, 0.62)"
 T3 = "rgba(226, 238, 250, 0.38)"
 
 # ───────────── الخلفية الشفقية والتمويه الحقيقي ─────────────
-def paint_aurora(p: QPainter, w: int, h: int) -> None:
-    """رسم خلفية الفضاء الأورورا مع تدرجات لونية هادئة."""
+def paint_aurora(p: QPainter, w: int, h: int, phase: float = 0.0) -> None:
+    """رسم خلفية الفضاء الأورورا الكريستالية مع حركة هادئة وانسيابية."""
     g = QLinearGradient(0, 0, w, h)
-    g.setColorAt(0, QColor("#050912"))
-    g.setColorAt(1, QColor("#0a1022"))
+    g.setColorAt(0, QColor("#030712"))
+    g.setColorAt(1, QColor("#090f1f"))
     p.fillRect(0, 0, w, h, g)
     TEAL, BLUE, VIOLET = Tokens.TEAL, Tokens.BLUE, Tokens.VIOLET
-    for cx, cy, r, col, a in ((.80, .12, .52, TEAL, 78), (.10, .90, .62, QColor("#4f46e5"), 70),
-                              (.52, .48, .42, QColor("#0ea5e9"), 34), (.95, .95, .38, VIOLET, 36)):
+
+    dx = math.sin(phase) * 0.03
+    dy = math.cos(phase * 0.8) * 0.03
+
+    for cx, cy, r, col, a in ((.80 + dx, .12 + dy, .52, TEAL, 65), (.10 - dx, .90 - dy, .62, QColor("#4f46e5"), 55),
+                              (.52 + dy, .48 + dx, .42, QColor("#0ea5e9"), 28), (.95 - dy, .95 - dx, .38, VIOLET, 30)):
         rg = QRadialGradient(QPointF(cx * w, cy * h), r * max(w, h))
         rg.setColorAt(0, Tokens.rgba(col, a))
         rg.setColorAt(1, Tokens.rgba(col, 0))
@@ -399,9 +403,9 @@ def chip(text: str, color: QColor) -> QLabel:
 
 
 class GlassAnalogClock(QWidget):
-    """ساعة عقاربية زجاجية لحظية مع نبض دائري للمراقبة الأمنية."""
+    """ساعة عقاربية زجاجية كريستالية شفافة بالكامل."""
 
-    def __init__(self, parent=None, size: int = 68):
+    def __init__(self, parent=None, size: int = 58):
         super().__init__(parent)
         self.setFixedSize(size, size)
         self.now = datetime.now()
@@ -420,17 +424,17 @@ class GlassAnalogClock(QWidget):
         center = QPointF(w / 2, h / 2)
         r = min(w, h) / 2 - 2
 
-        # Dial backdrop with subtle glass gradient
+        # 100% Crystal transparent glass dial
         g = QRadialGradient(center, r)
-        g.setColorAt(0, QColor(25, 41, 66, 230))
-        g.setColorAt(0.7, QColor(15, 23, 42, 240))
-        g.setColorAt(1, QColor(5, 9, 18, 250))
-        p.setPen(QPen(QColor(255, 255, 255, 60), 1.2))
+        g.setColorAt(0, QColor(255, 255, 255, 16))
+        g.setColorAt(0.8, QColor(255, 255, 255, 5))
+        g.setColorAt(1.0, QColor(255, 255, 255, 2))
+        p.setPen(QPen(QColor(255, 255, 255, 30), 1.0))
         p.setBrush(g)
         p.drawEllipse(center, r, r)
 
-        # Outer glowing accent rim
-        p.setPen(QPen(QColor(45, 212, 191, 100), 1.0))
+        # Outer subtle glowing accent rim
+        p.setPen(QPen(QColor(45, 212, 191, 60), 1.0))
         p.setBrush(Qt.BrushStyle.NoBrush)
         p.drawEllipse(center, r - 1.5, r - 1.5)
 
@@ -450,25 +454,25 @@ class GlassAnalogClock(QWidget):
         # Hour hand
         ang_h = math.radians((hr * 30) - 90)
         ph = QPointF(center.x() + (r * 0.48) * math.cos(ang_h), center.y() + (r * 0.48) * math.sin(ang_h))
-        p.setPen(QPen(QColor("#f8fafc"), 2.2, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+        p.setPen(QPen(QColor("#f8fafc"), 2.0, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
         p.drawLine(center, ph)
 
         # Minute hand
         ang_m = math.radians((mn * 6) - 90)
         pm = QPointF(center.x() + (r * 0.72) * math.cos(ang_m), center.y() + (r * 0.72) * math.sin(ang_m))
-        p.setPen(QPen(Tokens.BLUE, 1.8, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+        p.setPen(QPen(Tokens.BLUE, 1.6, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
         p.drawLine(center, pm)
 
         # Second hand
         ang_s = math.radians((sec * 6) - 90)
         ps = QPointF(center.x() + (r * 0.82) * math.cos(ang_s), center.y() + (r * 0.82) * math.sin(ang_s))
-        p.setPen(QPen(Tokens.TEAL, 1.2, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+        p.setPen(QPen(Tokens.TEAL, 1.0, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
         p.drawLine(center, ps)
 
         # Center cap
         p.setPen(Qt.PenStyle.NoPen)
         p.setBrush(Tokens.TEAL)
-        p.drawEllipse(center, 2.5, 2.5)
+        p.drawEllipse(center, 2.2, 2.2)
 
 
 # ───────────── الكائنات السابقة المتوافقة مع التطبيق ─────────────
@@ -489,7 +493,7 @@ class AmbientSurface(QWidget):
 
     def paintEvent(self, event):
         p = QPainter(self)
-        paint_aurora(p, self.width(), self.height())
+        paint_aurora(p, self.width(), self.height(), self._phase)
 
 
 class AccentLine(QWidget):
