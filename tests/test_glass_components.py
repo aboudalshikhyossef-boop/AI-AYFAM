@@ -11,6 +11,7 @@ try:
     from PyQt6.QtTest import QTest
     from PyQt6.QtWidgets import QApplication
     from ui.gui_app import NAV_ITEMS, UnifiedCockpitWindow
+    from ui.icons import _draw
     from ui.widgets import Glass, GlassAnalogClock, NavigationWheel
 except (ImportError, OSError) as exc:
     pytest.skip(f"Qt runtime is unavailable ({exc})", allow_module_level=True)
@@ -64,10 +65,17 @@ def test_navigation_pages_have_distinct_icon_assets():
     assert all((icon_dir / f"{key}.svg").is_file() for key, _label in NAV_ITEMS)
 
 
+def test_navigation_icons_are_rendered_at_high_density():
+    pixmap = _draw("dashboard", "#48ded0", 88, 1.0, False)
+    assert pixmap.width() == 264
+    assert pixmap.height() == 264
+    assert pixmap.devicePixelRatioF() == 3.0
+
+
 def test_cockpit_window_initialization(qapp):
     window = UnifiedCockpitWindow()
     assert window.windowTitle() == "AI AYFAM — Security Operations Center"
-    assert window.analog_clock.width() == 84
+    assert window.analog_clock.width() == 96
     assert window.analog_clock.parentWidget().objectName() == "headerBar"
     assert window.analog_clock.parentWidget().layout().columnMinimumWidth(0) == 260
     assert window.analog_clock.parentWidget().layout().columnMinimumWidth(2) == 260

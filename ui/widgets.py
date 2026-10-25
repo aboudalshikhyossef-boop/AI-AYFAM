@@ -14,7 +14,7 @@ from PyQt6.QtGui import (QAbstractTextDocumentLayout, QBrush, QColor,
                          QConicalGradient, QCursor, QDesktopServices,
                          QFont, QFontDatabase, QGuiApplication,
                          QImage, QLinearGradient, QPainter, QPainterPath, QPen,
-                         QPixmap, QRadialGradient, QRegion, QTextBlockFormat,
+                         QPixmap, QRadialGradient, QTextBlockFormat,
                          QTextCursor, QTextOption)
 from PyQt6.QtWidgets import (QAbstractSpinBox, QApplication, QComboBox, QFrame,
                              QGraphicsBlurEffect, QGraphicsOpacityEffect,
@@ -773,9 +773,11 @@ class NavigationWheel(QWidget):
         panel_path = QPainterPath()
         panel_path.addRoundedRect(panel, 22, 22)
         panel_fill = QLinearGradient(panel.topLeft(), panel.bottomRight())
-        panel_fill.setColorAt(0, QColor(4, 12, 23, 72))
-        panel_fill.setColorAt(0.52, QColor(5, 14, 26, 44))
-        panel_fill.setColorAt(1, QColor(4, 10, 20, 62))
+        panel_base = QColor(BG_BASE)
+        for stop, opacity in ((0, 34), (0.52, 20), (1, 30)):
+            tint = QColor(panel_base)
+            tint.setAlpha(opacity)
+            panel_fill.setColorAt(stop, tint)
         painter.fillPath(panel_path, panel_fill)
         edge = QLinearGradient(panel.topLeft(), panel.bottomRight())
         edge.setColorAt(0, QColor(220, 244, 255, 76))
@@ -1227,7 +1229,6 @@ class FlowBorder(QWidget):
         self.custom_color = QColor(flow) if flow not in FLOW_PAIRS and QColor(flow).isValid() else None
         self.angle = phase % 360
         self.speed = speed
-        self._mask_size = None
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
@@ -1238,14 +1239,6 @@ class FlowBorder(QWidget):
         rect = self.target.rect()
         if self.geometry() != rect:
             self.setGeometry(rect)
-        size = (rect.width(), rect.height())
-        if size != self._mask_size and rect.width() > 8 and rect.height() > 8:
-            self._mask_size = size
-            ring = self.RING + 1
-            outer, inner = QPainterPath(), QPainterPath()
-            outer.addRoundedRect(QRectF(rect), self.radius, self.radius)
-            inner.addRoundedRect(QRectF(rect).adjusted(ring, ring, -ring, -ring), max(2, self.radius - ring), max(2, self.radius - ring))
-            self.setMask(QRegion(outer.toFillPolygon().toPolygon()).subtracted(QRegion(inner.toFillPolygon().toPolygon())))
 
     def paintEvent(self, event):
         if not self.target.isEnabled():

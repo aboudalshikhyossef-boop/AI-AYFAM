@@ -423,7 +423,7 @@ class UnifiedCockpitWindow(QMainWindow):
 
         labels = dict(NAV_ITEMS)
         wheel_items = [
-            (key, labels[key], glyph_icon(key, ICON_COLORS.get(key, ACCENT), 34),
+            (key, labels[key], glyph_icon(key, ICON_COLORS.get(key, ACCENT), 88),
              PAGE_ACCENTS.get(key, ACCENT))
             for key, _label in NAV_ITEMS
         ]
@@ -456,7 +456,7 @@ class UnifiedCockpitWindow(QMainWindow):
 
         # ── Header bar ──
         header = QFrame(objectName="headerBar")
-        header.setFixedHeight(104)
+        header.setFixedHeight(116)
         header_layout = QGridLayout(header)
         header_layout.setContentsMargins(SP_XL, SP_SM, SP_XL, SP_SM)
         header_layout.setHorizontalSpacing(SP_MD)
@@ -496,7 +496,7 @@ class UnifiedCockpitWindow(QMainWindow):
         header_status.addWidget(self.score_badge)
         header_layout.addLayout(header_status, 0, 2, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
 
-        self.analog_clock = GlassAnalogClock(size=84)
+        self.analog_clock = GlassAnalogClock(size=96)
         self.analog_clock.setObjectName("headerAnalogClock")
         header_layout.addWidget(self.analog_clock, 0, 1, Qt.AlignmentFlag.AlignCenter)
 

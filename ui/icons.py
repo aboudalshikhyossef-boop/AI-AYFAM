@@ -22,7 +22,7 @@ def _recolor(name: str, color: str) -> QByteArray:
 
 
 def _draw(name: str, color: str, size: int, strength: float, framed: bool) -> QPixmap:
-    scale = 2
+    scale = 3
     pix = QPixmap(size * scale, size * scale)
     pix.setDevicePixelRatio(scale)
     pix.fill(Qt.GlobalColor.transparent)

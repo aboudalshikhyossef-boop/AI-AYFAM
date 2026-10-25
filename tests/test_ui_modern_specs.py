@@ -63,7 +63,7 @@ class TestModernUiSpecs(unittest.TestCase):
         # primary action lives in the mission banner and tools remain in nav.
         self.assertNotIn("ترسانة العمليات التكتيكية السريعة", code)
         self.assertIn("مؤشرات الحالة الأمنية", code)
-        self.assertIn("GlassAnalogClock(size=84)", code)
+        self.assertIn("GlassAnalogClock(size=96)", code)
         self.assertIn('self.analog_clock.setObjectName("headerAnalogClock")', code)
         self.assertNotIn("clockGlassPill", code)
 
