@@ -1,4 +1,4 @@
-"""مكونات Qt6: خلفية زجاجية غير حاجبة، لمعان يتبع المؤشر، وفقاعات محادثة قابلة للنسخ بتصميم Dark Glassmorphism."""
+"""مكونات Qt6: محرك الزجاج الحقيقي (Glassmorphism), خلفية شفقية (Aurora), أزرار نيون, ومكونات المحادثة والقياس."""
 from __future__ import annotations
 
 import html
@@ -7,34 +7,474 @@ import re
 from datetime import datetime
 from pathlib import Path
 
-from PyQt6.QtCore import QEasingCurve, QEvent, QObject, QPoint, QPointF, QPropertyAnimation, QRect, QRectF, Qt, QTimer, QUrl
-from PyQt6.QtGui import QColor, QConicalGradient, QCursor, QDesktopServices, QGuiApplication, QRegion, QTextBlockFormat, QTextCursor, QLinearGradient, QPainter, QPainterPath, QPen, QRadialGradient, QTextOption
-from PyQt6.QtWidgets import (
-    QAbstractSpinBox, QApplication, QComboBox, QFrame, QGraphicsOpacityEffect, QGroupBox, QHBoxLayout, QLabel, QLineEdit,
-    QPlainTextEdit, QPushButton, QScrollArea, QSizePolicy, QTableWidget, QTextEdit,
-    QVBoxLayout, QWidget,
-)
+from PyQt6.QtCore import (QEasingCurve, QEvent, QObject, QPoint, QPointF,
+                            QPropertyAnimation, QRect, QRectF, Qt, QTimer,
+                            QUrl, QVariantAnimation)
+from PyQt6.QtGui import (QAbstractTextDocumentLayout, QBrush, QColor,
+                         QConicalGradient, QCursor, QDesktopServices,
+                         QFont, QFontDatabase, QGuiApplication,
+                         QImage, QLinearGradient, QPainter, QPainterPath, QPen,
+                         QPixmap, QRadialGradient, QRegion, QTextBlockFormat,
+                         QTextCursor, QTextOption)
+from PyQt6.QtWidgets import (QAbstractSpinBox, QApplication, QComboBox, QFrame,
+                             QGraphicsBlurEffect, QGraphicsOpacityEffect,
+                             QGraphicsPixmapItem, QGraphicsScene,
+                             QGroupBox, QHBoxLayout, QLabel, QLineEdit,
+                             QPlainTextEdit, QPushButton, QScrollArea, QSizePolicy,
+                             QTableWidget, QTextEdit, QVBoxLayout, QWidget)
 
 try:
     from PyQt6.QtMultimedia import QSoundEffect
-except ImportError:  # pragma: no cover - minimal Qt installations may omit Multimedia
+except ImportError:  # pragma: no cover
     QSoundEffect = None
 
 from ui.theme import (
     ACCENT, BG_BASE, SEV_CRITICAL, SEV_HIGH, SEV_MEDIUM, SEV_SAFE,
-    TEXT_MUTED, TEXT_PRIMARY, TEXT_SECONDARY, alpha,
+    TEXT_MUTED, TEXT_PRIMARY, TEXT_SECONDARY, alpha
 )
+from ui.tokens import Tokens
+
+T1 = "rgba(255, 255, 255, 0.94)"
+T2 = "rgba(226, 238, 250, 0.62)"
+T3 = "rgba(226, 238, 250, 0.38)"
+
+# ───────────── الخلفية الشفقية والتمويه الحقيقي ─────────────
+def paint_aurora(p: QPainter, w: int, h: int) -> None:
+    """رسم خلفية الفضاء الأورورا مع تدرجات لونية هادئة."""
+    g = QLinearGradient(0, 0, w, h)
+    g.setColorAt(0, QColor("#050912"))
+    g.setColorAt(1, QColor("#0a1022"))
+    p.fillRect(0, 0, w, h, g)
+    TEAL, BLUE, VIOLET = Tokens.TEAL, Tokens.BLUE, Tokens.VIOLET
+    for cx, cy, r, col, a in ((.80, .12, .52, TEAL, 78), (.10, .90, .62, QColor("#4f46e5"), 70),
+                              (.52, .48, .42, QColor("#0ea5e9"), 34), (.95, .95, .38, VIOLET, 36)):
+        rg = QRadialGradient(QPointF(cx * w, cy * h), r * max(w, h))
+        rg.setColorAt(0, Tokens.rgba(col, a))
+        rg.setColorAt(1, Tokens.rgba(col, 0))
+        p.fillRect(0, 0, w, h, rg)
 
 
+def blur(img: QImage, radius: float) -> QImage:
+    """تطبيق تمويه بصري حقيقي على صورة ARGB."""
+    if img.isNull() or img.width() <= 0 or img.height() <= 0:
+        return img
+    scene = QGraphicsScene()
+    item = QGraphicsPixmapItem(QPixmap.fromImage(img))
+    fx = QGraphicsBlurEffect()
+    fx.setBlurRadius(radius)
+    fx.setBlurHints(QGraphicsBlurEffect.BlurHint.QualityHint)
+    item.setGraphicsEffect(fx)
+    scene.addItem(item)
+    out = QImage(img.size(), QImage.Format.Format_ARGB32_Premultiplied)
+    out.fill(Qt.GlobalColor.transparent)
+    p = QPainter(out)
+    scene.render(p, QRectF(out.rect()), QRectF(img.rect()))
+    p.end()
+    return out
+
+
+class Glass(QWidget):
+    """لوح زجاجي حقيقي: تمويه خلفي + لون شبه شفاف + حافة لامعة + بقعة ضوء عند التحويم."""
+
+    def __init__(self, radius: int = 24, tint: float = .07, parent: QWidget | None = None):
+        super().__init__(parent)
+        self.r, self.tint = radius, tint
+        self._cache: QImage | None = None
+        self._key = None
+        self.pointer, self.hl = QPointF(-999, -999), 0.0
+        self.setMouseTracking(True)
+        self.anim = QVariantAnimation(self)
+        self.anim.setDuration(280)
+        self.anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self.anim.valueChanged.connect(self._set_hl)
+
+    def _set_hl(self, v) -> None:
+        self.hl = float(v)
+        self.update()
+
+    def _glow(self, to: float) -> None:
+        self.anim.stop()
+        self.anim.setStartValue(self.hl)
+        self.anim.setEndValue(to)
+        self.anim.start()
+
+    def enterEvent(self, e) -> None:
+        self._glow(1.0)
+        super().enterEvent(e)
+
+    def leaveEvent(self, e) -> None:
+        self._glow(0.0)
+        super().leaveEvent(e)
+
+    def mouseMoveEvent(self, e) -> None:
+        self.pointer = e.position()
+        self.update()
+        super().mouseMoveEvent(e)
+
+    def _backdrop(self) -> QImage | None:
+        root = self.window()
+        bg: QImage | None = getattr(root, "bg", None)
+        if bg is None or bg.isNull() or self.width() < 4 or self.height() < 4:
+            return None
+        pos = self.mapTo(root, QPoint(0, 0))
+        key = (self.width(), self.height(), pos.x(), pos.y(), bg.cacheKey())
+        if key != self._key:
+            pad = 44
+            x = max(0, min(pos.x() - pad, bg.width() - (self.width() + 2 * pad)))
+            y = max(0, min(pos.y() - pad, bg.height() - (self.height() + 2 * pad)))
+            w = min(bg.width() - x, self.width() + 2 * pad)
+            h = min(bg.height() - y, self.height() + 2 * pad)
+            if w <= 0 or h <= 0:
+                return None
+            region = bg.copy(x, y, w, h)
+            self._cache = blur(region, 30).copy(min(pad, region.width()), min(pad, region.height()),
+                                                min(self.width(), region.width()), min(self.height(), region.height()))
+            self._key = key
+        return self._cache
+
+    def paintEvent(self, _e) -> None:
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        path = QPainterPath()
+        path.addRoundedRect(QRectF(self.rect()).adjusted(.5, .5, -.5, -.5), self.r, self.r)
+        p.setClipPath(path)
+        if (bd := self._backdrop()) is not None and not bd.isNull():
+            p.drawImage(0, 0, bd)
+        else:
+            # Fallback translucent tint
+            p.fillPath(path, QColor(15, 23, 42, 170))
+        g = QLinearGradient(0, 0, 0, max(1, self.height()))
+        g.setColorAt(0, QColor(255, 255, 255, int(255 * (self.tint + .05))))
+        g.setColorAt(1, QColor(255, 255, 255, int(255 * self.tint * .55)))
+        p.fillPath(path, g)
+        if self.hl > .01:
+            rg = QRadialGradient(self.pointer, 240)
+            rg.setColorAt(0, QColor(255, 255, 255, int(40 * self.hl)))
+            rg.setColorAt(1, QColor(255, 255, 255, 0))
+            p.fillPath(path, rg)
+        p.setClipping(False)
+        edge = QLinearGradient(0, 0, max(1, self.width()), max(1, self.height()))
+        edge.setColorAt(0, QColor(255, 255, 255, 80))
+        edge.setColorAt(.5, QColor(255, 255, 255, 16))
+        edge.setColorAt(1, QColor(255, 255, 255, 44))
+        p.setPen(QPen(QBrush(edge), 1.0))
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        p.drawPath(path)
+
+
+# ───────────── منحنيات ورسوم مخصصة ─────────────
+def smooth_path(pts: list[QPointF]) -> QPainterPath:
+    if not pts:
+        return QPainterPath()
+    path = QPainterPath(pts[0])
+    for i in range(len(pts) - 1):
+        p0, p1, p2 = pts[max(i - 1, 0)], pts[i], pts[i + 1]
+        p3 = pts[min(i + 2, len(pts) - 1)]
+        path.cubicTo(p1 + (p2 - p0) / 6, p2 - (p3 - p1) / 6, p2)
+    return path
+
+
+class Curve(QWidget):
+    """منحنى ناعم بتوهج وتعبئة متدرجة."""
+
+    def __init__(self, data: list[float], color: QColor, axes: bool = False, parent=None):
+        super().__init__(parent)
+        self.data, self.color, self.axes = data or [0.0], color, axes
+
+    def paintEvent(self, _e) -> None:
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        w, h = self.width(), self.height()
+        if w <= 10 or h <= 10 or not self.data:
+            return
+        ml, mb = (8, 26) if self.axes else (2, 4)
+        top = 8
+        lo, hi = (0, 100) if self.axes else (min(self.data), max(self.data))
+        span = max(hi - lo, 1e-6)
+        if self.axes:
+            p.setFont(QFont("Tajawal", 9))
+            for i in range(5):
+                y = top + (h - mb - top) * i / 4
+                p.setPen(QPen(QColor(255, 255, 255, 16), 1))
+                p.drawLine(QPointF(ml, y), QPointF(w - ml, y))
+            p.setPen(QColor(226, 238, 250, 95))
+            for i, lab in enumerate(("قبل 24 ساعة", "قبل 16 ساعة", "قبل 8 ساعات", "الآن")):
+                x = ml + (w - 2 * ml) * i / 3
+                p.drawText(QRectF(min(max(x - 40, 0), w - 80), h - 20, 80, 18), Qt.AlignmentFlag.AlignCenter, lab)
+        pts = [QPointF(ml + (w - 2 * ml) * i / max(1, len(self.data) - 1),
+                       top + (h - mb - top) * (1 - (v - lo) / span)) for i, v in enumerate(self.data)]
+        line = smooth_path(pts)
+        fill = QPainterPath(line)
+        fill.lineTo(pts[-1].x(), h - mb)
+        fill.lineTo(pts[0].x(), h - mb)
+        fill.closeSubpath()
+        fg = QLinearGradient(0, top, 0, h - mb)
+        fg.setColorAt(0, Tokens.rgba(self.color, 82))
+        fg.setColorAt(1, Tokens.rgba(self.color, 0))
+        p.fillPath(fill, fg)
+        for wd, a in ((7, 26), (3.6, 60), (2.2, 255)):
+            p.setPen(QPen(Tokens.rgba(self.color, a), wd, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+            p.drawPath(line)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(Tokens.rgba(self.color, 70))
+        p.drawEllipse(pts[-1], 7, 7)
+        p.setBrush(QColor(255, 255, 255))
+        p.drawEllipse(pts[-1], 3.2, 3.2)
+
+
+class Ring(QWidget):
+    """حلقة درجة الأمان التقييمية."""
+
+    def __init__(self, value: int, label: str, sub: str, parent=None):
+        super().__init__(parent)
+        self.value, self.label, self.sub = value, label, sub
+
+    def paintEvent(self, _e) -> None:
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        d = max(20, min(self.width() - 16, self.height() - 44))
+        r = QRectF((self.width() - d) / 2, 6, d, d)
+        p.setPen(QPen(QColor(255, 255, 255, 22), 13, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+        p.drawArc(r, 0, 360 * 16)
+        cg = QConicalGradient(r.center(), 90)
+        cg.setColorAt(0, QColor("#22d3ee"))
+        cg.setColorAt(.8, Tokens.TEAL)
+        cg.setColorAt(1, QColor("#22d3ee"))
+        p.setPen(QPen(QBrush(cg), 13, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+        p.drawArc(r, 90 * 16, -int(360 * 16 * self.value / 100))
+        p.setPen(QColor(255, 255, 255, 240))
+        p.setFont(QFont("Tajawal", int(max(10, d / 4.2)), QFont.Weight.Bold))
+        p.drawText(r.adjusted(0, -8, 0, -8), Qt.AlignmentFlag.AlignCenter, str(self.value))
+        p.setPen(QColor(226, 238, 250, 140))
+        p.setFont(QFont("Tajawal", 11))
+        p.drawText(r.adjusted(0, d / 3.2, 0, 0), Qt.AlignmentFlag.AlignCenter, self.label)
+        p.setFont(QFont("Tajawal", 10))
+        p.setPen(QColor(226, 238, 250, 95))
+        p.drawText(QRectF(0, d + 12, self.width(), 20), Qt.AlignmentFlag.AlignCenter, self.sub)
+
+
+def draw_icon(p: QPainter, kind: str, r: QRectF, color: QColor) -> None:
+    """رسم متجه أيكون أمنية بدقة قياسية."""
+    p.save()
+    p.translate(r.center())
+    s = r.width() / 24
+    p.scale(s, s)
+    p.translate(-12, -12)
+    pen = QPen(color, 1.8, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
+    p.setPen(pen)
+    p.setBrush(Qt.BrushStyle.NoBrush)
+    a = QPainterPath()
+    if kind == "grid":
+        for x, y in ((4, 4), (14, 4), (4, 14), (14, 14)):
+            a.addRoundedRect(QRectF(x, y, 6, 6), 1.6, 1.6)
+    elif kind == "shield":
+        a.moveTo(12, 3); a.lineTo(19, 6); a.lineTo(19, 12)
+        a.cubicTo(19, 16.5, 16, 19.5, 12, 21); a.cubicTo(8, 19.5, 5, 16.5, 5, 12); a.lineTo(5, 6); a.closeSubpath()
+    elif kind == "usb":
+        a.moveTo(12, 19); a.lineTo(12, 5); a.moveTo(9.5, 7.5); a.lineTo(12, 4); a.lineTo(14.5, 7.5)
+        a.moveTo(12, 14); a.lineTo(7, 11); a.lineTo(7, 8.5); a.addEllipse(QPointF(12, 19.5), 1.8, 1.8)
+        a.moveTo(12, 11); a.lineTo(17, 8.5); a.lineTo(17, 7.5)
+    elif kind == "term":
+        a.addRoundedRect(QRectF(3, 5, 18, 14), 3, 3); a.moveTo(7, 10); a.lineTo(10, 12.5); a.lineTo(7, 15)
+        a.moveTo(12, 15); a.lineTo(16, 15)
+    elif kind == "chat":
+        a.addRoundedRect(QRectF(3, 4, 18, 13), 4.5, 4.5); a.moveTo(8, 17); a.lineTo(8, 21); a.lineTo(12.5, 17)
+    elif kind == "flow":
+        a.addEllipse(QPointF(7, 6), 2, 2); a.addEllipse(QPointF(17, 12), 2, 2); a.addEllipse(QPointF(7, 18), 2, 2)
+        a.moveTo(7, 8); a.lineTo(7, 16); a.moveTo(9, 6); a.cubicTo(14, 6, 15, 8, 15.5, 10.5)
+    elif kind == "book":
+        a.addRoundedRect(QRectF(5, 3, 14, 18), 2.2, 2.2); a.moveTo(9, 8); a.lineTo(15, 8); a.moveTo(9, 12); a.lineTo(15, 12)
+    elif kind == "doc":
+        a.addRoundedRect(QRectF(6, 3, 12, 18), 2.2, 2.2); a.moveTo(9, 9); a.lineTo(15, 9); a.moveTo(9, 13); a.lineTo(15, 13)
+        a.moveTo(9, 17); a.lineTo(12, 17)
+    elif kind == "gear":
+        a.addEllipse(QPointF(12, 12), 3.2, 3.2)
+        for i in range(8):
+            ang = math.radians(i * 45)
+            a.moveTo(12 + 6.4 * math.cos(ang), 12 + 6.4 * math.sin(ang)); a.lineTo(12 + 9 * math.cos(ang), 12 + 9 * math.sin(ang))
+    elif kind == "spark":
+        a.moveTo(12, 3); a.cubicTo(12.6, 8.4, 15.6, 11.4, 21, 12); a.cubicTo(15.6, 12.6, 12.6, 15.6, 12, 21)
+        a.cubicTo(11.4, 15.6, 8.4, 12.6, 3, 12); a.cubicTo(8.4, 11.4, 11.4, 8.4, 12, 3)
+    p.drawPath(a)
+    p.restore()
+
+
+class NavItem(QWidget):
+    """عنصر التنقل الجانبي الفاخر."""
+
+    def __init__(self, label: str, icon: str, selected: bool = False, parent=None):
+        super().__init__(parent)
+        self.label, self.icon, self.selected, self.hover = label, icon, selected, False
+        self.setFixedHeight(46)
+        self.setMouseTracking(True)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+
+    def enterEvent(self, e) -> None:
+        self.hover = True
+        self.update()
+        super().enterEvent(e)
+
+    def leaveEvent(self, e) -> None:
+        self.hover = False
+        self.update()
+        super().leaveEvent(e)
+
+    def paintEvent(self, _e) -> None:
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        box = QRectF(self.rect()).adjusted(2, 2, -2, -2)
+        if self.selected or self.hover:
+            g = QLinearGradient(0, 0, 0, self.height())
+            g.setColorAt(0, QColor(255, 255, 255, 40 if self.selected else 18))
+            g.setColorAt(1, QColor(255, 255, 255, 18 if self.selected else 8))
+            p.setBrush(g)
+            p.setPen(QPen(QColor(255, 255, 255, 56 if self.selected else 0), 1))
+            p.drawRoundedRect(box, 14, 14)
+        col = QColor(255, 255, 255, 245) if self.selected else QColor(226, 238, 250, 150)
+        draw_icon(p, self.icon, QRectF(self.width() - 40, 12, 22, 22), Tokens.TEAL if self.selected else col)
+        p.setPen(col)
+        p.setFont(QFont("Tajawal", 12, QFont.Weight.DemiBold if self.selected else QFont.Weight.Medium))
+        p.drawText(QRectF(14, 0, max(10, self.width() - 58), self.height()),
+                   Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignRight, self.label)
+
+
+class AIButton(QWidget):
+    """زر المساعد الذكي المخصص."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedHeight(52)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+
+    def paintEvent(self, _e) -> None:
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        box = QRectF(self.rect()).adjusted(1, 1, -1, -1)
+        g = QLinearGradient(0, 0, max(1, self.width()), 0)
+        g.setColorAt(0, QColor("#7c6cf0"))
+        g.setColorAt(1, QColor("#a78bfa"))
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(g)
+        p.drawRoundedRect(box, 26, 26)
+        sh = QLinearGradient(0, 0, 0, max(1, self.height()))
+        sh.setColorAt(0, QColor(255, 255, 255, 70))
+        sh.setColorAt(.5, QColor(255, 255, 255, 0))
+        p.setBrush(sh)
+        p.drawRoundedRect(box, 26, 26)
+        draw_icon(p, "spark", QRectF(self.width() - 46, 14, 24, 24), QColor("white"))
+        p.setPen(QColor("white"))
+        p.setFont(QFont("Tajawal", 12, QFont.Weight.Bold))
+        p.drawText(QRectF(10, 0, max(10, self.width() - 62), self.height()),
+                   Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignRight, "اسأل المساعد الذكي")
+
+
+def Dot(color: QColor, size: int = 9) -> QWidget:
+    """نقطة حالة نيون مع وهج زجاجي."""
+    w = QWidget()
+    w.color = color
+    w.setFixedSize(size + 8, size + 8)
+
+    def paint(_e):
+        p = QPainter(w)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        c = QPointF(w.width() / 2, w.height() / 2)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(Tokens.rgba(color, 60))
+        p.drawEllipse(c, w.width() / 2 - 1, w.width() / 2 - 1)
+        p.setBrush(color)
+        p.drawEllipse(c, w.width() / 2 - 4, w.width() / 2 - 4)
+
+    w.paintEvent = paint
+    return w
+
+
+def chip(text: str, color: QColor) -> QLabel:
+    """شارة زجاجية ملونة."""
+    lb = QLabel(text)
+    lb.setFont(QFont("Tajawal", 9, QFont.Weight.DemiBold))
+    lb.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    lb.setStyleSheet(f"color:{color.name()};background:{Tokens.css_rgba(color.red(), color.green(), color.blue(), .14)};"
+                     f"border:1px solid {Tokens.css_rgba(color.red(), color.green(), color.blue(), .38)};border-radius:10px;padding:2px 10px;")
+    return lb
+
+
+class GlassAnalogClock(QWidget):
+    """ساعة عقاربية زجاجية لحظية مع نبض دائري للمراقبة الأمنية."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedSize(68, 68)
+        self.now = datetime.now()
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self._tick)
+        self.timer.start(1000)
+
+    def _tick(self):
+        self.now = datetime.now()
+        self.update()
+
+    def paintEvent(self, _e) -> None:
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        w, h = self.width(), self.height()
+        center = QPointF(w / 2, h / 2)
+        r = min(w, h) / 2 - 3
+
+        # Dial backdrop
+        g = QRadialGradient(center, r)
+        g.setColorAt(0, QColor(15, 23, 42, 220))
+        g.setColorAt(1, QColor(5, 9, 18, 240))
+        p.setPen(QPen(QColor(255, 255, 255, 45), 1.2))
+        p.setBrush(g)
+        p.drawEllipse(center, r, r)
+
+        # Minute ticks
+        for i in range(12):
+            angle = math.radians(i * 30)
+            p1 = QPointF(center.x() + (r - 4) * math.cos(angle), center.y() + (r - 4) * math.sin(angle))
+            p2 = QPointF(center.x() + (r - 1.5) * math.cos(angle), center.y() + (r - 1.5) * math.sin(angle))
+            p.setPen(QPen(Tokens.TEAL if i % 3 == 0 else QColor(255, 255, 255, 70), 1.5 if i % 3 == 0 else 1.0))
+            p.drawLine(p1, p2)
+
+        # Hands
+        sec = self.now.second
+        mn = self.now.minute + sec / 60.0
+        hr = (self.now.hour % 12) + mn / 60.0
+
+        # Hour hand
+        ang_h = math.radians((hr * 30) - 90)
+        ph = QPointF(center.x() + (r * 0.48) * math.cos(ang_h), center.y() + (r * 0.48) * math.sin(ang_h))
+        p.setPen(QPen(QColor("#f8fafc"), 2.4, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+        p.drawLine(center, ph)
+
+        # Minute hand
+        ang_m = math.radians((mn * 6) - 90)
+        pm = QPointF(center.x() + (r * 0.72) * math.cos(ang_m), center.y() + (r * 0.72) * math.sin(ang_m))
+        p.setPen(QPen(Tokens.BLUE, 1.8, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+        p.drawLine(center, pm)
+
+        # Second hand
+        ang_s = math.radians((sec * 6) - 90)
+        ps = QPointF(center.x() + (r * 0.82) * math.cos(ang_s), center.y() + (r * 0.82) * math.sin(ang_s))
+        p.setPen(QPen(Tokens.TEAL, 1.2, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+        p.drawLine(center, ps)
+
+        # Center cap
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(Tokens.TEAL)
+        p.drawEllipse(center, 2.5, 2.5)
+
+
+# ───────────── الكائنات السابقة المتوافقة مع التطبيق ─────────────
 class AmbientSurface(QWidget):
-    """Paint the background of the actual content container: zero extra layout space."""
+    """رسم خلفية المحتوى العامة الأورورا."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self._phase = 0.0
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._tick)
-        self._timer.start(100)  # slow ambient drift; 10 fps is enough and cheap
+        self._timer.start(100)
 
     def _tick(self):
         if self.isVisible():
@@ -43,31 +483,11 @@ class AmbientSurface(QWidget):
 
     def paintEvent(self, event):
         p = QPainter(self)
-        p.fillRect(self.rect(), QColor("#030712"))
-        w, h = self.width(), self.height()
-        # Diffuse Apple-style glass light pools
-        for color, cx, cy in (("#0d9488", 0.22, 0.1), ("#6366f1", 0.94, 0.76)):
-            center = QPointF(w * (cx + 0.06 * math.sin(self._phase)), h * cy)
-            g = QRadialGradient(center, max(w, h) * 0.8)
-            c = QColor(color)
-            c.setAlpha(28)
-            g.setColorAt(0, c)
-            c.setAlpha(0)
-            g.setColorAt(1, c)
-            p.fillRect(self.rect(), g)
-        # One moving, faint diagonal light band.
-        g = QLinearGradient(0, 0, w, h)
-        t = 0.5 + 0.18 * math.sin(self._phase * 0.6)
-        g.setColorAt(0, QColor(45, 212, 191, 0))
-        g.setColorAt(max(0, t - 0.15), QColor(45, 212, 191, 0))
-        g.setColorAt(t, QColor(45, 212, 191, 6))
-        g.setColorAt(min(1, t + 0.15), QColor(167, 139, 250, 0))
-        g.setColorAt(1, QColor(167, 139, 250, 0))
-        p.fillRect(self.rect(), g)
+        paint_aurora(p, self.width(), self.height())
 
 
 class AccentLine(QWidget):
-    """Thin animated palette sweep under the header using the brand signal colors."""
+    """خط أفق نيون متدرج."""
 
     COLORS = ("#0d9488", "#2dd4bf", "#5eead4", "#2dd4bf", "#0d9488", "#2dd4bf", "#0d9488")
 
@@ -98,7 +518,7 @@ class AccentLine(QWidget):
 
 
 class GlowReflection(QWidget):
-    """Ambient-only reflection: a soft light pool, never a duplicate of the icon."""
+    """انعكاس ضوئي ناعم."""
 
     def __init__(self, parent=None, color: str = ACCENT):
         super().__init__(parent)
@@ -124,7 +544,7 @@ class GlowReflection(QWidget):
 
 
 class NavIndicator(QWidget):
-    """Sliding rim-light marker beside the active navigation button."""
+    """مؤشر التصفح الانسيابي."""
 
     def __init__(self, parent):
         super().__init__(parent)
@@ -168,7 +588,7 @@ class NavIndicator(QWidget):
 
 
 class PressFeedbackController(QObject):
-    """Short, low-cost tactile response for mouse and keyboard button presses."""
+    """استجابة لمسية وحركية سريعة للأزرار."""
 
     def __init__(self, root):
         super().__init__(root)
@@ -242,17 +662,16 @@ class PressFeedbackController(QObject):
         return super().eventFilter(watched, event)
 
 
-class TelemetryChart(QFrame):
-    """Lightweight interactive line chart for live dashboard telemetry with dark glass styling."""
+class TelemetryChart(Glass):
+    """مخطط بياني زجاجي تفاعلي لقياسات الشبكة والأنشطة الحية."""
 
     def __init__(self, title="اتجاه القياسات الحية", parent=None):
-        super().__init__(parent)
+        super().__init__(radius=26, tint=0.07, parent=parent)
         self.title = title
         self.series = {}
         self.hover_index = -1
         self.setObjectName("telemetryChart")
         self.setMinimumHeight(220)
-        self.setMouseTracking(True)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
     def set_data(self, series: dict[str, tuple[list[float], str]]) -> None:
@@ -270,28 +689,20 @@ class TelemetryChart(QFrame):
             self.hover_index = max(0, min(count - 1, round(ratio * (count - 1))))
         else:
             self.hover_index = -1
-        self.update()
         super().mouseMoveEvent(event)
 
     def leaveEvent(self, event):
         self.hover_index = -1
-        self.update()
         super().leaveEvent(event)
 
     def paintEvent(self, event):
+        super().paintEvent(event)
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        background = QLinearGradient(0, 0, self.width(), self.height())
-        background.setColorAt(0, QColor(91, 137, 183, 32))
-        background.setColorAt(0.18, QColor(26, 45, 71, 206))
-        background.setColorAt(1, QColor(12, 23, 43, 220))
-        p.fillRect(self.rect(), background)
-        p.setPen(QPen(QColor(208, 231, 255, 38), 1))
-        p.drawRoundedRect(QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5), 14, 14)
+
         p.setPen(QColor(TEXT_PRIMARY))
-        p.setFont(p.font())
-        p.drawText(QRectF(18, 8, self.width() - 36, 22), Qt.AlignmentFlag.AlignRight, self.title)
-        p.setPen(QColor(TEXT_MUTED))
+        p.setFont(QFont("Tajawal", 12, QFont.Weight.Bold))
+        p.drawText(QRectF(18, 12, self.width() - 36, 24), Qt.AlignmentFlag.AlignRight, self.title)
 
         rect = self._plot_rect()
         for step in range(5):
@@ -304,116 +715,71 @@ class TelemetryChart(QFrame):
         count = max((len(values) for values, _ in self.series.values()), default=0)
         if count < 2:
             p.setPen(QColor(TEXT_MUTED))
-            p.drawText(rect, Qt.AlignmentFlag.AlignCenter, "تظهر حركة القياس بعد نقطتين أو أكثر / Trend appears after two readings")
+            p.drawText(rect, Qt.AlignmentFlag.AlignCenter, "تظهر حركة القياس بعد نقطتين أو أكثر")
             return
-        colors = [QColor(color) for _, color in self.series.values()]
-        for (values, _), color in zip(self.series.values(), colors):
+        for (values, _), color_str in self.series.values():
             if len(values) < 2:
                 continue
+            color = QColor(color_str)
             points = []
             for index, value in enumerate(values):
-                x = rect.left() + rect.width() * index / (count - 1)
+                x = rect.left() + rect.width() * index / max(1, count - 1)
                 y = rect.bottom() - rect.height() * max(0, min(100, float(value))) / 100
                 points.append(QPointF(x, y))
-            path = QPainterPath(points[0])
-            for point in points[1:]:
-                path.lineTo(point)
+            path = smooth_path(points)
 
-            # Filled, tinted area and layered strokes create a restrained neon-glass glow.
             area = QPainterPath(path)
             area.lineTo(points[-1].x(), rect.bottom())
             area.lineTo(points[0].x(), rect.bottom())
             area.closeSubpath()
             fill = QLinearGradient(0, rect.top(), 0, rect.bottom())
-            area_color = QColor(color)
-            area_color.setAlpha(72)
-            fill.setColorAt(0, area_color)
-            area_color.setAlpha(4)
-            fill.setColorAt(1, area_color)
+            fill.setColorAt(0, Tokens.rgba(color, 72))
+            fill.setColorAt(1, Tokens.rgba(color, 4))
             p.fillPath(area, fill)
 
             p.setBrush(Qt.BrushStyle.NoBrush)
             glow = QColor(color)
             glow.setAlpha(35)
-            p.setPen(QPen(glow, 12, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
+            p.setPen(QPen(glow, 12, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
             p.drawPath(path)
-            glow.setAlpha(80)
-            p.setPen(QPen(glow, 5, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
-            p.drawPath(path)
-            p.setPen(QPen(color, 2.2, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
+            p.setPen(QPen(color, 2.2, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
             p.drawPath(path)
             p.setBrush(color)
             p.setPen(Qt.PenStyle.NoPen)
             p.drawEllipse(points[-1], 5.4, 5.4)
-            core = QColor("#f8fafc")
-            p.setBrush(core)
-            p.drawEllipse(points[-1], 2.2, 2.2)
-
-        p.setPen(QColor("#64748b"))
-        for index, label in ((0, "قبل 72 ثانية"), (max(0, count // 3), "قبل 48ث"), (max(0, (count * 2) // 3), "قبل 24ث"), (count - 1, "الآن")):
-            x = rect.left() + rect.width() * index / (count - 1)
-            p.drawText(QRectF(x - 36, rect.bottom() + 8, 72, 16), Qt.AlignmentFlag.AlignCenter, label)
 
         if 0 <= self.hover_index < count:
-            x = rect.left() + rect.width() * self.hover_index / (count - 1)
+            x = rect.left() + rect.width() * self.hover_index / max(1, count - 1)
             p.setPen(QPen(QColor("#5eead4"), 1, Qt.PenStyle.DashLine))
             p.drawLine(QPointF(x, rect.top()), QPointF(x, rect.bottom()))
-            tooltip_lines = []
-            for label, (values, color) in self.series.items():
-                if self.hover_index < len(values):
-                    tooltip_lines.append(f"{label}: {values[self.hover_index]:.0f}")
-            box = QRectF(max(8, x - 88), rect.top() + 8, 176, 22 + 18 * len(tooltip_lines))
-            p.setPen(QPen(QColor(45, 212, 191, 100), 1))
-            p.setBrush(QColor(15, 23, 42, 230))
-            p.drawRoundedRect(box, 8, 8)
-            p.setPen(QColor("#f8fafc"))
-            for row, text in enumerate(["نقطة القياس"] + tooltip_lines):
-                p.drawText(QRectF(box.left() + 10, box.top() + 7 + row * 18, box.width() - 20, 16), Qt.AlignmentFlag.AlignRight, text)
-
-        # Compact legend aligned to the left of the chart header.
-        legend_x = 18
-        for label, (_, color) in self.series.items():
-            p.setBrush(QColor(color)); p.setPen(Qt.PenStyle.NoPen)
-            p.drawEllipse(QPointF(legend_x + 4, 22), 3, 3)
-            p.setPen(QColor(TEXT_SECONDARY))
-            p.drawText(QRectF(legend_x + 12, 12, 180, 20), Qt.AlignmentFlag.AlignLeft, label)
-            legend_x += 210
 
 
-class SecurityGauge(QFrame):
-    """Compact posture gauge with dark glass aesthetics and hover details."""
+class SecurityGauge(Glass):
+    """حلقة درجة الجاهزية الأمنية الزجاجية."""
 
     def __init__(self, title="الجاهزية الأمنية", parent=None):
-        super().__init__(parent)
+        super().__init__(radius=26, tint=0.07, parent=parent)
         self.title = title
         self.value = 0
         self.pending = True
         self.setObjectName("securityGauge")
         self.setMinimumSize(210, 220)
-        self.setMouseTracking(True)
 
     def set_value(self, value: float) -> None:
         self.value = max(0, min(100, float(value)))
         self.pending = False
-        self.setToolTip(f"{self.title}: {self.value:.0f}% — يتحدث مع القياسات الحية")
+        self.setToolTip(f"{self.title}: {self.value:.0f}%")
         self.update()
 
     def set_pending(self) -> None:
-        """Show that no completed security scan exists yet; never imply a score."""
         self.pending = True
         self.setToolTip(f"{self.title}: لم يُجرَ فحص بعد")
         self.update()
 
     def paintEvent(self, event):
+        super().paintEvent(event)
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        background = QLinearGradient(0, 0, self.width(), self.height())
-        background.setColorAt(0, QColor(91, 137, 183, 32))
-        background.setColorAt(0.18, QColor(26, 45, 71, 206))
-        background.setColorAt(1, QColor(12, 23, 43, 220))
-        p.fillRect(self.rect(), background)
-        p.setPen(QPen(QColor(208, 231, 255, 38), 1))
-        p.drawRoundedRect(QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5), 14, 14)
         center = QPointF(self.width() / 2, self.height() / 2 + 8)
         radius = min(self.width(), self.height()) * 0.31
         base = QRectF(center.x() - radius, center.y() - radius, radius * 2, radius * 2)
@@ -431,23 +797,19 @@ class SecurityGauge(QFrame):
             glow.setAlpha(42)
             p.setPen(QPen(glow, 22, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
             p.drawArc(base, 225 * 16, int(-270 * 16 * self.value / 100))
-            glow.setAlpha(95)
-            p.setPen(QPen(glow, 5, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
-            p.drawArc(base, 225 * 16, int(-270 * 16 * self.value / 100))
         p.setPen(QPen(color, 12, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
         if not self.pending:
             p.drawArc(base, 225 * 16, int(-270 * 16 * self.value / 100))
-        p.setPen(QColor("#f8fafc")); p.setFont(p.font())
+        p.setPen(QColor("#f8fafc"))
+        p.setFont(QFont("Tajawal", 20, QFont.Weight.Bold))
         p.drawText(QRectF(0, center.y() - 18, self.width(), 34), Qt.AlignmentFlag.AlignCenter, "—" if self.pending else f"{self.value:.0f}%")
         p.setPen(QColor(TEXT_SECONDARY))
+        p.setFont(QFont("Tajawal", 12))
         p.drawText(QRectF(12, 16, self.width() - 24, 22), Qt.AlignmentFlag.AlignRight, self.title)
-        p.setPen(QColor(TEXT_MUTED))
-        footer = "لم يُجرَ فحص بعد" if self.pending else "تقييم خطوط الدفاع بعد آخر فحص"
-        p.drawText(QRectF(12, self.height() - 34, self.width() - 24, 18), Qt.AlignmentFlag.AlignCenter, footer)
 
 
 class SoundUX(QObject):
-    """Subtle local feedback sounds with a persistent mute switch."""
+    """أصوات تفاعل خفيفة."""
 
     def __init__(self, root, enabled=True):
         super().__init__(root)
@@ -478,7 +840,6 @@ class SoundUX(QObject):
     def play(self, name="click") -> None:
         if not self.enabled:
             return
-        # "confirm" changes click loudness only; success audio is reserved for actual success.
         effect_name = "success" if name == "success" else "click"
         effect = self.effects.get(effect_name)
         if effect is not None:
@@ -492,8 +853,6 @@ class SoundUX(QObject):
 
 
 class HaloOverlay(QWidget):
-    """Non-intercepting, clipped highlight; no shadows, no native graphics effects."""
-
     def __init__(self, target, radius=13):
         super().__init__(target)
         self.target = target
@@ -513,7 +872,7 @@ class HaloOverlay(QWidget):
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         top = 1
-        rect = QRectF(1, top, self.width() - 2, self.height() - top - 1)
+        rect = QRectF(1, top, max(1, self.width() - 2), max(1, self.height() - top - 1))
         path = QPainterPath()
         path.addRoundedRect(rect, self.radius, self.radius)
         p.setClipPath(path)
@@ -546,8 +905,6 @@ FLOW_PAIRS = {
 
 
 class FlowBorder(QWidget):
-    """Animated frame: a light comet travels around the border of tables and fields."""
-
     RING = 2
 
     def __init__(self, target, radius=13, flow="blue", phase=0.0, speed=38.0):
@@ -556,7 +913,7 @@ class FlowBorder(QWidget):
         self.radius = radius
         self.flow = flow if flow in FLOW_PAIRS else "blue"
         self.angle = phase % 360
-        self.speed = speed          # degrees per second
+        self.speed = speed
         self._mask_size = None
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground)
@@ -606,8 +963,6 @@ class FlowBorder(QWidget):
 
 
 class FlowController(QObject):
-    """One shared timer animates every visible frame (~20 fps, only when the window is active)."""
-
     INTERVAL = 50
 
     def __init__(self, root):
@@ -651,8 +1006,6 @@ class FlowController(QObject):
 
 
 class HoverController(QObject):
-    """Polls the pointer."""
-
     PANELS = ("card", "missionBanner", "chatComposer", "chatUser", "chatAssistant", "chatSystem")
 
     def __init__(self, root):
@@ -745,8 +1098,6 @@ class HoverController(QObject):
 
 
 class MessageBody(QTextEdit):
-    """Selectable plain text, safe from HTML injection, with auto-sized wrapping."""
-
     def __init__(self, text, parent=None):
         super().__init__(parent)
         self.setObjectName("messageBody")
@@ -866,8 +1217,6 @@ def _action_button(label, kind=""):
 
 
 class ActionBubble(ChatBubble):
-    """Assistant bubble followed by action buttons."""
-
     def __init__(self, text, actions, stamp):
         super().__init__(text, "assistant", stamp)
         self.buttons = []
@@ -893,8 +1242,6 @@ class ActionBubble(ChatBubble):
 
 
 class ResultsCard(QFrame):
-    """Tidy search results with dark glass cards."""
-
     def __init__(self, report, title, stamp, actions):
         super().__init__()
         self.role = "assistant"
@@ -915,7 +1262,6 @@ class ResultsCard(QFrame):
         head.addWidget(stamp_label)
         box.addLayout(head)
 
-        # engine status chips
         chips = QHBoxLayout()
         chips.setSpacing(6)
         for engine, status in report.engines.items():
@@ -1023,8 +1369,6 @@ class ResultsCard(QFrame):
 
 
 class ChatView(QScrollArea):
-    """append()/clear() compatibility with the original QTextEdit event stream."""
-
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setFrameShape(QFrame.Shape.NoFrame)
@@ -1044,8 +1388,7 @@ class ChatView(QScrollArea):
     def setPlaceholderText(self, text):
         self.placeholder = text
 
-    SYSTEM_RE = re.compile(
-        r"^[⚙✅❌️\s]*\[(النظام|بدء|خطأ عرض|خطأ|اكتمل|تحذير[^\]]*)\]\s*")
+    SYSTEM_RE = re.compile(r"^[⚙✅❌️\s]*\[(النظام|بدء|خطأ عرض|خطأ|اكتمل|تحذير[^\]]*)\]\s*")
     EVENT_RE = re.compile(r"^\[[^\]]*\]\s*\[(INFO|WARN|WARNING|ERROR|SUCCESS|DEBUG)\]\s*")
 
     @classmethod
@@ -1101,7 +1444,6 @@ class ChatView(QScrollArea):
         return row
 
     def _push(self, widget, role="assistant"):
-        """Insert a custom row, keeping the scroll position unless the user is at the bottom."""
         bar = self.verticalScrollBar()
         follow = bar.maximum() - bar.value() < 70
         self._insert_row(widget, role, widget)
@@ -1114,13 +1456,11 @@ class ChatView(QScrollArea):
         return widget
 
     def append_thinking(self, steps):
-        """Compact chip describing how the input was read (no wall of text)."""
         steps = [str(x) for x in steps if x]
         if steps:
             self.append("[النظام] تفكير: " + "  ←  ".join(steps))
 
     def append_actions(self, text, actions):
-        """Assistant bubble with buttons."""
         bubble = ActionBubble(text, actions, datetime.now().strftime("%H:%M"))
         bubble.fit_width(self.viewport().width())
         return self._push(bubble)
