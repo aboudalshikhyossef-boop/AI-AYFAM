@@ -106,7 +106,7 @@ QWidget {{
     color: {TEXT_PRIMARY};
     font-family: {FONT_FAMILY};
     font-size: {FONT_SIZE_BASE}px;
-    letter-spacing: -0.1px;
+    letter-spacing: 0px;
 }}
 
 QMainWindow, QDialog, QMessageBox {{
@@ -138,7 +138,7 @@ QScrollArea > QWidget > QWidget {{
 
 /* ── الشريط الجانبي الفخم الكريستالي (RTL Right-Side Glass Bar) ── */
 QFrame#sidebar {{
-    background: rgba(15, 23, 42, 0.35);
+    background: rgba(3, 10, 18, 0.34);
     border-left: 1px solid rgba(255, 255, 255, 0.08);
     border-right: none;
 }}
@@ -219,15 +219,15 @@ QPushButton#assistantNavButton:hover {{
 
 /* ── الشريط العلوي والكبسولة الزجاجية الكريستالية للساعة ── */
 QFrame#headerBar {{
-    background: rgba(15, 23, 42, 0.25);
+    background: rgba(3, 10, 18, 0.24);
     border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }}
 
 QFrame#clockGlassPill {{
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    border-top-color: rgba(255, 255, 255, 0.20);
-    border-radius: 20px;
+    background: rgba(3, 10, 18, 0.22);
+    border: 1px solid rgba(220, 244, 255, 0.11);
+    border-top-color: rgba(220, 244, 255, 0.18);
+    border-radius: 30px;
     padding: 4px 14px;
 }}
 
@@ -264,28 +264,35 @@ QTabBar {{
     border: none;
 }}
 
+QTabWidget::pane {{
+    background: rgba(3, 10, 18, 0.16);
+    border: 1px solid rgba(220, 244, 255, 0.09);
+    border-radius: 14px;
+    top: 5px;
+}}
+
 QTabBar::tab {{
-    background: rgba(255, 255, 255, 0.04);
+    background: rgba(3, 10, 18, 0.22);
     color: {TEXT_SECONDARY};
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 12px;
-    padding: 7px 18px;
+    border: 1px solid rgba(220, 244, 255, 0.08);
+    border-radius: 10px;
+    padding: 9px 18px;
     margin-right: 6px;
     font-size: 12px;
     font-weight: 500;
 }}
 
 QTabBar::tab:hover {{
-    background: rgba(255, 255, 255, 0.09);
+    background: rgba(3, 10, 18, 0.38);
     color: {TEXT_PRIMARY};
-    border-color: rgba(255, 255, 255, 0.16);
+    border-color: rgba(220, 244, 255, 0.18);
 }}
 
 QTabBar::tab:selected {{
     background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-        stop:0 rgba(45, 212, 191, 0.18), stop:1 rgba(15, 23, 42, 0.35));
+        stop:0 rgba(45, 212, 191, 0.14), stop:1 rgba(3, 10, 18, 0.26));
     color: #ffffff;
-    border: 1px solid rgba(45, 212, 191, 0.40);
+    border: 1px solid rgba(45, 212, 191, 0.34);
     font-weight: 700;
 }}
 
@@ -568,19 +575,19 @@ QMenu::separator {{
 
 /* ── الجداول الكريستالية الزجاجية (Glass Table Styling) ── */
 QTableWidget {{
-    background: rgba(15, 23, 42, 0.25);
+    background: rgba(3, 10, 18, 0.20);
     color: {TEXT_PRIMARY};
-    alternate-background-color: rgba(255, 255, 255, 0.02);
+    alternate-background-color: rgba(220, 244, 255, 0.018);
     gridline-color: transparent;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 16px;
+    border: 1px solid rgba(220, 244, 255, 0.09);
+    border-radius: 14px;
     selection-background-color: rgba(45, 212, 191, 0.18);
     outline: none;
 }}
 
 QTableWidget::item {{
-    padding: 9px 12px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+    padding: 11px 14px;
+    border-bottom: 1px solid rgba(220, 244, 255, 0.035);
 }}
 
 QTableWidget::item:hover {{
@@ -594,14 +601,23 @@ QTableWidget::item:selected {{
 }}
 
 QHeaderView::section {{
-    background: rgba(15, 23, 42, 0.45);
+    background: rgba(3, 10, 18, 0.32);
     color: {TEXT_SECONDARY};
-    padding: 10px 12px;
+    padding: 12px 14px;
     border: none;
     border-bottom: 1px solid rgba(255, 255, 255, 0.08);
     font-weight: 600;
     font-size: 11px;
     letter-spacing: 0.5px;
+}}
+
+QSplitter::handle {{
+    background: rgba(220, 244, 255, 0.07);
+    border-radius: 1px;
+}}
+
+QSplitter::handle:hover {{
+    background: rgba(45, 212, 191, 0.40);
 }}
 
 QTableCornerButton::section {{

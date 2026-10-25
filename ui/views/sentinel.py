@@ -123,7 +123,7 @@ class SentinelView(QWidget):
                     item.setForeground(QColor(SEVERITY_COLORS.get(severity, SEVERITY_COLORS["info"])))
                     item.setToolTip(f"الخطورة / Severity: {SEVERITY_LABELS.get(severity, SEVERITY_LABELS['info'])}")
                 self.table.setItem(row, column, item)
-            self.table.setRowHeight(row, 38)
+            self.table.setRowHeight(row, 44)
         self.event_count.setText(f"{len(events)} أحداث / events")
         self.monitor_status.setText("المراقبة نشطة / Monitoring active" if monitoring else "سجل محفوظ — المراقبة غير مفعلة / Saved history — monitoring off")
         self.empty_state.setVisible(not events)

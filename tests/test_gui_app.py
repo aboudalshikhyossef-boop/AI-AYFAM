@@ -75,7 +75,9 @@ check("unknown severity falls back to info", severity_color("unknown") != SEV_CR
 
 print("\n[5] Navigation structure")
 from ui.gui_app import NAV_ITEMS
-check("navigation has 9 items", len(NAV_ITEMS) == 9)
+check("navigation has 13 items", len(NAV_ITEMS) == 13)
+from ui.widgets import NavigationWheel
+check("navigation uses the 3D icon wheel", hasattr(NavigationWheel, "wheelEvent"))
 check("dashboard is first nav item", NAV_ITEMS[0][0] == "dashboard")
 check("settings is last nav item", NAV_ITEMS[-1][0] == "settings")
 

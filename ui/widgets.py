@@ -7,9 +7,9 @@ import re
 from datetime import datetime
 from pathlib import Path
 
-from PyQt6.QtCore import (QEasingCurve, QEvent, QObject, QPoint, QPointF,
+from PyQt6.QtCore import (QAbstractAnimation, QEasingCurve, QEvent, QObject, QPoint, QPointF,
                             QPropertyAnimation, QRect, QRectF, Qt, QTimer,
-                            QUrl, QVariantAnimation)
+                            QUrl, QVariantAnimation, QSize, pyqtSignal)
 from PyQt6.QtGui import (QAbstractTextDocumentLayout, QBrush, QColor,
                          QConicalGradient, QCursor, QDesktopServices,
                          QFont, QFontDatabase, QGuiApplication,
@@ -403,19 +403,50 @@ def chip(text: str, color: QColor) -> QLabel:
 
 
 class GlassAnalogClock(QWidget):
-    """ساعة عقاربية زجاجية كريستالية شفافة بالكامل."""
+    """ساعة زجاجية داكنة بقرص حي وانعكاس يستجيب لحركة المؤشر."""
 
     def __init__(self, parent=None, size: int = 58):
         super().__init__(parent)
         self.setFixedSize(size, size)
+        self.setMouseTracking(True)
+        self.setAccessibleName("ساعة تناظرية زجاجية / Glass analog clock")
         self.now = datetime.now()
+        self.pointer = QPointF(size / 2, size / 2)
+        self.hover_strength = 0.0
+        self.hover_animation = QVariantAnimation(self)
+        self.hover_animation.setDuration(220)
+        self.hover_animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self.hover_animation.valueChanged.connect(self._set_hover_strength)
         self.timer = QTimer(self)
         self.timer.timeout.connect(self._tick)
-        self.timer.start(1000)
+        self.timer.start(50)
+
+    def _set_hover_strength(self, value) -> None:
+        self.hover_strength = float(value)
+        self.update()
+
+    def _animate_hover(self, target: float) -> None:
+        self.hover_animation.stop()
+        self.hover_animation.setStartValue(self.hover_strength)
+        self.hover_animation.setEndValue(target)
+        self.hover_animation.start()
 
     def _tick(self):
         self.now = datetime.now()
         self.update()
+
+    def mouseMoveEvent(self, event) -> None:
+        self.pointer = event.position()
+        self.update()
+        super().mouseMoveEvent(event)
+
+    def enterEvent(self, event) -> None:
+        self._animate_hover(1.0)
+        super().enterEvent(event)
+
+    def leaveEvent(self, event) -> None:
+        self._animate_hover(0.0)
+        super().leaveEvent(event)
 
     def paintEvent(self, _e) -> None:
         p = QPainter(self)
@@ -424,55 +455,73 @@ class GlassAnalogClock(QWidget):
         center = QPointF(w / 2, h / 2)
         r = min(w, h) / 2 - 2
 
-        # 100% Crystal transparent glass dial
         g = QRadialGradient(center, r)
-        g.setColorAt(0, QColor(255, 255, 255, 16))
-        g.setColorAt(0.8, QColor(255, 255, 255, 5))
-        g.setColorAt(1.0, QColor(255, 255, 255, 2))
-        p.setPen(QPen(QColor(255, 255, 255, 30), 1.0))
+        g.setColorAt(0, QColor(4, 11, 20, 52))
+        g.setColorAt(0.78, QColor(4, 11, 20, 36))
+        g.setColorAt(1.0, QColor(4, 11, 20, 24))
+        p.setPen(QPen(QColor(218, 244, 255, 56), 1.0))
         p.setBrush(g)
         p.drawEllipse(center, r, r)
 
-        # Outer subtle glowing accent rim
-        p.setPen(QPen(QColor(45, 212, 191, 60), 1.0))
+        rim = QLinearGradient(0, 0, w, h)
+        rim.setColorAt(0.0, QColor(255, 255, 255, 76))
+        rim.setColorAt(0.48, QColor(45, 212, 191, 26))
+        rim.setColorAt(1.0, QColor(255, 255, 255, 34))
+        p.setPen(QPen(QBrush(rim), 1.2))
         p.setBrush(Qt.BrushStyle.NoBrush)
         p.drawEllipse(center, r - 1.5, r - 1.5)
 
-        # Minute ticks
-        for i in range(12):
-            angle = math.radians(i * 30)
-            p1 = QPointF(center.x() + (r - 3.5) * math.cos(angle), center.y() + (r - 3.5) * math.sin(angle))
-            p2 = QPointF(center.x() + (r - 1.2) * math.cos(angle), center.y() + (r - 1.2) * math.sin(angle))
-            p.setPen(QPen(Tokens.TEAL if i % 3 == 0 else QColor(255, 255, 255, 80), 1.4 if i % 3 == 0 else 0.8))
+        for i in range(60):
+            angle = math.radians(i * 6 - 90)
+            major = i % 5 == 0
+            outer = r - 5.0
+            inner = outer - (7.0 if major else 3.0)
+            p1 = QPointF(center.x() + inner * math.cos(angle), center.y() + inner * math.sin(angle))
+            p2 = QPointF(center.x() + outer * math.cos(angle), center.y() + outer * math.sin(angle))
+            tick_color = QColor(45, 212, 191, 190) if major else QColor(226, 238, 250, 72)
+            p.setPen(QPen(tick_color, 1.35 if major else 0.65, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
             p.drawLine(p1, p2)
 
-        # Hands
-        sec = self.now.second
+        sec = self.now.second + self.now.microsecond / 1_000_000
         mn = self.now.minute + sec / 60.0
         hr = (self.now.hour % 12) + mn / 60.0
 
-        # Hour hand
+        p.setPen(QColor(226, 238, 250, 110))
+        p.setFont(QFont("Tajawal", max(6, int(r * 0.16)), QFont.Weight.Medium))
+        for value, angle in (("12", -90), ("3", 0), ("6", 90), ("9", 180)):
+            rad = math.radians(angle)
+            label_radius = r * 0.61
+            point = QPointF(center.x() + label_radius * math.cos(rad), center.y() + label_radius * math.sin(rad))
+            p.drawText(QRectF(point.x() - 8, point.y() - 7, 16, 14), Qt.AlignmentFlag.AlignCenter, value)
+
         ang_h = math.radians((hr * 30) - 90)
         ph = QPointF(center.x() + (r * 0.48) * math.cos(ang_h), center.y() + (r * 0.48) * math.sin(ang_h))
-        p.setPen(QPen(QColor("#f8fafc"), 2.0, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+        p.setPen(QPen(QColor(248, 250, 252, 238), 2.5, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
         p.drawLine(center, ph)
 
-        # Minute hand
         ang_m = math.radians((mn * 6) - 90)
         pm = QPointF(center.x() + (r * 0.72) * math.cos(ang_m), center.y() + (r * 0.72) * math.sin(ang_m))
-        p.setPen(QPen(Tokens.BLUE, 1.6, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+        p.setPen(QPen(QColor(145, 220, 255, 235), 1.7, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
         p.drawLine(center, pm)
 
-        # Second hand
         ang_s = math.radians((sec * 6) - 90)
-        ps = QPointF(center.x() + (r * 0.82) * math.cos(ang_s), center.y() + (r * 0.82) * math.sin(ang_s))
-        p.setPen(QPen(Tokens.TEAL, 1.0, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+        ps = QPointF(center.x() + (r * 0.84) * math.cos(ang_s), center.y() + (r * 0.84) * math.sin(ang_s))
+        p.setPen(QPen(Tokens.TEAL, 0.9, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
         p.drawLine(center, ps)
 
-        # Center cap
         p.setPen(Qt.PenStyle.NoPen)
-        p.setBrush(Tokens.TEAL)
-        p.drawEllipse(center, 2.2, 2.2)
+        p.setBrush(QColor(45, 212, 191, 230))
+        p.drawEllipse(center, 2.6, 2.6)
+        p.setBrush(QColor(240, 255, 255, 220))
+        p.drawEllipse(center, 0.9, 0.9)
+
+        if self.hover_strength > 0.01:
+            reflection = QRadialGradient(self.pointer, r * 0.8)
+            reflection.setColorAt(0, QColor(178, 246, 255, int(34 * self.hover_strength)))
+            reflection.setColorAt(1, QColor(178, 246, 255, 0))
+            p.setPen(Qt.PenStyle.NoPen)
+            p.setBrush(reflection)
+            p.drawEllipse(center, r - 1, r - 1)
 
 
 # ───────────── الكائنات السابقة المتوافقة مع التطبيق ─────────────
@@ -505,9 +554,14 @@ class AccentLine(QWidget):
         super().__init__(parent)
         self.setFixedHeight(2)
         self.phase = 0.0
+        self.accent = QColor(ACCENT)
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._tick)
         self._timer.start(40)
+
+    def set_accent(self, color: str) -> None:
+        self.accent = QColor(color)
+        self.update()
 
     def _tick(self):
         if self.isVisible():
@@ -519,11 +573,10 @@ class AccentLine(QWidget):
         width = max(1, self.width())
         gradient = QLinearGradient(-self.phase * width * 2, 0, (1 - self.phase) * width * 2, 0)
         gradient.setSpread(QLinearGradient.Spread.RepeatSpread)
-        last = len(self.COLORS) - 1
-        for index, color in enumerate(self.COLORS):
-            c = QColor(color)
-            c.setAlpha(180)
-            gradient.setColorAt(index / last, c)
+        colors = (self.accent.darker(145), self.accent, self.accent.lighter(145), self.accent)
+        for index, color in enumerate(colors):
+            color.setAlpha(190 if index in (1, 2) else 105)
+            gradient.setColorAt(index / (len(colors) - 1), color)
         p.fillRect(self.rect(), gradient)
 
 
@@ -595,6 +648,206 @@ class NavIndicator(QWidget):
         p.setPen(Qt.PenStyle.NoPen)
         p.setBrush(gradient)
         p.drawRoundedRect(QRectF(self.rect()), 2.0, 2.0)
+
+
+class NavigationWheel(QWidget):
+    """قائمة تنقل دائرية تعرض الأيقونات على قوس بمنظور وحركة ثلاثية الأبعاد."""
+
+    page_selected = pyqtSignal(str)
+
+    def __init__(self, items: list[tuple[str, str, object, str]], parent=None):
+        super().__init__(parent)
+        self.items = items
+        self.current_index = 0
+        self.direction = 0
+        self.progress = 0.0
+        self.queued_steps: list[int] = []
+        self.hovered_index = -1
+        self.accent = QColor(items[0][3] if items else ACCENT)
+        self.setMinimumSize(154, 310)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.setMouseTracking(True)
+        self.setAccessibleName("عجلة التنقل بين صفحات التطبيق / Application navigation wheel")
+        self.setToolTip("مرر عجلة الفأرة أو استخدم السهمين للتنقل / Scroll or use arrow keys to navigate")
+
+        self.animation = QVariantAnimation(self)
+        self.animation.setDuration(300)
+        self.animation.setEasingCurve(QEasingCurve.Type.InOutCubic)
+        self.animation.valueChanged.connect(self._set_progress)
+        self.animation.finished.connect(self._finish_step)
+
+    def sizeHint(self) -> QSize:
+        return QSize(188, 390)
+
+    def _set_progress(self, value) -> None:
+        self.progress = float(value)
+        self.update()
+
+    def set_current(self, key: str) -> None:
+        for index, item in enumerate(self.items):
+            if item[0] == key:
+                if index == self.current_index and self.direction == 0:
+                    return
+                if self.animation.state() == QAbstractAnimation.State.Running:
+                    self.animation.stop()
+                self.current_index = index
+                self.direction = 0
+                self.progress = 0.0
+                self.queued_steps.clear()
+                self.accent = QColor(item[3])
+                self.update()
+                return
+
+    def _step(self, direction: int) -> None:
+        if len(self.items) < 2:
+            return
+        if self.animation.state() == QAbstractAnimation.State.Running:
+            if len(self.queued_steps) < len(self.items):
+                self.queued_steps.append(direction)
+            return
+        self.direction = 1 if direction > 0 else -1
+        self.progress = 0.0
+        self.animation.setStartValue(0.0)
+        self.animation.setEndValue(1.0)
+        self.animation.start()
+
+    def _finish_step(self) -> None:
+        self.current_index = (self.current_index + self.direction) % len(self.items)
+        self.accent = QColor(self.items[self.current_index][3])
+        self.direction = 0
+        self.progress = 0.0
+        self.update()
+        self.page_selected.emit(self.items[self.current_index][0])
+        if self.queued_steps:
+            self._step(self.queued_steps.pop(0))
+
+    def _offset_for(self, index: int) -> float:
+        count = len(self.items)
+        offset = (index - self.current_index) % count
+        if offset > count / 2:
+            offset -= count
+        if self.direction:
+            offset -= self.direction * self.progress
+        return offset
+
+    def _item_center(self, index: int) -> QPointF:
+        radius = min(112.0, max(74.0, (self.height() - 100) / 2))
+        center_y = self.height() / 2 - 20
+        angle = self._offset_for(index) * 0.56
+        return QPointF(self.width() / 2, center_y + radius * math.sin(angle))
+
+    def paintEvent(self, _event) -> None:
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        panel = QRectF(12, 8, self.width() - 24, self.height() - 16)
+        panel_path = QPainterPath()
+        panel_path.addRoundedRect(panel, 28, 28)
+        panel_fill = QLinearGradient(panel.topLeft(), panel.bottomRight())
+        panel_fill.setColorAt(0, QColor(4, 12, 23, 102))
+        panel_fill.setColorAt(0.52, QColor(5, 14, 26, 72))
+        panel_fill.setColorAt(1, QColor(4, 10, 20, 92))
+        painter.fillPath(panel_path, panel_fill)
+        edge = QLinearGradient(panel.topLeft(), panel.bottomRight())
+        edge.setColorAt(0, QColor(220, 244, 255, 58))
+        edge.setColorAt(0.5, QColor(220, 244, 255, 15))
+        edge.setColorAt(1, QColor(220, 244, 255, 34))
+        painter.setPen(QPen(QBrush(edge), 1.0))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawPath(panel_path)
+
+        painter.setPen(QPen(QColor(self.accent.red(), self.accent.green(), self.accent.blue(), 28), 1.0))
+        painter.drawLine(QPointF(self.width() / 2, panel.top() + 24), QPointF(self.width() / 2, panel.bottom() - 50))
+
+        visible = []
+        for index, item in enumerate(self.items):
+            offset = self._offset_for(index)
+            if abs(offset) <= 2.15:
+                visible.append((index, item, offset))
+        visible.sort(key=lambda entry: abs(entry[2]), reverse=True)
+
+        for index, item, offset in visible:
+            _key, _label, icon, color = item
+            center = self._item_center(index)
+            angle = offset * 0.56
+            depth = max(0.0, math.cos(angle))
+            scale = 0.72 + 0.28 * depth
+            opacity = 0.42 + 0.58 * depth
+            icon_size = 54 * scale
+            active = abs(offset) < 0.12
+            hovered = index == self.hovered_index
+            painter.save()
+            painter.setOpacity(opacity)
+            painter.translate(center)
+            painter.rotate(-offset * 7.0)
+            painter.scale(scale, 0.68 + depth * 0.32)
+            if active or hovered:
+                color_value = QColor(color)
+                fill = QColor(color_value.red(), color_value.green(), color_value.blue(), 32 if active else 18)
+                border = QColor(color_value.red(), color_value.green(), color_value.blue(), 155 if active else 82)
+                painter.setPen(QPen(border, 1.2 if active else 0.8))
+                painter.setBrush(fill)
+                painter.drawRoundedRect(QRectF(-31, -31, 62, 62), 20, 20)
+            pixmap = icon.pixmap(QSize(max(18, int(icon_size)), max(18, int(icon_size))))
+            painter.drawPixmap(QRectF(-icon_size / 2, -icon_size / 2, icon_size, icon_size), pixmap, QRectF(pixmap.rect()))
+            painter.restore()
+
+        active_item = self.items[self.current_index]
+        painter.setPen(QColor(active_item[3]))
+        painter.setFont(QFont("Tajawal", 11, QFont.Weight.DemiBold))
+        painter.drawText(QRectF(18, self.height() - 54, self.width() - 36, 22), Qt.AlignmentFlag.AlignCenter, active_item[1])
+        painter.setPen(QColor(226, 238, 250, 115))
+        painter.setFont(QFont("Tajawal", 9))
+        painter.drawText(QRectF(18, self.height() - 33, self.width() - 36, 16), Qt.AlignmentFlag.AlignCenter,
+                         f"{self.current_index + 1:02d}  /  {len(self.items):02d}")
+
+    def mouseMoveEvent(self, event) -> None:
+        nearest_index = min(range(len(self.items)), key=lambda index: abs(self._item_center(index).y() - event.position().y()))
+        nearest_center = self._item_center(nearest_index)
+        self.hovered_index = nearest_index if abs(nearest_center.y() - event.position().y()) < 34 else -1
+        self.setCursor(Qt.CursorShape.PointingHandCursor if self.hovered_index >= 0 else Qt.CursorShape.ArrowCursor)
+        self.update()
+        super().mouseMoveEvent(event)
+
+    def leaveEvent(self, event) -> None:
+        self.hovered_index = -1
+        self.update()
+        super().leaveEvent(event)
+
+    def mousePressEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.setFocus()
+            nearest_index = min(range(len(self.items)), key=lambda index: abs(self._item_center(index).y() - event.position().y()))
+            if abs(self._item_center(nearest_index).y() - event.position().y()) < 36:
+                offset = self._offset_for(nearest_index)
+                steps = round(offset)
+                if steps:
+                    direction = 1 if steps > 0 else -1
+                    for _ in range(abs(steps)):
+                        self._step(direction)
+                else:
+                    self.page_selected.emit(self.items[self.current_index][0])
+                event.accept()
+                return
+        super().mousePressEvent(event)
+
+    def wheelEvent(self, event) -> None:
+        delta = event.angleDelta().y()
+        if delta:
+            self._step(-1 if delta > 0 else 1)
+            event.accept()
+            return
+        super().wheelEvent(event)
+
+    def keyPressEvent(self, event) -> None:
+        if event.key() in (Qt.Key.Key_Up, Qt.Key.Key_Left):
+            self._step(-1)
+            event.accept()
+        elif event.key() in (Qt.Key.Key_Down, Qt.Key.Key_Right):
+            self._step(1)
+            event.accept()
+        else:
+            super().keyPressEvent(event)
 
 
 class PressFeedbackController(QObject):
@@ -925,6 +1178,7 @@ class FlowBorder(QWidget):
         self.target = target
         self.radius = radius
         self.flow = flow if flow in FLOW_PAIRS else "blue"
+        self.custom_color = QColor(flow) if flow not in FLOW_PAIRS and QColor(flow).isValid() else None
         self.angle = phase % 360
         self.speed = speed
         self._mask_size = None
@@ -950,7 +1204,11 @@ class FlowBorder(QWidget):
     def paintEvent(self, event):
         if not self.target.isEnabled():
             return
-        c1, c2 = (QColor(c) for c in FLOW_PAIRS[self.flow])
+        if self.custom_color is not None:
+            c1 = QColor(self.custom_color)
+            c2 = c1.lighter(138)
+        else:
+            c1, c2 = (QColor(c) for c in FLOW_PAIRS[self.flow])
         w, h = self.width(), self.height()
         gradient = QConicalGradient(QPointF(w / 2, h / 2), self.angle)
 

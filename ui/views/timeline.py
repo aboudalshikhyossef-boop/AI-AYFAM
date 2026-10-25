@@ -109,7 +109,7 @@ class TimelineView(QWidget):
                 cell = QTableWidgetItem(value)
                 cell.setData(Qt.ItemDataRole.UserRole, event)
                 self.table.setItem(row, column, cell)
-            self.table.setRowHeight(row, 38)
+            self.table.setRowHeight(row, 44)
         count = len(self._events)
         self.status.setText(f"{count} عنصرًا في التسلسل / {count} timeline items")
         self.empty_state.setVisible(not count)

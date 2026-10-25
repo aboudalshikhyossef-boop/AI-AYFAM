@@ -41,7 +41,7 @@ from ui.terminal import TerminalUI
 from ui.icons import ICON_COLORS, framed_icon, glyph_icon
 from ui.widgets import (
     AccentLine, AmbientSurface, ChatView, Glass, GlassAnalogClock, HoverController,
-    NavIndicator, PressFeedbackController, SecurityGauge, SoundUX, TelemetryChart,
+    NavigationWheel, PressFeedbackController, SecurityGauge, SoundUX, TelemetryChart,
 )
 from ui.intro_splash import AyfamIntroSplash, SystemOverviewDialog
 from ui.views.findings import FindingsView
@@ -309,7 +309,6 @@ class UnifiedCockpitWindow(QMainWindow):
         self._selected_usb_device: dict = {}
         self._selected_usb_partition_data: dict = {}
         self._usb_selection_source = "none"
-        self.nav_buttons: list[QPushButton] = []
         self._event_store = None
         self.page_veil_animation: QPropertyAnimation | None = None
         self._telemetry_history = {
@@ -326,8 +325,8 @@ class UnifiedCockpitWindow(QMainWindow):
         # Ambient light and hover rims animate smoothly; semantic colors stay stable.
         # Avoid restyling the entire window every 15 seconds (flicker/layout churn).
         for table in self.findChildren(QTableWidget):      # كل الجداول بنفس معيار القراءة
-            if table.verticalHeader().defaultSectionSize() < 38:
-                prepare_table(table)
+            if table.verticalHeader().defaultSectionSize() < 44:
+                prepare_table(table, 44)
         self.hover_controller = HoverController(self)
         self.chat_display.hover_controller = self.hover_controller
         self.press_feedback = PressFeedbackController(self)
@@ -399,7 +398,7 @@ class UnifiedCockpitWindow(QMainWindow):
 
         # ── Sidebar ──
         sidebar = QFrame(objectName="sidebar")
-        sidebar.setFixedWidth(228)
+        sidebar.setFixedWidth(216)
         sidebar_layout = QVBoxLayout(sidebar)
         sidebar_layout.setContentsMargins(SP_MD, SP_LG, SP_MD, SP_MD)
         sidebar_layout.setSpacing(SP_XS)
@@ -422,54 +421,15 @@ class UnifiedCockpitWindow(QMainWindow):
         sub.setStyleSheet(f"color: {ACCENT}; font-size: 10px; font-weight: 700; padding: 0 6px 20px 6px;")
         sidebar_layout.addWidget(sub)
 
-        # Navigation grouped by operator intent rather than by implementation detail.
-        self.nav_button_map: dict[str, QPushButton] = {}
-        icons_dir = ROOT_DIR / "resources" / "icons"
-        nav_groups = [
-            ("المراقبة", ("dashboard", "scans", "findings", "timeline", "sentinel", "usb")),
-            ("التحليل والاستجابة", ("attack_graph", "tools", "chat", "playbooks")),
-            ("المعرفة والتقارير", ("library", "reports")),
-            ("النظام", ("settings",)),
-        ]
         labels = dict(NAV_ITEMS)
-        icon_aliases = {
-            "findings": "scans",
-            "timeline": "reports",
-            "sentinel": "dashboard",
-            "attack_graph": "playbooks",
-        }
-        nav_content = QWidget()
-        nav_layout = QVBoxLayout(nav_content)
-        nav_layout.setContentsMargins(0, 0, 3, 0)
-        nav_layout.setSpacing(3)
-        for group_title, keys in nav_groups:
-            group_label = QLabel(group_title.upper())
-            group_label.setObjectName("navGroupLabel")
-            nav_layout.addWidget(group_label)
-            for key in keys:
-                btn = QPushButton(f"  {labels[key]}")
-                btn.setObjectName("navButton")
-                btn.setCheckable(True)
-                color = ICON_COLORS.get(key, ACCENT)
-                btn.setProperty("glowColor", color)
-                btn.setToolTip(labels[key])
-                btn.setIcon(framed_icon(icon_aliases.get(key, key), color))
-                btn.setIconSize(QSize(28, 28))
-                btn.clicked.connect(lambda checked=False, k=key: self.switch_page(k))
-                nav_layout.addWidget(btn)
-                self.nav_button_map[key] = btn
-                self.nav_buttons.append(btn)
-        nav_layout.addStretch(1)
-
-        nav_scroll = QScrollArea()
-        nav_scroll.setObjectName("navigationScroll")
-        nav_scroll.setWidgetResizable(True)
-        nav_scroll.setFrameShape(QFrame.Shape.NoFrame)
-        nav_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        nav_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        nav_scroll.setWidget(nav_content)
-        self.nav_scroll = nav_scroll
-        sidebar_layout.addWidget(nav_scroll, 1)
+        wheel_items = [
+            (key, labels[key], glyph_icon(key, ICON_COLORS.get(key, ACCENT), 34),
+             PAGE_ACCENTS.get(key, ACCENT))
+            for key, _label in NAV_ITEMS
+        ]
+        self.nav_wheel = NavigationWheel(wheel_items, sidebar)
+        self.nav_wheel.page_selected.connect(self.switch_page)
+        sidebar_layout.addWidget(self.nav_wheel, 1)
 
         assistant_btn = QPushButton("  افتح المساعد الذكي")
         assistant_btn.setObjectName("assistantNavButton")
@@ -484,7 +444,6 @@ class UnifiedCockpitWindow(QMainWindow):
         self.sidebar_status.setStyleSheet(f"color: {STATUS_OK}; font-size: {FONT_SIZE_SMALL}px; padding: 8px 6px;")
         sidebar_layout.addWidget(self.sidebar_status)
 
-        self.nav_indicator = NavIndicator(sidebar)
         root.addWidget(sidebar)
 
         # ── Main content area ──
@@ -497,7 +456,7 @@ class UnifiedCockpitWindow(QMainWindow):
 
         # ── Header bar ──
         header = QFrame(objectName="headerBar")
-        header.setFixedHeight(68)
+        header.setFixedHeight(88)
         header_layout = QHBoxLayout(header)
         header_layout.setContentsMargins(SP_XL, SP_SM, SP_XL, SP_SM)
         header_layout.setSpacing(SP_MD)
@@ -527,7 +486,7 @@ class UnifiedCockpitWindow(QMainWindow):
         # ── Live Crystal Glass Clock & Date Pill ──
         clock_pill = QFrame(objectName="clockGlassPill")
         clock_pill_layout = QHBoxLayout(clock_pill)
-        clock_pill_layout.setContentsMargins(12, 4, 12, 4)
+        clock_pill_layout.setContentsMargins(10, 4, 10, 4)
         clock_pill_layout.setSpacing(SP_SM)
 
         self.clock_box = QVBoxLayout()
@@ -542,7 +501,7 @@ class UnifiedCockpitWindow(QMainWindow):
         self.clock_box.addWidget(self.clock_date_label)
         clock_pill_layout.addLayout(self.clock_box)
 
-        self.analog_clock = GlassAnalogClock(size=42)
+        self.analog_clock = GlassAnalogClock(size=62)
         clock_pill_layout.addWidget(self.analog_clock)
 
         header_layout.addWidget(clock_pill)
@@ -563,7 +522,8 @@ class UnifiedCockpitWindow(QMainWindow):
         header_layout.addWidget(self.score_badge)
 
         main_layout.addWidget(header)
-        main_layout.addWidget(AccentLine())
+        self.accent_line = AccentLine()
+        main_layout.addWidget(self.accent_line)
 
         # ── Stacked content ──
         self.stack = QStackedWidget()
@@ -594,6 +554,28 @@ class UnifiedCockpitWindow(QMainWindow):
         self.setup_reports_page()
         self.setup_library_page()
         self.setup_settings_page()
+
+        self.page_widgets_by_key = {
+            "dashboard": self.page_dashboard, "scans": self.page_scans,
+            "findings": self.page_findings, "timeline": self.page_timeline,
+            "sentinel": self.page_sentinel, "attack_graph": self.page_attack_graph,
+            "usb": self.page_usb, "tools": self.page_tools, "chat": self.page_chat,
+            "library": self.page_library, "playbooks": self.page_playbooks,
+            "reports": self.page_reports, "settings": self.page_settings,
+        }
+        for key, page in self.page_widgets_by_key.items():
+            page.setProperty("pageKey", key)
+            page.setProperty("pageAccent", PAGE_ACCENTS.get(key, ACCENT))
+            page_accent = PAGE_ACCENTS.get(key, ACCENT)
+            accent_rgb = QColor(page_accent)
+            for table in page.findChildren(QTableWidget):
+                table.setProperty("flow", page_accent)
+                table.setProperty("pageAccent", page_accent)
+                table.setStyleSheet(
+                    "QTableWidget::item:selected {"
+                    f"background: rgba({accent_rgb.red()}, {accent_rgb.green()}, {accent_rgb.blue()}, 0.20);"
+                    "}"
+                )
 
         self.stack.addWidget(self.page_dashboard)
         self.stack.addWidget(self.page_scans)
@@ -655,14 +637,13 @@ class UnifiedCockpitWindow(QMainWindow):
         # Default page
         self.switch_page("dashboard")
 
-    def _place_nav_indicator(self) -> None:
-        button = self.nav_button_map.get(getattr(self, "_current_nav", "dashboard"))
-        if button is not None and button.height() > 0:
-            self.nav_indicator.move_to(button)
+    def _refresh_navigation_wheel(self) -> None:
+        if hasattr(self, "nav_wheel"):
+            self.nav_wheel.update()
 
     def showEvent(self, event) -> None:
         super().showEvent(event)
-        QTimer.singleShot(60, self._place_nav_indicator)
+        QTimer.singleShot(60, self._refresh_navigation_wheel)
 
     def closeEvent(self, event) -> None:
         running_workers = [worker for worker in (getattr(self, "worker", None), getattr(self, "telemetry_worker", None))
@@ -718,17 +699,14 @@ class UnifiedCockpitWindow(QMainWindow):
             self.page_title.setText(title_map.get(key, ""))
             page_accent = PAGE_ACCENTS.get(key, ACCENT)
             self.page_title.setStyleSheet(f"border-right: 2px solid {page_accent}; padding-right: 8px;")
+            self.nav_wheel.set_current(key)
+            self.accent_line.set_accent(page_accent)
             for name, page in page_map.items():
                 page.setSizePolicy(QSizePolicy.Policy.Preferred if name == key else QSizePolicy.Policy.Ignored,
                                    QSizePolicy.Policy.Preferred if name == key else QSizePolicy.Policy.Ignored)
             self.stack.updateGeometry()
-            for k, btn in self.nav_button_map.items():
-                btn.setChecked(k == key)
             self._current_nav = key
-            selected_button = self.nav_button_map.get(key)
-            if selected_button is not None:
-                self.nav_scroll.ensureWidgetVisible(selected_button, 6, 6)
-            QTimer.singleShot(0, self._place_nav_indicator)
+            QTimer.singleShot(0, self._refresh_navigation_wheel)
             if key == "usb" and not self.usb_inventory_loaded:
                 self.refresh_usb_inventory()
             elif key == "findings":
@@ -996,6 +974,14 @@ class UnifiedCockpitWindow(QMainWindow):
         layout.setSpacing(SP_LG)
 
         self.scan_tabs = QTabWidget()
+        scan_accent = PAGE_ACCENTS["scans"]
+        self.scan_tabs.setStyleSheet(f"""
+            QTabBar::tab:selected {{
+                color: {scan_accent};
+                border-color: rgba(103, 183, 255, 0.42);
+                background: rgba(103, 183, 255, 0.10);
+            }}
+        """)
 
         # Tab 1: Scan Execution
         tab_exec = QWidget()

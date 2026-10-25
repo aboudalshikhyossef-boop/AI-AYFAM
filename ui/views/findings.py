@@ -177,7 +177,7 @@ class FindingsView(QWidget):
                 conf_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 conf_item.setFont(QFont("SF Mono", 9))
                 self.table.setItem(row, 3, conf_item)
-                self.table.setRowHeight(row, 38)
+                self.table.setRowHeight(row, 44)
         finally:
             self.table.setUpdatesEnabled(True)
 
