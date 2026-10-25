@@ -717,8 +717,11 @@ class TelemetryChart(Glass):
             p.setPen(QColor(TEXT_MUTED))
             p.drawText(rect, Qt.AlignmentFlag.AlignCenter, "تظهر حركة القياس بعد نقطتين أو أكثر")
             return
-        for (values, _), color_str in self.series.values():
-            if len(values) < 2:
+        for series_data in self.series.values():
+            if not isinstance(series_data, (tuple, list)) or len(series_data) < 2:
+                continue
+            values, color_str = series_data[0], series_data[1]
+            if not isinstance(values, list) or len(values) < 2:
                 continue
             color = QColor(color_str)
             points = []
