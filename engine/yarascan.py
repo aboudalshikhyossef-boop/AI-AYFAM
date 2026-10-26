@@ -97,6 +97,8 @@ class YaraScanner:
                         stable_key=filepath,
                     )
                     findings.append(finding)
+        except (PermissionError, OSError) as e:
+            logging.debug(f"Yara scan file access issue on {filepath}: {e}")
         except Exception as e:
             logging.debug(f"Yara scan error on {filepath}: {e}")
 
@@ -110,13 +112,15 @@ class YaraScanner:
         try:
             for root, dirs, files in os.walk(target_dir, followlinks=False):
                 # Skip pseudo filesystems
-                if any(root.startswith(p) for p in ("/proc", "/sys", "/dev")):
+                if any(root.startswith(p) for p in ("/proc", "/sys", "/dev", "/run/user")):
                     dirs[:] = []
                     continue
 
                 for fname in files:
                     fpath = os.path.join(root, fname)
                     findings.extend(self.scan_file(fpath, timeout=timeout))
+        except (PermissionError, OSError) as e:
+            logging.debug(f"Directory scan access issue on {target_dir}: {e}")
         except Exception as e:
             logging.debug(f"Directory scan error on {target_dir}: {e}")
 
