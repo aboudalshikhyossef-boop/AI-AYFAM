@@ -36,6 +36,7 @@ class Turn:
     raw: str
     analysis: language.InputAnalysis
     action: str = "route"            # reply | route | web_search | learn_online | clarify | ai
+    style: str = "brief_action"      # brief_action | detailed_explanation | step_by_step_guidance | misconception_correction | compound_route
     reply: str = ""
     cmd: object | None = None
     query: str = ""
@@ -71,6 +72,7 @@ class ConversationEngine:
         teaching = parse_teaching(raw)
         if teaching:
             turn.action = "reply"
+            turn.style = "brief_action"
             if teaching.kind == "forget":
                 removed = self.memory.forget(teaching.pairs[0][0])
                 turn.reply = f"نسيت «{teaching.pairs[0][0]}»." if removed else f"لا توجد قاعدة باسم «{teaching.pairs[0][0]}»."
@@ -86,6 +88,7 @@ class ConversationEngine:
         rule = self.memory.match(raw) or (self.memory.match(text) if text != raw else None)
         if rule:
             turn.action = "reply"
+            turn.style = "brief_action"
             turn.reply = rule["reply"]
             turn.steps.append(f"طابقت كلمة تعلمتها «{rule['trigger']}»")
             return turn
@@ -103,6 +106,7 @@ class ConversationEngine:
         if wrong:
             first = wrong[0]
             turn.action = "reply"
+            turn.style = "misconception_correction"
             turn.reply = f"تصحيح مفهوم: قد يكون الاعتقاد بأن «{first.claim}» غير دقيق.\n{first.correction}"
             turn.steps.append("رصدت مفهوماً شائعاً غير دقيق وصحّحته")
             return turn
@@ -133,10 +137,17 @@ class ConversationEngine:
         # 7) ثقة النية
         if intent and score >= ROUTE_THRESHOLD:
             turn.action = "route"
+            if intent in ("explain", "concept_explore", "concept_link", "summarize_doc"):
+                turn.style = "detailed_explanation"
+            elif intent in ("autofix", "config"):
+                turn.style = "step_by_step_guidance"
+            else:
+                turn.style = "brief_action"
             turn.steps.append(f"النية: {INTENT_LABELS.get(intent, intent)} (ثقة {int(score * 100)}%)")
             return turn
         if intent and score >= CLARIFY_THRESHOLD and analysis.kind != "question":
             turn.action = "clarify"
+            turn.style = "brief_action"
             label = INTENT_LABELS.get(intent, intent)
             turn.reply = f"لم أتأكد من قصدك. هل تريد: {label}؟"
             turn.suggestions = [(label, text if score >= 0.3 else language.collapse_spaces(label)), ("لا، سؤال آخر", "")]
@@ -146,18 +157,20 @@ class ConversationEngine:
         # 8) محادثة عادية
         norm = language.normalize(text)
         if analysis.kind == "greeting":
-            turn.action, turn.reply = "reply", _SMALLTALK["greeting"]
+            turn.action, turn.reply, turn.style = "reply", _SMALLTALK["greeting"], "brief_action"
             return turn
         if norm in _THANKS:
-            turn.action, turn.reply = "reply", _SMALLTALK["thanks"]
+            turn.action, turn.reply, turn.style = "reply", _SMALLTALK["thanks"], "brief_action"
             return turn
         if analysis.kind != "question" and analysis.word_count <= 2 and not _CVE_RE.search(text):
             turn.action = "clarify"
+            turn.style = "brief_action"
             turn.reply = "لم أفهم المطلوب تماماً. جرّب أحد هذه الخيارات أو اكتب سؤالك كاملاً."
             turn.suggestions = list(_SUGGESTIONS)
             turn.steps.append("المدخل قصير وغير واضح، لن أشغّل أي فحص دون تأكيد")
             return turn
         turn.action = "ai"
+        turn.style = "detailed_explanation" if analysis.kind == "question" or analysis.word_count > 4 else "brief_action"
         turn.query = text
         turn.steps.append("سؤال مفتوح: أستعين بالمعرفة المحلية ثم بالذكاء المتاح")
         return turn
