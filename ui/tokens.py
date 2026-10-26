@@ -21,10 +21,12 @@ class Tokens:
     RED = QColor(RED_HEX)
     GREEN = QColor(GREEN_HEX)
 
-    DARK_BG_PRIMARY = "#0D1117"
-    DARK_BG_SECONDARY = "#161B22"
-    DARK_BG_GLASS = "rgba(255, 255, 255, 0.07)"
+    DARK_BG_PRIMARY = "#030712"
+    DARK_BG_SECONDARY = "#090f1f"
+    DARK_BG_GLASS = "rgba(15, 23, 42, 0.35)"
     DARK_BORDER_GLASS = "rgba(255, 255, 255, 0.16)"
+    SPECULAR_REFLECTION = "rgba(255, 255, 255, 0.38)"
+    LUMINOUS_INNER_BORDER = "rgba(255, 255, 255, 0.18)"
 
     TEXT_PRIMARY = "#f8fafc"
     TEXT_SECONDARY = "rgba(226, 238, 250, 0.62)"
