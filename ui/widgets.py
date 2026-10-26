@@ -657,7 +657,7 @@ class NavIndicator(QWidget):
         p.drawRoundedRect(QRectF(self.rect()), 2.0, 2.0)
 
 
-class NavigationWheel(QWidget):
+class NavigationWheel(Glass):
     """قائمة تنقل دائرية تعرض الأيقونات على قوس بمنظور وحركة ثلاثية الأبعاد."""
 
     page_selected = pyqtSignal(str)
@@ -675,7 +675,7 @@ class NavigationWheel(QWidget):
     }
 
     def __init__(self, items: list[tuple[str, str, object, str]], parent=None):
-        super().__init__(parent)
+        super().__init__(radius=22, tint=0.07, parent=parent)
         self.items = items
         self.current_index = 0
         self.direction = 0
@@ -766,26 +766,40 @@ class NavigationWheel(QWidget):
         angle = self._offset_for(index) * 0.56
         return QPointF(self.width() / 2, center_y + radius * math.sin(angle))
 
+    def _paint_glass_panel(self, painter: QPainter, panel: QRectF, panel_path: QPainterPath) -> None:
+        """زجاج حقيقي: تمويه الخلفية خلف اللوحة + طبقة لون شفافة + حافة لامعة + بقعة ضوء عند التحويم."""
+        painter.save()
+        painter.setClipPath(panel_path)
+        backdrop = self._backdrop()
+        if backdrop is not None and not backdrop.isNull():
+            painter.drawImage(0, 0, backdrop)
+        else:
+            painter.fillPath(panel_path, QColor(15, 23, 42, 170))
+        sheen = QLinearGradient(panel.topLeft(), panel.bottomLeft())
+        sheen.setColorAt(0, QColor(255, 255, 255, int(255 * (self.tint + 0.05))))
+        sheen.setColorAt(1, QColor(255, 255, 255, int(255 * self.tint * 0.55)))
+        painter.fillPath(panel_path, sheen)
+        if self.hl > 0.01:
+            glow = QRadialGradient(self.pointer, 200)
+            glow.setColorAt(0, QColor(255, 255, 255, int(38 * self.hl)))
+            glow.setColorAt(1, QColor(255, 255, 255, 0))
+            painter.fillPath(panel_path, glow)
+        painter.restore()
+        edge = QLinearGradient(panel.topLeft(), panel.bottomRight())
+        edge.setColorAt(0, QColor(255, 255, 255, 90))
+        edge.setColorAt(0.5, QColor(255, 255, 255, 18))
+        edge.setColorAt(1, QColor(255, 255, 255, 52))
+        painter.setPen(QPen(QBrush(edge), 1.0))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawPath(panel_path)
+
     def paintEvent(self, _event) -> None:
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         panel = QRectF(12, 8, self.width() - 24, self.height() - 16)
         panel_path = QPainterPath()
         panel_path.addRoundedRect(panel, 22, 22)
-        panel_fill = QLinearGradient(panel.topLeft(), panel.bottomRight())
-        panel_base = QColor(BG_BASE)
-        for stop, opacity in ((0, 34), (0.52, 20), (1, 30)):
-            tint = QColor(panel_base)
-            tint.setAlpha(opacity)
-            panel_fill.setColorAt(stop, tint)
-        painter.fillPath(panel_path, panel_fill)
-        edge = QLinearGradient(panel.topLeft(), panel.bottomRight())
-        edge.setColorAt(0, QColor(220, 244, 255, 76))
-        edge.setColorAt(0.5, QColor(220, 244, 255, 22))
-        edge.setColorAt(1, QColor(220, 244, 255, 48))
-        painter.setPen(QPen(QBrush(edge), 1.0))
-        painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.drawPath(panel_path)
+        self._paint_glass_panel(painter, panel, panel_path)
 
         current_key = self.items[self.current_index][0]
         group_ar, group_en = self.GROUP_LABELS.get(current_key, ("التنقل", "NAVIGATION"))
