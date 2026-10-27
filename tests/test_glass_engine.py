@@ -46,6 +46,7 @@ def test_controller_registers_group_boxes_and_paints():
     backdrop._tick()
     _app.processEvents()
     assert not root.grab().isNull()
+    backdrop.stop()
     backdrop._timer.stop()
     assert ctl is not None
 
@@ -67,4 +68,5 @@ def test_controller_covers_controls_and_views():
     assert btn.property("_frosted") is True and edit.property("_frosted") is True
     assert table.viewport().property("_frosted") is True
     assert not root.grab().isNull()
+    backdrop.stop()
     backdrop._timer.stop()
