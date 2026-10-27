@@ -372,9 +372,6 @@ QGraphicsView#attackGraphCanvas {{
 QFrame#card {{
     background: transparent;
     border: 1px solid transparent;
-    background: rgba(15, 23, 42, 0.28);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    border-top: 1px solid rgba(255, 255, 255, 0.36);
     border-radius: 20px;
 }}
 
@@ -385,15 +382,6 @@ QFrame#card:hover {{
 QGroupBox {{
     background: transparent;
     border: 1px solid transparent;
-    border-color: rgba(45, 212, 191, 0.35);
-    border-top-color: rgba(255, 255, 255, 0.55);
-    background: rgba(15, 23, 42, 0.38);
-}}
-
-QGroupBox {{
-    background: rgba(15, 23, 42, 0.26);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    border-top: 1px solid rgba(255, 255, 255, 0.32);
     border-radius: 16px;
     margin-top: 0;
     padding: 38px 16px 16px;

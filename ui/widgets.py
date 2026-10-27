@@ -163,57 +163,6 @@ class Glass(QWidget):
         path = QPainterPath()
         path.addRoundedRect(QRectF(self.rect()).adjusted(.5, .5, -.5, -.5), self.r, self.r)
         return path
-        p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        rect_f = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
-        path = QPainterPath()
-        path.addRoundedRect(rect_f, self.r, self.r)
-
-        p.setClipPath(path)
-        if (bd := self._backdrop()) is not None and not bd.isNull():
-            p.drawImage(0, 0, bd)
-        else:
-            # Fallback ultra-translucent dark surface
-            p.fillPath(path, QColor(15, 23, 42, 95))
-
-        # Dark Frosted Glass Overlay tint
-        tint_g = QLinearGradient(0, 0, 0, max(1, self.height()))
-        tint_g.setColorAt(0, QColor(255, 255, 255, int(255 * (self.tint + 0.08))))
-        tint_g.setColorAt(0.5, QColor(15, 23, 42, 110))
-        tint_g.setColorAt(1, QColor(10, 15, 28, int(255 * self.tint * 0.7)))
-        p.fillPath(path, tint_g)
-
-        # Hover Specular Spotlight
-        if self.hl > 0.01:
-            rg = QRadialGradient(self.pointer, 260)
-            rg.setColorAt(0, QColor(255, 255, 255, int(55 * self.hl)))
-            rg.setColorAt(0.5, QColor(255, 255, 255, int(15 * self.hl)))
-            rg.setColorAt(1, QColor(255, 255, 255, 0))
-            p.fillPath(path, rg)
-
-        p.setClipping(False)
-
-        # Luminous White Inner Border + Sharp Top Specular Reflection
-        edge = QLinearGradient(0, 0, 0, max(1, self.height()))
-        edge.setColorAt(0.0, QColor(255, 255, 255, 180))  # Sharp Top Specular Reflection Light
-        edge.setColorAt(0.08, QColor(255, 255, 255, 60))
-        edge.setColorAt(0.7, QColor(255, 255, 255, 25))
-        edge.setColorAt(1.0, QColor(255, 255, 255, 45))
-        p.setPen(QPen(QBrush(edge), 1.25))
-        p.setBrush(Qt.BrushStyle.NoBrush)
-        p.drawPath(path)
-
-        # Specular light accent line on top edge
-        top_specular = QLinearGradient(0, 0, max(1, self.width()), 0)
-        top_specular.setColorAt(0.0, QColor(255, 255, 255, 0))
-        top_specular.setColorAt(0.2, QColor(255, 255, 255, 160))
-        top_specular.setColorAt(0.5, QColor(255, 255, 255, 220))
-        top_specular.setColorAt(0.8, QColor(255, 255, 255, 160))
-        top_specular.setColorAt(1.0, QColor(255, 255, 255, 0))
-        p.setPen(QPen(QBrush(top_specular), 1.5))
-        top_line_path = QPainterPath()
-        top_line_path.moveTo(rect_f.left() + self.r * 0.5, rect_f.top())
-        top_line_path.lineTo(rect_f.right() - self.r * 0.5, rect_f.top())
-        p.drawPath(top_line_path)
 
 
 # ───────────── منحنيات ورسوم مخصصة ─────────────
