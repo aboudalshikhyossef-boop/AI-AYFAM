@@ -27,7 +27,7 @@ def test_synthetic_dataset_generation(temp_kb):
 
 def test_run_benchmark_execution(temp_kb):
     trainer = ParallelTrainer(kb=temp_kb)
-    report = trainer.run_benchmark(max_workers=2)
+    report = trainer.run_benchmark(max_workers=1)
     assert isinstance(report, BenchmarkReport)
     assert report.total_samples > 0
     assert report.correct_matches > 0

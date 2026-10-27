@@ -72,7 +72,7 @@ class ParallelTrainer:
         detected = parsed.intent or "unknown"
         return is_correct, detected, elapsed_ms
 
-    def run_benchmark(self, dataset: Optional[List[EvaluationSample]] = None, max_workers: int = 4) -> BenchmarkReport:
+    def run_benchmark(self, dataset: Optional[List[EvaluationSample]] = None, max_workers: int = 1) -> BenchmarkReport:
         """تشغيل التقييم المقارن بشكل متوازي وحساب الدقة وسرعة الاستجابة"""
         if not dataset:
             dataset = self.generate_synthetic_dataset()
@@ -81,12 +81,10 @@ class ParallelTrainer:
         total_ms = 0.0
         failures = []
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-            future_to_sample = {executor.submit(self._evaluate_single, sample): sample for sample in dataset}
-            for future in concurrent.futures.as_completed(future_to_sample):
-                sample = future_to_sample[future]
+        if max_workers <= 1:
+            for sample in dataset:
                 try:
-                    is_correct, detected, elapsed_ms = future.result()
+                    is_correct, detected, elapsed_ms = self._evaluate_single(sample)
                     total_ms += elapsed_ms
                     if is_correct:
                         correct += 1
@@ -102,6 +100,28 @@ class ParallelTrainer:
                         "expected": sample.expected_intent,
                         "detected": f"error: {str(e)}"
                     })
+        else:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+                future_to_sample = {executor.submit(self._evaluate_single, sample): sample for sample in dataset}
+                for future in concurrent.futures.as_completed(future_to_sample):
+                    sample = future_to_sample[future]
+                    try:
+                        is_correct, detected, elapsed_ms = future.result()
+                        total_ms += elapsed_ms
+                        if is_correct:
+                            correct += 1
+                        else:
+                            failures.append({
+                                "query": sample.query,
+                                "expected": sample.expected_intent,
+                                "detected": detected
+                            })
+                    except Exception as e:
+                        failures.append({
+                            "query": sample.query,
+                            "expected": sample.expected_intent,
+                            "detected": f"error: {str(e)}"
+                        })
 
         total = len(dataset)
         acc = (correct / total * 100.0) if total > 0 else 0.0
