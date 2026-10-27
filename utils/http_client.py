@@ -11,6 +11,13 @@ import urllib.error
 import urllib.parse
 from typing import Any, Mapping
 
+import time
+import ssl
+
+DEFAULT_USER_AGENT = "AI-AYFAM/9.0 (https://github.com/aboudalshikhyossef-boop/AI-AYFAM; local security assistant)"
+DEFAULT_RETRIES = 2
+DEFAULT_BACKOFF = 0.5
+
 try:
     import requests
     REQUESTS_AVAILABLE = True
@@ -33,10 +40,28 @@ class ResponseWrapper:
         return json.loads(self.text)
 
 
-def get(url: str, headers: dict | None = None, params: dict | None = None, timeout: float = 15.0, stream: bool = False, **kwargs: Any) -> Any:
-    """تنفيذ طلب GET مع دعم requests أو urllib التلقائي."""
+def get(url: str, headers: dict | None = None, params: dict | None = None, timeout: float = 15.0, stream: bool = False, retries: int = DEFAULT_RETRIES, **kwargs: Any) -> Any:
+    """تنفيذ طلب GET مع دعم إعادة المحاولة التلقائية ورؤوس طلب موحّدة."""
+    merged_headers = {"User-Agent": DEFAULT_USER_AGENT}
+    if headers:
+        merged_headers.update(headers)
+
     if REQUESTS_AVAILABLE:
-        return requests.get(url, headers=headers, params=params, timeout=timeout, stream=stream, **kwargs)
+        attempt = 0
+        while True:
+            try:
+                resp = requests.get(url, headers=merged_headers, params=params, timeout=timeout, stream=stream, **kwargs)
+                if resp.status_code in (502, 503, 504) and attempt < retries:
+                    attempt += 1
+                    time.sleep(DEFAULT_BACKOFF * (2 ** (attempt - 1)))
+                    continue
+                return resp
+            except (requests.RequestException, Exception) as exc:
+                if attempt < retries:
+                    attempt += 1
+                    time.sleep(DEFAULT_BACKOFF * (2 ** (attempt - 1)))
+                    continue
+                raise
 
     # Fallback to urllib.request
     if params:
@@ -44,17 +69,28 @@ def get(url: str, headers: dict | None = None, params: dict | None = None, timeo
         sep = "&" if "?" in url else "?"
         url = f"{url}{sep}{query_string}"
 
-    req = urllib.request.Request(url, headers=headers or {}, method="GET")
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            content = resp.read()
-            resp_headers = dict(resp.headers.items())
-            return ResponseWrapper(resp.status, content, resp_headers, url)
-    except urllib.error.HTTPError as exc:
-        content = exc.read()
-        return ResponseWrapper(exc.code, content, dict(exc.headers.items()), url)
-    except Exception as exc:
-        raise RuntimeError(f"HTTP GET Error ({url}): {exc}") from exc
+    req = urllib.request.Request(url, headers=merged_headers, method="GET")
+    ctx = ssl.create_default_context()
+    attempt = 0
+    while True:
+        try:
+            with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:
+                content = resp.read()
+                resp_headers = dict(resp.headers.items())
+                return ResponseWrapper(resp.status, content, resp_headers, url)
+        except urllib.error.HTTPError as exc:
+            if exc.code in (502, 503, 504) and attempt < retries:
+                attempt += 1
+                time.sleep(DEFAULT_BACKOFF * (2 ** (attempt - 1)))
+                continue
+            content = exc.read()
+            return ResponseWrapper(exc.code, content, dict(exc.headers.items()), url)
+        except Exception as exc:
+            if attempt < retries:
+                attempt += 1
+                time.sleep(DEFAULT_BACKOFF * (2 ** (attempt - 1)))
+                continue
+            raise RuntimeError(f"HTTP GET Error ({url}): {exc}") from exc
 
 
 def post(url: str, headers: dict | None = None, json_data: Any = None, data: Any = None, timeout: float = 15.0, json: Any = None, **kwargs: Any) -> Any:

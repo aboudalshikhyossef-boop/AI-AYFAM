@@ -320,9 +320,12 @@ def bing_rss(query: str, lang: str = "en", limit: int = 6) -> list[SearchHit]:
         raise SearchProviderError("Bing RSS", message=f"XML غير صالح: {exc}") from exc
     hits: list[SearchHit] = []
     for item in root.findall("./channel/item")[: max(1, min(int(limit), 10))]:
-        title = html.unescape((item.findtext("title") or "").strip())
+        raw_title = item.findtext("title") or ""
+        title = html.unescape(re.sub(r"<[^>]+>", " ", raw_title)).strip()
         url = (item.findtext("link") or "").strip()
-        snippet = html.unescape(re.sub(r"<[^>]+>", " ", item.findtext("description") or ""))
+        raw_desc = item.findtext("description") or ""
+        clean_desc = re.sub(r"<[^>]+>", " ", raw_desc)
+        snippet = html.unescape(clean_desc)
         snippet = re.sub(r"\s+", " ", snippet).strip()
         if title and url:
             hits.append(SearchHit(title, url, snippet, "bing-rss", lang=lang))
@@ -349,8 +352,10 @@ def score_hit(hit: SearchHit, terms: list[str], latin_terms: list[str] | None = 
         pieces = set(re.findall(r"[a-z0-9]+|[\u0600-\u06FF]+", term)) or {term}
         if pieces <= title_words:
             score += 1.0
-        elif pieces <= (title_words | body_words):
+        elif pieces <= body_words:
             score += 0.6
+        elif any(p in (hit.title + " " + hit.snippet).lower() for p in pieces):
+            score += 0.3
     return round(score / len(active), 2)
 
 
