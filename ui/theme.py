@@ -110,7 +110,8 @@ QWidget {{
 }}
 
 QMainWindow, QDialog, QMessageBox {{
-    background: {BG_BASE};
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+        stop:0 #041a3a, stop:0.5 #06224a, stop:1 #0a1646);
 }}
 
 QMainWindow#cockpitWindow {{
@@ -405,9 +406,9 @@ QGroupBox:hover {{
 
 /* ── الأزرار الفاخرة Apple-Style ── */
 QPushButton {{
-    background: rgba(255, 255, 255, 0.06);
+    background: rgba(120, 210, 255, 0.07);
     color: {TEXT_PRIMARY};
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    border: 1px solid rgba(190, 235, 255, 0.22);
     border-radius: 12px;
     padding: 8px 16px;
     min-height: 26px;
@@ -415,8 +416,8 @@ QPushButton {{
 }}
 
 QPushButton:hover {{
-    background: rgba(255, 255, 255, 0.12);
-    border-color: rgba(255, 255, 255, 0.22);
+    background: rgba(120, 210, 255, 0.16);
+    border-color: rgba(190, 235, 255, 0.40);
     color: #ffffff;
 }}
 
@@ -496,9 +497,9 @@ QPushButton:disabled {{
 
 /* ── حقول الإدخال والكومبوبوكس ── */
 QLineEdit, QComboBox, QPlainTextEdit, QTextEdit {{
-    background: rgba(15, 23, 42, 0.50);
+    background: rgba(4, 18, 40, 0.14);
     color: {TEXT_PRIMARY};
-    border: 1px solid rgba(255, 255, 255, 0.10);
+    border: 1px solid rgba(190, 235, 255, 0.20);
     border-radius: 12px;
     padding: 9px 14px;
     selection-background-color: #0f766e;
@@ -511,7 +512,7 @@ QLineEdit:hover, QComboBox:hover, QPlainTextEdit:hover, QTextEdit:hover {{
 
 QLineEdit:focus, QComboBox:focus, QPlainTextEdit:focus, QTextEdit:focus {{
     border-color: {ACCENT};
-    background: rgba(15, 23, 42, 0.70);
+    background: rgba(4, 18, 40, 0.28);
 }}
 
 QComboBox::drop-down {{
@@ -527,9 +528,10 @@ QComboBox::down-arrow {{
 }}
 
 QComboBox QAbstractItemView {{
-    background: rgba(12, 22, 41, 0.95);
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    selection-background-color: rgba(45, 212, 191, 0.20);
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+        stop:0 rgba(16, 52, 92, 0.96), stop:1 rgba(6, 24, 54, 0.97));
+    border: 1px solid rgba(190, 235, 255, 0.30);
+    selection-background-color: rgba(45, 212, 191, 0.24);
     border-radius: 12px;
     color: {TEXT_PRIMARY};
     outline: none;
@@ -543,9 +545,10 @@ QComboBox QAbstractItemView::item {{
 }}
 
 QMenu {{
-    background: rgba(13, 23, 43, 0.95);
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+        stop:0 rgba(16, 52, 92, 0.96), stop:1 rgba(6, 24, 54, 0.97));
     color: {TEXT_PRIMARY};
-    border: 1px solid rgba(255, 255, 255, 0.15);
+    border: 1px solid rgba(190, 235, 255, 0.30);
     border-radius: 12px;
     padding: 5px;
 }}
@@ -569,13 +572,13 @@ QMenu::separator {{
 
 /* ── الجداول الكريستالية الزجاجية (Glass Table Styling) ── */
 QTableWidget {{
-    background: rgba(3, 10, 18, 0.20);
+    background: transparent;
     color: {TEXT_PRIMARY};
-    alternate-background-color: rgba(220, 244, 255, 0.018);
+    alternate-background-color: rgba(190, 235, 255, 0.03);
     gridline-color: transparent;
-    border: 1px solid rgba(220, 244, 255, 0.09);
+    border: 1px solid rgba(190, 235, 255, 0.16);
     border-radius: 14px;
-    selection-background-color: rgba(45, 212, 191, 0.18);
+    selection-background-color: rgba(45, 212, 191, 0.22);
     outline: none;
 }}
 
@@ -595,11 +598,11 @@ QTableWidget::item:selected {{
 }}
 
 QHeaderView::section {{
-    background: rgba(3, 10, 18, 0.32);
+    background: rgba(4, 18, 40, 0.30);
     color: {TEXT_SECONDARY};
     padding: 12px 14px;
     border: none;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    border-bottom: 1px solid rgba(190, 235, 255, 0.14);
     font-weight: 600;
     font-size: 11px;
     letter-spacing: 0.5px;
@@ -800,9 +803,10 @@ QSplitter::handle:hover {{
 }}
 
 QToolTip {{
-    background: rgba(15, 23, 42, 0.90);
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+        stop:0 rgba(16, 52, 92, 0.96), stop:1 rgba(6, 24, 54, 0.97));
     color: {TEXT_PRIMARY};
-    border: 1px solid rgba(45, 212, 191, 0.40);
+    border: 1px solid rgba(110, 230, 255, 0.50);
     padding: 8px 12px;
     border-radius: 8px;
 }}
