@@ -204,6 +204,12 @@ class NLPEngine:
         elif cmd.entities.get("url") and best_score < 0.6:
             best_intent = "scan_website"
             best_score = 0.8
+        elif "الشبكة" in cmd.normalized and best_score < 0.5:
+            best_intent = "scan_network"
+            best_score = 0.7
+        elif "النظام" in cmd.normalized and best_score < 0.5:
+            best_intent = "scan_system"
+            best_score = 0.7
 
         cmd.intent = best_intent
         cmd.score = best_score
