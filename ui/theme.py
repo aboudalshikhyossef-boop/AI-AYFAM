@@ -16,8 +16,8 @@ BORDER_GLOW = "rgba(45, 212, 191, 0.25)"     # Subtle Teal Glow
 
 # ── ألوان النصوص والتباين ──
 TEXT_PRIMARY = "#f8fafc"          # Pure White / Slate 50
-TEXT_SECONDARY = "#94a3b8"        # Slate 400
-TEXT_MUTED = "#64748b"            # Slate 500
+TEXT_SECONDARY = "#b4c2d6"        # Slate 400
+TEXT_MUTED = "#8294ad"            # Slate 500
 
 # ── ألوان التمييز النيون والذهبي/التكتيكي ──
 ACCENT = "#2dd4bf"               # Afyam Teal — لون العلامة المميز
@@ -111,7 +111,7 @@ QWidget {{
 
 QMainWindow, QDialog, QMessageBox {{
     background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-        stop:0 #041a3a, stop:0.5 #06224a, stop:1 #0a1646);
+        stop:0 #030c1e, stop:0.5 #04132b, stop:1 #060b26);
 }}
 
 QMainWindow#cockpitWindow {{

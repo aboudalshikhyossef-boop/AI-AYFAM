@@ -21,15 +21,15 @@ from PyQt6.QtWidgets import (QAbstractItemView, QComboBox, QGroupBox, QLineEdit,
                              QTabBar, QTabWidget, QTextEdit, QToolButton, QWidget)
 
 # ───────────── إعدادات المظهر (عدّلها هنا فقط) ─────────────
-FROST_TINT = (3, 15, 36)        # لون السطح (أزرق مائي عميق)
-FROST_TINT_ALPHA = 0.25         # شفافية السطح الداكن (أقل = أكثر شفافية)
+FROST_TINT = (2, 8, 22)        # لون السطح (أزرق مائي عميق)
+FROST_TINT_ALPHA = 0.36         # شفافية السطح الداكن (أقل = أكثر شفافية)
 FROST_GRAIN_ALPHA = 2           # قوة حبيبات الضباب
-FROST_SHEEN_ALPHA = 34          # لمعان النصف العلوي
+FROST_SHEEN_ALPHA = 26          # لمعان النصف العلوي
 FROST_SPECULAR_ALPHA = 215      # قوة الانعكاس الحاد في الحافة العلوية
 FROST_BORDER_ALPHA = 120        # قوة الحافة الداخلية المضيئة
 BLUR_SCALE = 0.40               # دقة رسم مصدر التمويه (أقل = أسرع)
 BLUR_DIVISOR = 7                # قوة التمويه (أكبر = أكثر ضبابية)
-WATER_BRIGHTEN = 0.22            # إضاءة/إشباع الخلفية المارّة عبر الزجاج
+WATER_BRIGHTEN = 0.04            # إضاءة/إشباع الخلفية المارّة عبر الزجاج
 FRAME_MS = 66                   # زمن الإطار (~15 إطارًا/ثانية)
 
 LIVE_WIDGETS: "weakref.WeakSet[QWidget]" = weakref.WeakSet()
@@ -97,15 +97,15 @@ class LiveBackdrop(QObject):
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         base = QLinearGradient(0, 0, w, h)
         base.setColorAt(0, QColor("#030712"))
-        base.setColorAt(0.55, QColor(5, 24, 58))
-        base.setColorAt(1, QColor(10, 22, 70))
+        base.setColorAt(0.55, QColor(4, 13, 32))
+        base.setColorAt(1, QColor(7, 12, 40))
         p.fillRect(0, 0, w, h, base)
 
         t = self.t
-        glows = ((0.82 + 0.05 * math.sin(t * 0.17), 0.14 + 0.05 * math.cos(t * 0.13), 0.55, "#14b8a6", 175),
-                 (0.10 + 0.05 * math.cos(t * 0.11), 0.88 + 0.04 * math.sin(t * 0.15), 0.62, "#4f46e5", 150),
-                 (0.50 + 0.07 * math.sin(t * 0.09), 0.50 + 0.06 * math.cos(t * 0.12), 0.40, "#0ea5e9", 130),
-                 (0.94 + 0.03 * math.cos(t * 0.14), 0.92, 0.38, "#a78bfa", 120))
+        glows = ((0.82 + 0.05 * math.sin(t * 0.17), 0.14 + 0.05 * math.cos(t * 0.13), 0.55, "#14b8a6", 105),
+                 (0.10 + 0.05 * math.cos(t * 0.11), 0.88 + 0.04 * math.sin(t * 0.15), 0.62, "#4f46e5", 90),
+                 (0.50 + 0.07 * math.sin(t * 0.09), 0.50 + 0.06 * math.cos(t * 0.12), 0.40, "#0ea5e9", 60),
+                 (0.94 + 0.03 * math.cos(t * 0.14), 0.92, 0.38, "#a78bfa", 62))
         for cx, cy, r, col, a in glows:
             c = QColor(col)
             c.setAlpha(a)
@@ -140,7 +140,7 @@ class LiveBackdrop(QObject):
                 d2 = dx * dx + dy * dy
                 if d2 < link2:
                     c = QColor(ni[4])
-                    c.setAlpha(int(170 * (1 - math.sqrt(d2) / link)))
+                    c.setAlpha(int(140 * (1 - math.sqrt(d2) / link)))
                     p.setPen(QPen(c, 1.3 * k))
                     p.drawLine(QLineF(xi, yi, pts[j][0], pts[j][1]))
         p.setPen(Qt.PenStyle.NoPen)
@@ -260,7 +260,7 @@ def paint_frosted(p: QPainter, widget: QWidget, rect: QRectF, radius: float = 18
     surface.setColorAt(1, QColor(r, g, b, int(255 * ta * k * 1.2)))
     p.fillPath(path, surface)
     aqua = QLinearGradient(rect.bottomLeft(), QPointF(rect.left(), rect.top() + rect.height() * 0.45))
-    aqua.setColorAt(0, QColor(70, 220, 255, int(34 * k)))
+    aqua.setColorAt(0, QColor(70, 220, 255, int(20 * k)))
     aqua.setColorAt(1, QColor(70, 220, 255, 0))
     p.fillPath(path, aqua)
 
@@ -276,7 +276,7 @@ def paint_frosted(p: QPainter, widget: QWidget, rect: QRectF, radius: float = 18
     p.fillPath(path, sheen)
     band = QLinearGradient(rect.topLeft(), rect.bottomRight())
     band.setColorAt(0.28, QColor(255, 255, 255, 0))
-    band.setColorAt(0.40, QColor(255, 255, 255, int(20 * k)))
+    band.setColorAt(0.40, QColor(255, 255, 255, int(13 * k)))
     band.setColorAt(0.52, QColor(255, 255, 255, 0))
     p.fillPath(path, band)
     p.restore()
