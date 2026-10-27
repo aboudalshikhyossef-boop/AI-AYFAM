@@ -910,10 +910,10 @@ class PressFeedbackController(QObject):
     """استجابة لمسية وحركية سريعة للأزرار."""
 
     def __init__(self, root):
-        super().__init__(root)
         self.effects = {}
         self.animations = {}
         self.reflections = {}
+        super().__init__(root)
         for button in root.findChildren(QPushButton):
             self.attach(button)
 
@@ -962,7 +962,8 @@ class PressFeedbackController(QObject):
         animation.start()
 
     def eventFilter(self, watched, event):
-        if watched not in self.effects:
+        effects = getattr(self, "effects", None)
+        if effects is None or watched not in effects:
             return super().eventFilter(watched, event)
         if event.type() in (QEvent.Type.Resize, QEvent.Type.Show):
             reflection = self.reflections.get(watched)
