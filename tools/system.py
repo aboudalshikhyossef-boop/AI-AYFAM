@@ -273,13 +273,10 @@ def check_users_and_groups() -> dict:
     _, out, _ = _run("cat /etc/passwd")
     current_user = os.getenv("USER", "")
     for line in out.split("\n"):
-        line = line.strip()
-        if not line or line.startswith("#"):
-            continue
         parts = line.split(":")
         if len(parts) < 7:
             continue
-        user, uid, shell = parts[0].strip(), parts[2].strip(), parts[6].strip()
+        user, uid, shell = parts[0], parts[2], parts[6]
         uid_int = int(uid) if uid.isdigit() else 9999
         result["users"].append({"user": user, "uid": uid, "shell": shell})
         if uid_int == 0 and user != "root":

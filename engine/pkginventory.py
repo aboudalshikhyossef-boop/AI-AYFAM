@@ -129,14 +129,14 @@ class PackageInventoryEngine:
                 queries.append({"package": {"name": pkg_name, "ecosystem": ecosystem}, "version": ver})
 
             try:
-                from utils import http_client
-                resp = http_client.post(
+                req_data = json.dumps({"queries": queries}).encode("utf-8")
+                req = urllib.request.Request(
                     "https://api.osv.dev/v1/querybatch",
-                    json_data={"queries": queries},
-                    timeout=15.0
+                    data=req_data,
+                    headers={"Content-Type": "application/json"}
                 )
-                if resp.status_code == 200:
-                    data = resp.json()
+                with urllib.request.urlopen(req, timeout=12) as resp:
+                    data = json.loads(resp.read().decode("utf-8"))
                     results = data.get("results", [])
 
                     for idx, res_item in enumerate(results):
@@ -157,12 +157,9 @@ class PackageInventoryEngine:
                                 evidence={"package": pkg_name, "installed_version": installed_ver, "cve_id": cve_id},
                                 stable_key=f"{pkg_name}:{cve_id}",
                             ))
-                else:
-                    network_errors += 1
-                    if i == 0 and total_packages > 0:
-                        return findings, f"فشل الاتصال بـ OSV.dev: HTTP {resp.status_code}"
             except Exception as exc:
                 network_errors += 1
+                # If network fails for all/first batch, report network error
                 if i == 0 and total_packages > 0:
                     err_msg = f"فشل الاتصال بـ OSV.dev: {exc}"
                     return findings, err_msg
