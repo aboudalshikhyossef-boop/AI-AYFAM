@@ -1341,17 +1341,13 @@ You can type any of these or anything similar in plain language:
             (self._t("ملفات","World-writable"),    system.check_world_writable),
         ]
         all_findings = []
-        from concurrent.futures import ThreadPoolExecutor, as_completed
-        with ThreadPoolExecutor(max_workers=min(len(checks), 8)) as executor:
-            future_to_label = {executor.submit(fn): label for label, fn in checks}
-            for future in as_completed(future_to_label):
-                label = future_to_label[future]
-                self.ui.info(f"  🔍 {label}...")
-                try:
-                    r = future.result()
-                    all_findings.extend(r.get("findings", []))
-                except Exception as e:
-                    self.ui.warning(f"  {label}: {e}")
+        for label, fn in checks:
+            self.ui.info(f"  🔍 {label}...")
+            try:
+                r = fn()
+                all_findings.extend(r.get("findings",[]))
+            except Exception as e:
+                self.ui.warning(f"  {label}: {e}")
 
         # ربط تلقائي بين حزم النظام القابلة للترقية وقاعدة CVE/CISA KEV
         try:
@@ -1856,17 +1852,13 @@ You can type any of these or anything similar in plain language:
             (self._t("👤 مستخدمون","Users"),    lambda: system.check_users_and_groups()),
             (self._t("📦 تحديثات","Updates"),   lambda: system.get_installed_packages_vulnerabilities()),
         ]
-        from concurrent.futures import ThreadPoolExecutor, as_completed
-        with ThreadPoolExecutor(max_workers=min(len(steps), 8)) as executor:
-            future_to_label = {executor.submit(fn): label for label, fn in steps}
-            for future in as_completed(future_to_label):
-                label = future_to_label[future]
-                self.ui.info(f"  ⏳ {label}...")
-                try:
-                    r = future.result()
-                    all_findings.extend(r.get("findings", []) if isinstance(r, dict) else [])
-                except Exception as e:
-                    self.ui.warning(f"  {label}: {e}")
+        for label, fn in steps:
+            self.ui.info(f"  ⏳ {label}...")
+            try:
+                r = fn()
+                all_findings.extend(r.get("findings",[]) if isinstance(r, dict) else [])
+            except Exception as e:
+                self.ui.warning(f"  {label}: {e}")
 
         try:
             self.ui.info(f"  ⏳ {self._t('مطابقة الحزم مع قاعدة CVE','Cross-checking packages against CVE')}...")

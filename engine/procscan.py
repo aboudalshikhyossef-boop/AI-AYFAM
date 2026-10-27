@@ -93,24 +93,11 @@ class ProcessNetworkScanner:
                             state = parts[3]
                             inode = parts[9]
 
-                            # Decode IP and port
+                            # Decode port
                             try:
                                 port = int(local_addr.rsplit(":", 1)[1], 16)
                                 ip_hex = local_addr.rsplit(":", 1)[0]
-                                decoded_ip = ip_hex
-                                try:
-                                    ip_bytes = bytes.fromhex(ip_hex)
-                                    if len(ip_bytes) == 4:
-                                        import socket
-                                        decoded_ip = socket.inet_ntoa(ip_bytes[::-1])
-                                    elif len(ip_bytes) == 16:
-                                        import socket, struct
-                                        words = struct.unpack('<4I', ip_bytes)
-                                        raw_ip = struct.pack('>4I', *words)
-                                        decoded_ip = socket.inet_ntop(socket.AF_INET6, raw_ip)
-                                except Exception:
-                                    pass
-                                inode_map[inode] = (proto, decoded_ip, port)
+                                inode_map[inode] = (proto, ip_hex, port)
                             except Exception:
                                 pass
             except Exception:
