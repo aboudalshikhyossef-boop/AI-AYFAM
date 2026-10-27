@@ -32,6 +32,7 @@ from ui.theme import (
     ACCENT, BG_BASE, SEV_CRITICAL, SEV_HIGH, SEV_MEDIUM, SEV_SAFE,
     TEXT_MUTED, TEXT_PRIMARY, TEXT_SECONDARY, alpha
 )
+from ui.glass_engine import paint_frosted, register_live
 from ui.tokens import Tokens
 
 T1 = "rgba(255, 255, 255, 0.94)"
@@ -83,6 +84,7 @@ class Glass(QWidget):
     def __init__(self, radius: int = 24, tint: float = .07, parent: QWidget | None = None):
         super().__init__(parent)
         self.r, self.tint = radius, tint
+        register_live(self)
         self._cache: QImage | None = None
         self._key = None
         self.pointer, self.hl = QPointF(-999, -999), 0.0
@@ -138,32 +140,18 @@ class Glass(QWidget):
 
     def paintEvent(self, _e) -> None:
         p = QPainter(self)
-        p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        path = QPainterPath()
-        path.addRoundedRect(QRectF(self.rect()).adjusted(.5, .5, -.5, -.5), self.r, self.r)
-        p.setClipPath(path)
-        if (bd := self._backdrop()) is not None and not bd.isNull():
-            p.drawImage(0, 0, bd)
-        else:
-            # Fallback translucent tint
-            p.fillPath(path, QColor(15, 23, 42, 170))
-        g = QLinearGradient(0, 0, 0, max(1, self.height()))
-        g.setColorAt(0, QColor(255, 255, 255, int(255 * (self.tint + .05))))
-        g.setColorAt(1, QColor(255, 255, 255, int(255 * self.tint * .55)))
-        p.fillPath(path, g)
+        paint_frosted(p, self, QRectF(self.rect()), self.r)
         if self.hl > .01:
             rg = QRadialGradient(self.pointer, 240)
-            rg.setColorAt(0, QColor(255, 255, 255, int(40 * self.hl)))
+            rg.setColorAt(0, QColor(255, 255, 255, int(28 * self.hl)))
             rg.setColorAt(1, QColor(255, 255, 255, 0))
-            p.fillPath(path, rg)
-        p.setClipping(False)
-        edge = QLinearGradient(0, 0, max(1, self.width()), max(1, self.height()))
-        edge.setColorAt(0, QColor(255, 255, 255, 80))
-        edge.setColorAt(.5, QColor(255, 255, 255, 16))
-        edge.setColorAt(1, QColor(255, 255, 255, 44))
-        p.setPen(QPen(QBrush(edge), 1.0))
-        p.setBrush(Qt.BrushStyle.NoBrush)
-        p.drawPath(path)
+            p.setClipPath(self._clip_path())
+            p.fillRect(self.rect(), rg)
+
+    def _clip_path(self) -> QPainterPath:
+        path = QPainterPath()
+        path.addRoundedRect(QRectF(self.rect()).adjusted(.5, .5, -.5, -.5), self.r, self.r)
+        return path
 
 
 # ───────────── منحنيات ورسوم مخصصة ─────────────
@@ -533,23 +521,10 @@ class GlassAnalogClock(QWidget):
 
 # ───────────── الكائنات السابقة المتوافقة مع التطبيق ─────────────
 class AmbientSurface(QWidget):
-    """رسم خلفية المحتوى العامة الأورورا."""
+    """حاوية المحتوى: شفافة، والخلفية المتحركة الفعلية تُرسم خلف كل التطبيق (ui/glass_engine.py)."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._phase = 0.0
-        self._timer = QTimer(self)
-        self._timer.timeout.connect(self._tick)
-        self._timer.start(100)
-
-    def _tick(self):
-        if self.isVisible():
-            self._phase += 0.016
-            self.update()
-
-    def paintEvent(self, event):
-        p = QPainter(self)
-        paint_aurora(p, self.width(), self.height(), self._phase)
 
 
 class AccentLine(QWidget):
@@ -770,22 +745,7 @@ class NavigationWheel(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         panel = QRectF(12, 8, self.width() - 24, self.height() - 16)
-        panel_path = QPainterPath()
-        panel_path.addRoundedRect(panel, 22, 22)
-        panel_fill = QLinearGradient(panel.topLeft(), panel.bottomRight())
-        panel_base = QColor(BG_BASE)
-        for stop, opacity in ((0, 34), (0.52, 20), (1, 30)):
-            tint = QColor(panel_base)
-            tint.setAlpha(opacity)
-            panel_fill.setColorAt(stop, tint)
-        painter.fillPath(panel_path, panel_fill)
-        edge = QLinearGradient(panel.topLeft(), panel.bottomRight())
-        edge.setColorAt(0, QColor(220, 244, 255, 76))
-        edge.setColorAt(0.5, QColor(220, 244, 255, 22))
-        edge.setColorAt(1, QColor(220, 244, 255, 48))
-        painter.setPen(QPen(QBrush(edge), 1.0))
-        painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.drawPath(panel_path)
+        panel_path = paint_frosted(painter, self, panel, 22, nested=True)
 
         current_key = self.items[self.current_index][0]
         group_ar, group_en = self.GROUP_LABELS.get(current_key, ("التنقل", "NAVIGATION"))

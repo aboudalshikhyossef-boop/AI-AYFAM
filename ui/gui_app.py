@@ -39,6 +39,7 @@ from tools.usb_control import (
 from tools.websearch import DEFAULT_GOOGLE_CSE_CX
 from ui.terminal import TerminalUI
 from ui.icons import ICON_COLORS, framed_icon, glyph_icon
+from ui.glass_engine import BackdropCanvas, FrostedGlassController, LiveBackdrop
 from ui.widgets import (
     AccentLine, AmbientSurface, ChatView, Glass, GlassAnalogClock, HoverController,
     NavigationWheel, PressFeedbackController, SecurityGauge, SoundUX, TelemetryChart,
@@ -617,6 +618,11 @@ class UnifiedCockpitWindow(QMainWindow):
 
         root.addWidget(main_area)
         self.setCentralWidget(central)
+
+        # خلفية شبكية متحركة خلف كل شيء + زجاج مضبّب داكن لكل الأسطح
+        self.live_backdrop = LiveBackdrop(self)
+        self.backdrop_canvas = BackdropCanvas(central, self.live_backdrop)
+        self.glass_controller = FrostedGlassController(central, self.live_backdrop)
 
         # Default page
         self.switch_page("dashboard")

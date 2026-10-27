@@ -138,9 +138,8 @@ QScrollArea > QWidget > QWidget {{
 
 /* ── الشريط الجانبي الفخم الكريستالي (RTL Right-Side Glass Bar) ── */
 QFrame#sidebar {{
-    background: rgba(3, 10, 18, 0.34);
-    border-left: 1px solid rgba(255, 255, 255, 0.08);
-    border-right: none;
+    background: transparent;
+    border: none;
 }}
 
 QScrollArea#navigationScroll {{
@@ -219,14 +218,13 @@ QPushButton#assistantNavButton:hover {{
 
 /* ── الشريط العلوي والكبسولة الزجاجية الكريستالية للساعة ── */
 QFrame#headerBar {{
-    background: rgba(3, 10, 18, 0.24);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    background: transparent;
+    border: none;
 }}
 
 QFrame#clockGlassPill {{
-    background: rgba(3, 10, 18, 0.22);
-    border: 1px solid rgba(220, 244, 255, 0.11);
-    border-top-color: rgba(220, 244, 255, 0.18);
+    background: transparent;
+    border: 1px solid transparent;
     border-radius: 30px;
     padding: 4px 14px;
 }}
@@ -265,41 +263,41 @@ QTabBar {{
 }}
 
 QTabWidget::pane {{
-    background: rgba(3, 10, 18, 0.16);
-    border: 1px solid rgba(220, 244, 255, 0.09);
+    background: transparent;
+    border: 1px solid transparent;
     border-radius: 14px;
     top: 5px;
 }}
 
 QTabBar::tab {{
-    background: rgba(3, 10, 18, 0.22);
+    background: transparent;
     color: {TEXT_SECONDARY};
-    border: 1px solid rgba(220, 244, 255, 0.08);
+    border: 1px solid transparent;
     border-radius: 10px;
     padding: 9px 18px;
-    margin-right: 6px;
+    margin: 0 3px;
     font-size: 12px;
     font-weight: 500;
 }}
 
 QTabBar::tab:hover {{
-    background: rgba(3, 10, 18, 0.38);
+    background: rgba(255, 255, 255, 0.05);
     color: {TEXT_PRIMARY};
-    border-color: rgba(220, 244, 255, 0.18);
+    border-color: rgba(255, 255, 255, 0.16);
 }}
 
 QTabBar::tab:selected {{
     background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-        stop:0 rgba(45, 212, 191, 0.14), stop:1 rgba(3, 10, 18, 0.26));
+        stop:0 rgba(45, 212, 191, 0.16), stop:1 rgba(45, 212, 191, 0.04));
     color: #ffffff;
-    border: 1px solid rgba(45, 212, 191, 0.34);
+    border: 1px solid rgba(45, 212, 191, 0.38);
     font-weight: 700;
 }}
 
 /* ── بانر المهمة التكتيكي ── */
 QFrame#missionBanner {{
-    background: rgba(15, 23, 42, 0.35);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: transparent;
+    border: 1px solid transparent;
     border-right: 4px solid {ACCENT};
     border-radius: 18px;
 }}
@@ -316,9 +314,8 @@ QLabel#missionTitle {{
 }}
 
 QFrame#pageHero, QFrame#emptyGlassCard {{
-    background: rgba(15, 23, 42, 0.30);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-top-color: rgba(255, 255, 255, 0.16);
+    background: transparent;
+    border: 1px solid transparent;
     border-radius: 20px;
 }}
 
@@ -373,21 +370,18 @@ QGraphicsView#attackGraphCanvas {{
 
 /* ── بطاقات العمليات والحاويات الكريستالية ── */
 QFrame#card {{
-    background: rgba(15, 23, 42, 0.35);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-top-color: rgba(255, 255, 255, 0.16);
+    background: transparent;
+    border: 1px solid transparent;
     border-radius: 20px;
 }}
 
 QFrame#card:hover {{
-    border-color: rgba(45, 212, 191, 0.25);
-    background: rgba(15, 23, 42, 0.45);
+    border-color: rgba(45, 212, 191, 0.30);
 }}
 
 QGroupBox {{
-    background: rgba(15, 23, 42, 0.30);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-top-color: rgba(255, 255, 255, 0.16);
+    background: transparent;
+    border: 1px solid transparent;
     border-radius: 16px;
     margin-top: 0;
     padding: 38px 16px 16px;
@@ -406,7 +400,7 @@ QGroupBox::title {{
 }}
 
 QGroupBox:hover {{
-    border-color: rgba(167, 139, 250, 0.30);
+    border-color: rgba(167, 139, 250, 0.32);
 }}
 
 /* ── الأزرار الفاخرة Apple-Style ── */
@@ -822,26 +816,26 @@ QTextEdit#messageBody {{
 }}
 
 QFrame#chatComposer {{
-    background: rgba(15, 23, 42, 0.50);
-    border: 1px solid rgba(255, 255, 255, 0.10);
+    background: transparent;
+    border: 1px solid transparent;
     border-radius: 16px;
 }}
 
 QFrame#chatUser {{
-    background: rgba(30, 58, 138, 0.30);
-    border: 1px solid rgba(45, 212, 191, 0.25);
+    background: rgba(30, 90, 160, 0.16);
+    border: 1px solid rgba(45, 212, 191, 0.30);
     border-radius: 16px;
 }}
 
 QFrame#chatAssistant {{
-    background: rgba(30, 41, 59, 0.40);
-    border: 1px solid rgba(167, 139, 250, 0.25);
+    background: rgba(120, 90, 200, 0.10);
+    border: 1px solid rgba(167, 139, 250, 0.30);
     border-radius: 16px;
 }}
 
 QFrame#chatSystem {{
-    background: rgba(30, 41, 59, 0.35);
-    border: 1px solid rgba(251, 146, 60, 0.25);
+    background: rgba(251, 146, 60, 0.07);
+    border: 1px solid rgba(251, 146, 60, 0.30);
     border-radius: 12px;
 }}
 
@@ -851,8 +845,8 @@ QFrame#transitionVeil {{
 }}
 
 QFrame#floatingStatusBar {{
-    background: rgba(15, 23, 42, 0.60);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: transparent;
+    border: 1px solid transparent;
     border-radius: 14px;
 }}
 
