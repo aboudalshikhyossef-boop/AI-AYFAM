@@ -49,7 +49,7 @@ class LiveBackdrop(QObject):
     def __init__(self, parent: QObject | None = None):
         super().__init__(parent)
         rnd = random.Random(7)
-        palette = ("#2dd4bf", "#60a5fa", "#a78bfa", "#38bdf8")
+        palette = (QColor(45, 212, 191), QColor(96, 165, 250), QColor(167, 139, 250), QColor(56, 189, 248))
         self.nodes = []
         for i in range(self.NODES):
             ang = rnd.uniform(0, math.tau)
@@ -94,8 +94,8 @@ class LiveBackdrop(QObject):
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         base = QLinearGradient(0, 0, w, h)
         base.setColorAt(0, QColor("#030712"))
-        base.setColorAt(0.55, QColor("#071021"))
-        base.setColorAt(1, QColor("#0b1030"))
+        base.setColorAt(0.55, QColor(7, 16, 33))
+        base.setColorAt(1, QColor(11, 16, 48))
         p.fillRect(0, 0, w, h, base)
 
         t = self.t
