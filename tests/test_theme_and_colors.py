@@ -33,6 +33,10 @@ def test_no_unapproved_hardcoded_hex_colors():
         "#a78bfa", "#f59e0b", "#f87171", "#f8fafc", "#fb923c", "#edf5fb", "#d29922", "#6d8f8c",
         "#7d83a6", "#e6f6ff", "#09131e", "#0a1022", "#050912", "#4f46e5", "#0ea5e9", "#22d3ee", "#7c6cf0",
         "#090f1f", "#02050c", "#060b18", "#090f23", "#4338ca", "#0284c7",
+        # Palette used by ui/glass_engine.py presets (deep_ocean, aurora, neon_ring, graphite)
+        "#010103", "#020611", "#040711", "#05070b", "#06b6d4", "#1d4ed8",
+        "#38bdf8", "#3b6cff", "#3b82f6", "#475569", "#60a5fa", "#7dd3fc", "#818cf8",
+        "#8b5cf6", "#94a3b8", "#a5b4fc", "#a855f7", "#cbd5e1", "#f472b6", "#ff2d55", "#ff6b8b",
     }
 
     unapproved = []

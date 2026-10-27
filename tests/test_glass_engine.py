@@ -15,10 +15,10 @@ _app = QApplication.instance() or QApplication([])
 def test_backdrop_builds_blurred_frame_and_moves():
     b = LiveBackdrop()
     b.set_size(600, 400)
-    first = [n[0] for n in b.nodes]
+    first = [n.x for n in b.nodes]
     b._tick()
     assert not b.blurred.isNull()
-    assert [n[0] for n in b.nodes] != first
+    assert [n.x for n in b.nodes] != first
 
 
 def test_paint_frosted_works_with_and_without_backdrop():
