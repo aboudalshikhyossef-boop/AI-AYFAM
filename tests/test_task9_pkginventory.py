@@ -26,7 +26,7 @@ def test_query_osv_batch_chunks_and_network_error():
     import urllib.error
 
     # Simulate network error
-    with patch("urllib.request.urlopen", side_effect=urllib.error.URLError("Network Unreachable")):
+    with patch("utils.http_client.post", side_effect=RuntimeError("Network Unreachable")):
         findings, err = engine.query_osv_batch(pkgs, batch_size=50)
         assert len(findings) == 0
         assert err is not None
@@ -34,7 +34,8 @@ def test_query_osv_batch_chunks_and_network_error():
 
     # Simulate successful batch response
     sample_resp = MagicMock()
-    sample_resp.read.return_value = json.dumps({
+    sample_resp.status_code = 200
+    sample_resp.json.return_value = {
         "results": [
             {
                 "vulns": [
@@ -46,10 +47,9 @@ def test_query_osv_batch_chunks_and_network_error():
             }
             for _ in range(50)
         ]
-    }).encode("utf-8")
-    sample_resp.__enter__.return_value = sample_resp
+    }
 
-    with patch("urllib.request.urlopen", return_value=sample_resp):
+    with patch("utils.http_client.post", return_value=sample_resp):
         findings, err = engine.query_osv_batch(pkgs, batch_size=50)
         assert err is None
         assert len(findings) > 0
