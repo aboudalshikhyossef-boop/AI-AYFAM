@@ -17,7 +17,8 @@ import weakref
 from PyQt6.QtCore import QEvent, QLineF, QObject, QPoint, QPointF, QRectF, QSize, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import (QBrush, QColor, QImage, QLinearGradient, QPainter, QPainterPath, QPen,
                          QPixmap, QRadialGradient)
-from PyQt6.QtWidgets import QGroupBox, QTabBar, QTabWidget, QWidget
+from PyQt6.QtWidgets import (QAbstractItemView, QComboBox, QGroupBox, QLineEdit, QPlainTextEdit, QPushButton,
+                             QTabBar, QTabWidget, QTextEdit, QToolButton, QWidget)
 
 # ───────────── إعدادات المظهر (عدّلها هنا فقط) ─────────────
 FROST_TINT = (3, 15, 36)        # لون السطح (أزرق مائي عميق)
@@ -32,6 +33,7 @@ WATER_BRIGHTEN = 0.22            # إضاءة/إشباع الخلفية الما
 FRAME_MS = 66                   # زمن الإطار (~15 إطارًا/ثانية)
 
 LIVE_WIDGETS: "weakref.WeakSet[QWidget]" = weakref.WeakSet()
+SLOW_WIDGETS: "weakref.WeakSet[QWidget]" = weakref.WeakSet()   # أزرار وحقول: تُحدَّث كل 3 إطارات
 _STATE: dict = {"backdrop": None, "canvas": None, "grain": None}
 
 
@@ -343,27 +345,45 @@ class FrostedGlassController(QObject):
         backdrop.updated.connect(self._on_frame)
         backdrop.start()
 
+    CONTROLS = (QPushButton, QToolButton, QLineEdit, QComboBox)
+    VIEWS = (QAbstractItemView, QPlainTextEdit, QTextEdit)
+
     def scan(self) -> None:
+        top = self.root.window()
         for w in self.root.findChildren(QWidget):
-            if w.property("_frosted") is not None:
+            if w.property("_frosted") is not None or w.window() is not top:
                 continue
             name = w.objectName()
             if isinstance(w, (QGroupBox, QTabWidget, QTabBar)) or name in self.RADII or name in self.BARS:
                 w.setProperty("_frosted", True)
                 w.installEventFilter(self)
                 LIVE_WIDGETS.add(w)
+            elif isinstance(w, self.CONTROLS):
+                if isinstance(w.parentWidget(), (QComboBox, QAbstractItemView)) or name == "messageBody":
+                    continue
+                w.setProperty("_frosted", True)
+                w.installEventFilter(self)
+                SLOW_WIDGETS.add(w)
+            elif isinstance(w, self.VIEWS) and name != "messageBody":
+                vp = w.viewport()
+                w.setProperty("_frosted", True)
+                vp.setProperty("_frosted", True)
+                vp.installEventFilter(self)
+                SLOW_WIDGETS.add(vp)
 
     def _on_frame(self) -> None:
         self.backdrop.paused = not self.root.isVisible() or self.root.window().isMinimized()
         self._count += 1
         if self._count % 30 == 0:
             self.scan()
-        for w in list(LIVE_WIDGETS):
-            try:
-                if w.isVisible():
-                    w.update()
-            except RuntimeError:
-                LIVE_WIDGETS.discard(w)
+        groups = [LIVE_WIDGETS] + ([SLOW_WIDGETS] if self._count % 3 == 0 else [])
+        for group in groups:
+            for w in list(group):
+                try:
+                    if w.isVisible():
+                        w.update()
+                except RuntimeError:
+                    group.discard(w)
 
     @staticmethod
     def _depth(w: QWidget) -> int:
@@ -392,6 +412,10 @@ class FrostedGlassController(QObject):
                 top = obj.tabBar().geometry().bottom() + 5
                 paint_frosted(p, obj, QRectF(0, top, obj.width(), max(10, obj.height() - top)), 14,
                               nested=self._depth(obj) > 0)
+            elif isinstance(obj.parentWidget(), self.VIEWS) and getattr(obj.parentWidget(), "viewport", lambda: None)() is obj:
+                paint_frosted(p, obj, rect, 12, nested=True, tint_alpha=FROST_TINT_ALPHA * 0.9)
+            elif isinstance(obj, self.CONTROLS):
+                paint_frosted(p, obj, rect, 12, nested=True, tint_alpha=FROST_TINT_ALPHA * 0.9)
             else:
                 radius = 16 if isinstance(obj, QGroupBox) else self.RADII.get(name, 16)
                 paint_frosted(p, obj, rect, radius, nested=self._depth(obj) > 0)

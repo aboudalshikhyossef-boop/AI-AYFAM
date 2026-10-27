@@ -48,3 +48,23 @@ def test_controller_registers_group_boxes_and_paints():
     assert not root.grab().isNull()
     backdrop._timer.stop()
     assert ctl is not None
+
+
+def test_controller_covers_controls_and_views():
+    from PyQt6.QtWidgets import QLineEdit, QPushButton, QTableWidget
+
+    root = QWidget()
+    root.resize(500, 400)
+    lay = QVBoxLayout(root)
+    btn, edit, table = QPushButton("x"), QLineEdit(), QTableWidget(2, 2)
+    for w in (btn, edit, table):
+        lay.addWidget(w)
+    backdrop = LiveBackdrop()
+    BackdropCanvas(root, backdrop)
+    FrostedGlassController(root, backdrop)
+    root.show()
+    _app.processEvents()
+    assert btn.property("_frosted") is True and edit.property("_frosted") is True
+    assert table.viewport().property("_frosted") is True
+    assert not root.grab().isNull()
+    backdrop._timer.stop()
