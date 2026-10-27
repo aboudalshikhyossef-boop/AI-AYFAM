@@ -295,6 +295,10 @@ class _Node:
         self.cidx, self.key, self.phase = cidx, key, phase
         self.color = QColor(NODE_PALETTE[cidx % len(NODE_PALETTE)])
 
+    def __getitem__(self, idx: int):
+        fields = (self.x, self.y, self.vx, self.vy, self.cidx, self.key, self.phase)
+        return fields[idx]
+
 
 class _Packet:
     """حزمة بيانات تنساب من عقدة إلى أخرى."""
