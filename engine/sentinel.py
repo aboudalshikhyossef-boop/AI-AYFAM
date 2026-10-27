@@ -115,6 +115,8 @@ class SentinelEngine:
         self.cooldown_map = {}
 
     def start(self):
+        if self.thread is not None and self.thread.is_alive():
+            return
         self.running = True
         self.inotify_source.start()
         self.thread = threading.Thread(target=self._monitor_loop, daemon=True)
@@ -123,6 +125,10 @@ class SentinelEngine:
     def stop(self):
         self.running = False
         self.inotify_source.stop()
+        if self.thread is not None:
+            if self.thread.is_alive() and self.thread != threading.current_thread():
+                self.thread.join(timeout=2.0)
+            self.thread = None
 
     def _notify(self, title: str, msg: str):
         safe_exec.run(["notify-send", "-u", "critical", "AI AYFAM Alert", f"{title}: {msg}"], check_binary=False)
@@ -130,6 +136,8 @@ class SentinelEngine:
     def _monitor_loop(self):
         while self.running:
             for ev in self.inotify_source.yield_events():
+                if not self.running:
+                    break
                 # Dedup / cooldown 10s per subject
                 subj = ev["subject"]
                 now = time.time()
@@ -146,4 +154,7 @@ class SentinelEngine:
                 )
                 self._notify(ev["event_type"], ev["subject"])
 
-            time.sleep(1.0)
+            for _ in range(10):
+                if not self.running:
+                    break
+                time.sleep(0.1)
