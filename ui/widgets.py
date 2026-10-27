@@ -41,20 +41,31 @@ T3 = "rgba(226, 238, 250, 0.38)"
 
 # ───────────── الخلفية الشفقية والتمويه الحقيقي ─────────────
 def paint_aurora(p: QPainter, w: int, h: int, phase: float = 0.0) -> None:
-    """رسم خلفية الفضاء الأورورا الكريستالية مع حركة هادئة وانسيابية."""
+    """رسم خلفية الفضاء الأورورا الكريستالية مع حركة هادئة وانسيابية في الأعماق."""
     g = QLinearGradient(0, 0, w, h)
-    g.setColorAt(0, QColor("#030712"))
-    g.setColorAt(1, QColor("#090f1f"))
+    g.setColorAt(0, QColor("#02050c"))
+    g.setColorAt(0.5, QColor("#060b18"))
+    g.setColorAt(1, QColor("#090f23"))
     p.fillRect(0, 0, w, h, g)
     TEAL, BLUE, VIOLET = Tokens.TEAL, Tokens.BLUE, Tokens.VIOLET
 
-    dx = math.sin(phase) * 0.03
-    dy = math.cos(phase * 0.8) * 0.03
+    dx1 = math.sin(phase) * 0.06
+    dy1 = math.cos(phase * 0.85) * 0.05
+    dx2 = math.cos(phase * 0.7) * 0.05
+    dy2 = math.sin(phase * 0.9) * 0.06
 
-    for cx, cy, r, col, a in ((.80 + dx, .12 + dy, .52, TEAL, 65), (.10 - dx, .90 - dy, .62, QColor("#4f46e5"), 55),
-                              (.52 + dy, .48 + dx, .42, QColor("#0ea5e9"), 28), (.95 - dy, .95 - dx, .38, VIOLET, 30)):
+    blobs = (
+        (0.78 + dx1, 0.15 + dy1, 0.58, TEAL, 75),
+        (0.12 - dx1, 0.88 - dy1, 0.65, QColor("#4338ca"), 60),
+        (0.50 + dy2, 0.45 + dx2, 0.48, QColor("#0284c7"), 38),
+        (0.92 - dy1, 0.92 - dx2, 0.42, VIOLET, 45),
+        (0.30 + dx2, 0.20 + dy2, 0.35, QColor("#0d9488"), 35),
+    )
+
+    for cx, cy, r, col, a in blobs:
         rg = QRadialGradient(QPointF(cx * w, cy * h), r * max(w, h))
         rg.setColorAt(0, Tokens.rgba(col, a))
+        rg.setColorAt(0.6, Tokens.rgba(col, int(a * 0.4)))
         rg.setColorAt(1, Tokens.rgba(col, 0))
         p.fillRect(0, 0, w, h, rg)
 
@@ -152,6 +163,57 @@ class Glass(QWidget):
         path = QPainterPath()
         path.addRoundedRect(QRectF(self.rect()).adjusted(.5, .5, -.5, -.5), self.r, self.r)
         return path
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        rect_f = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
+        path = QPainterPath()
+        path.addRoundedRect(rect_f, self.r, self.r)
+
+        p.setClipPath(path)
+        if (bd := self._backdrop()) is not None and not bd.isNull():
+            p.drawImage(0, 0, bd)
+        else:
+            # Fallback ultra-translucent dark surface
+            p.fillPath(path, QColor(15, 23, 42, 95))
+
+        # Dark Frosted Glass Overlay tint
+        tint_g = QLinearGradient(0, 0, 0, max(1, self.height()))
+        tint_g.setColorAt(0, QColor(255, 255, 255, int(255 * (self.tint + 0.08))))
+        tint_g.setColorAt(0.5, QColor(15, 23, 42, 110))
+        tint_g.setColorAt(1, QColor(10, 15, 28, int(255 * self.tint * 0.7)))
+        p.fillPath(path, tint_g)
+
+        # Hover Specular Spotlight
+        if self.hl > 0.01:
+            rg = QRadialGradient(self.pointer, 260)
+            rg.setColorAt(0, QColor(255, 255, 255, int(55 * self.hl)))
+            rg.setColorAt(0.5, QColor(255, 255, 255, int(15 * self.hl)))
+            rg.setColorAt(1, QColor(255, 255, 255, 0))
+            p.fillPath(path, rg)
+
+        p.setClipping(False)
+
+        # Luminous White Inner Border + Sharp Top Specular Reflection
+        edge = QLinearGradient(0, 0, 0, max(1, self.height()))
+        edge.setColorAt(0.0, QColor(255, 255, 255, 180))  # Sharp Top Specular Reflection Light
+        edge.setColorAt(0.08, QColor(255, 255, 255, 60))
+        edge.setColorAt(0.7, QColor(255, 255, 255, 25))
+        edge.setColorAt(1.0, QColor(255, 255, 255, 45))
+        p.setPen(QPen(QBrush(edge), 1.25))
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        p.drawPath(path)
+
+        # Specular light accent line on top edge
+        top_specular = QLinearGradient(0, 0, max(1, self.width()), 0)
+        top_specular.setColorAt(0.0, QColor(255, 255, 255, 0))
+        top_specular.setColorAt(0.2, QColor(255, 255, 255, 160))
+        top_specular.setColorAt(0.5, QColor(255, 255, 255, 220))
+        top_specular.setColorAt(0.8, QColor(255, 255, 255, 160))
+        top_specular.setColorAt(1.0, QColor(255, 255, 255, 0))
+        p.setPen(QPen(QBrush(top_specular), 1.5))
+        top_line_path = QPainterPath()
+        top_line_path.moveTo(rect_f.left() + self.r * 0.5, rect_f.top())
+        top_line_path.lineTo(rect_f.right() - self.r * 0.5, rect_f.top())
+        p.drawPath(top_line_path)
 
 
 # ───────────── منحنيات ورسوم مخصصة ─────────────
@@ -632,7 +694,7 @@ class NavIndicator(QWidget):
         p.drawRoundedRect(QRectF(self.rect()), 2.0, 2.0)
 
 
-class NavigationWheel(QWidget):
+class NavigationWheel(Glass):
     """قائمة تنقل دائرية تعرض الأيقونات على قوس بمنظور وحركة ثلاثية الأبعاد."""
 
     page_selected = pyqtSignal(str)
@@ -650,7 +712,7 @@ class NavigationWheel(QWidget):
     }
 
     def __init__(self, items: list[tuple[str, str, object, str]], parent=None):
-        super().__init__(parent)
+        super().__init__(radius=22, tint=0.07, parent=parent)
         self.items = items
         self.current_index = 0
         self.direction = 0
@@ -741,11 +803,41 @@ class NavigationWheel(QWidget):
         angle = self._offset_for(index) * 0.56
         return QPointF(self.width() / 2, center_y + radius * math.sin(angle))
 
+    def _paint_glass_panel(self, painter: QPainter, panel: QRectF, panel_path: QPainterPath) -> None:
+        """زجاج حقيقي: تمويه الخلفية خلف اللوحة + طبقة لون شفافة + حافة لامعة + بقعة ضوء عند التحويم."""
+        painter.save()
+        painter.setClipPath(panel_path)
+        backdrop = self._backdrop()
+        if backdrop is not None and not backdrop.isNull():
+            painter.drawImage(0, 0, backdrop)
+        else:
+            painter.fillPath(panel_path, QColor(15, 23, 42, 170))
+        sheen = QLinearGradient(panel.topLeft(), panel.bottomLeft())
+        sheen.setColorAt(0, QColor(255, 255, 255, int(255 * (self.tint + 0.05))))
+        sheen.setColorAt(1, QColor(255, 255, 255, int(255 * self.tint * 0.55)))
+        painter.fillPath(panel_path, sheen)
+        if self.hl > 0.01:
+            glow = QRadialGradient(self.pointer, 200)
+            glow.setColorAt(0, QColor(255, 255, 255, int(38 * self.hl)))
+            glow.setColorAt(1, QColor(255, 255, 255, 0))
+            painter.fillPath(panel_path, glow)
+        painter.restore()
+        edge = QLinearGradient(panel.topLeft(), panel.bottomRight())
+        edge.setColorAt(0, QColor(255, 255, 255, 90))
+        edge.setColorAt(0.5, QColor(255, 255, 255, 18))
+        edge.setColorAt(1, QColor(255, 255, 255, 52))
+        painter.setPen(QPen(QBrush(edge), 1.0))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawPath(panel_path)
+
     def paintEvent(self, _event) -> None:
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         panel = QRectF(12, 8, self.width() - 24, self.height() - 16)
         panel_path = paint_frosted(painter, self, panel, 22, nested=True)
+        panel_path = QPainterPath()
+        panel_path.addRoundedRect(panel, 22, 22)
+        self._paint_glass_panel(painter, panel, panel_path)
 
         current_key = self.items[self.current_index][0]
         group_ar, group_en = self.GROUP_LABELS.get(current_key, ("التنقل", "NAVIGATION"))
@@ -790,12 +882,19 @@ class NavigationWheel(QWidget):
             painter.setBrush(glow)
             painter.drawEllipse(QPointF(0, 0), 48, 48)
             if active or hovered:
-                fill = QColor(4, 12, 22, 54 if active else 34)
-                border = QColor(color_value.red(), color_value.green(), color_value.blue(), 175 if active else 112)
-                painter.setPen(QPen(border, 1.25 if active else 0.9))
-                painter.setBrush(fill)
                 tile_size = 80 if active else 74
-                painter.drawRoundedRect(QRectF(-tile_size / 2, -tile_size / 2, tile_size, tile_size), 22, 22)
+                tile_rect = QRectF(-tile_size / 2, -tile_size / 2, tile_size, tile_size)
+                fill_g = QLinearGradient(tile_rect.topLeft(), tile_rect.bottomRight())
+                fill_g.setColorAt(0, QColor(255, 255, 255, 32 if active else 18))
+                fill_g.setColorAt(0.5, QColor(15, 23, 42, 80 if active else 50))
+                fill_g.setColorAt(1, QColor(10, 15, 28, 90 if active else 60))
+                border_g = QLinearGradient(tile_rect.topLeft(), tile_rect.bottomRight())
+                border_g.setColorAt(0, QColor(255, 255, 255, 230 if active else 150))
+                border_g.setColorAt(0.4, QColor(color_value.red(), color_value.green(), color_value.blue(), 200 if active else 120))
+                border_g.setColorAt(1, QColor(255, 255, 255, 80 if active else 40))
+                painter.setPen(QPen(border_g, 1.25 if active else 0.9))
+                painter.setBrush(fill_g)
+                painter.drawRoundedRect(tile_rect, 22, 22)
             pixmap = icon.pixmap(QSize(max(18, int(icon_size)), max(18, int(icon_size))))
             painter.drawPixmap(QRectF(-icon_size / 2, -icon_size / 2, icon_size, icon_size), pixmap, QRectF(pixmap.rect()))
             painter.restore()

@@ -166,25 +166,34 @@ class ProcessNetworkScanner:
                 # Check 1: Execution from memfd or deleted binary
                 if "memfd:" in exe_target or " (deleted)" in exe_target:
                     clean_exe = exe_target.replace(" (deleted)", "")
-                    findings.append(create_finding(
-                        rule_id="NET-SUSP-PROC",
-                        severity="critical",
-                        title_ar=f"عملية تعمل من ملف محذوف أو الذاكرة المباشرة memfd (PID:{pid})",
-                        title_en=f"Process executing from deleted binary or memfd (PID:{pid})",
-                        detail=f"العملية {proc_name} (PID:{pid}) تنفذ من {exe_target}.\nCMD: {cmdline[:150]}",
-                        fix=f"sudo kill -9 {pid}",
-                        evidence={"pid": pid, "exe": exe_target, "cmdline": cmdline},
-                        stable_key=f"{proc_name}:{clean_exe}",
-                    ))
+                    # Ignore benign deleted binaries due to system updates (e.g. in /usr/bin, /usr/lib, /snap)
+                    is_system_update = " (deleted)" in exe_target and any(clean_exe.startswith(sd) for sd in SYSTEM_DIRS)
+                    if not is_system_update:
+                        findings.append(create_finding(
+                            rule_id="NET-SUSP-PROC",
+                            severity="critical" if "memfd:" in exe_target else "high",
+                            title_ar=f"عملية تعمل من ملف محذوف أو الذاكرة المباشرة memfd (PID:{pid})",
+                            title_en=f"Process executing from deleted binary or memfd (PID:{pid})",
+                            detail=f"العملية {proc_name} (PID:{pid}) تنفذ من {exe_target}.\nCMD: {cmdline[:150]}",
+                            fix=f"sudo kill -9 {pid}",
+                            evidence={"pid": pid, "exe": exe_target, "cmdline": cmdline},
+                            stable_key=f"{proc_name}:{clean_exe}",
+                        ))
 
                 # Check 2: Execution from temporary / suspicious directory
                 real_exe = exe_target.replace(" (deleted)", "")
                 if any(real_exe.startswith(sp) for sp in SUSPICIOUS_PATHS):
+                    # Exclude legitimate user application paths like flatpak, snap, appimages, or virtualenvs
+                    is_legit_app = any(sub in real_exe for sub in (
+                        "/.local/share/flatpak/", "/.local/bin/", "/.venv/", "/venv/", "/.cargo/bin/",
+                        "/.cdda/", "/.steam/", "/.appimage"
+                    )) or real_exe.endswith(".AppImage")
+
                     pkg = self.pkg_index.get_owning_package(real_exe)
-                    if not pkg:  # Not owned by official package
+                    if not pkg and not is_legit_app:  # Not owned by official package nor legitimate user app dir
                         findings.append(create_finding(
                             rule_id="NET-SUSP-PROC",
-                            severity="critical",
+                            severity="critical" if any(real_exe.startswith(p) for p in ("/tmp/", "/dev/shm/", "/var/tmp/", "/run/shm/")) else "medium",
                             title_ar=f"عملية غير موثوقة تعمل من مجلد مؤقت: {real_exe} (PID:{pid})",
                             title_en=f"Untrusted process running from temp dir: {real_exe} (PID:{pid})",
                             detail=f"العملية {proc_name} تنفذ من {real_exe} ولا تتبع لأي حزمة نظام رسمية.\nCMD: {cmdline[:150]}",

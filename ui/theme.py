@@ -1,16 +1,16 @@
 """نظام تصميم زجاجي الداكن الكريستالي (Ultra-Clear Dark Glassmorphism) لسطح مكتب Qt6 — نمط المفهوم الراقي المباشر من Apple Enterprise."""
 from __future__ import annotations
 
-# ── ألوان Dark Glassmorphism الكريستالية الشفافة ──
+# ── ألوان Dark Glassmorphism الكريستالية الشفافة (Frosted Glass Specular) ──
 BG_BASE = "#030712"               # Obsidian Deep Space
-BG_SURFACE = "rgba(15, 23, 42, 0.35)"   # Crystal Dark Glass (35% opacity)
-BG_ELEVATED = "rgba(30, 41, 59, 0.40)"  # Elevated Dark Glass (40% opacity)
-BG_HOVER = "rgba(255, 255, 255, 0.08)"   # Soft Crystal Hover
-BG_INPUT = "rgba(15, 23, 42, 0.50)"     # Input Dark Glass
+BG_SURFACE = "rgba(15, 23, 42, 0.28)"   # Ultra-Translucent Dark Frosted Glass
+BG_ELEVATED = "rgba(20, 30, 50, 0.36)"  # Elevated Frosted Dark Glass
+BG_HOVER = "rgba(255, 255, 255, 0.10)"   # Specular Glass Hover
+BG_INPUT = "rgba(12, 20, 36, 0.40)"     # Input Dark Frosted Glass
 
 # ── الحدود والتوهج الزجاجي الناعم ──
-BORDER = "rgba(255, 255, 255, 0.08)"         # Ultra-faint Crystal Border
-BORDER_LIGHT = "rgba(255, 255, 255, 0.04)"   # Sub-faint Divider
+BORDER = "rgba(255, 255, 255, 0.14)"         # Luminous White Inner Border
+BORDER_LIGHT = "rgba(255, 255, 255, 0.06)"   # Sub-faint Divider
 BORDER_FOCUS = "#2dd4bf"                     # Afyam Teal Focus Accent
 BORDER_GLOW = "rgba(45, 212, 191, 0.25)"     # Subtle Teal Glow
 
@@ -368,10 +368,13 @@ QGraphicsView#attackGraphCanvas {{
     border-radius: 18px;
 }}
 
-/* ── بطاقات العمليات والحاويات الكريستالية ── */
+/* ── بطاقات العمليات والحاويات الكريستالية المضبضبة (Frosted Glass Cards) ── */
 QFrame#card {{
     background: transparent;
     border: 1px solid transparent;
+    background: rgba(15, 23, 42, 0.28);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-top: 1px solid rgba(255, 255, 255, 0.36);
     border-radius: 20px;
 }}
 
@@ -382,6 +385,15 @@ QFrame#card:hover {{
 QGroupBox {{
     background: transparent;
     border: 1px solid transparent;
+    border-color: rgba(45, 212, 191, 0.35);
+    border-top-color: rgba(255, 255, 255, 0.55);
+    background: rgba(15, 23, 42, 0.38);
+}}
+
+QGroupBox {{
+    background: rgba(15, 23, 42, 0.26);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-top: 1px solid rgba(255, 255, 255, 0.32);
     border-radius: 16px;
     margin-top: 0;
     padding: 38px 16px 16px;

@@ -20,37 +20,37 @@ DB_PATH = Path.home() / ".ayfam" / "brain.db"
 
 SEED_INTENTS = [
     # Network
-    ("scan_network",  ["فحص الشبكة","scan network","شبكة","network","اتصالات","connections","scan net"]),
-    ("scan_ports",    ["فحص المنافذ","scan ports","منافذ","ports","port scan","nmap"]),
-    ("check_firewall",["جدار الحماية","firewall","ufw","iptables","check fw","حماية"]),
-    ("check_ip",      ["سمعة IP","ip reputation","check ip","فحص ip","blacklist","نبلاك"]),
-    ("wifi",          ["واي فاي","wifi","wireless","شبكات لاسلكية","wlan"]),
+    ("scan_network",  ["فحص الشبكة","scan network","شبكة","network","اتصالات","connections","scan net","كشف الشبكة","فحص الأجهزة على الشبكة"]),
+    ("scan_ports",    ["فحص المنافذ","scan ports","منافذ","ports","port scan","nmap","فحص البورتات","منافذ مفتوحة"]),
+    ("check_firewall",["جدار الحماية","firewall","ufw","iptables","check fw","حماية","حالة جدار الحماية","تأمين الجدار الناري"]),
+    ("check_ip",      ["سمعة IP","ip reputation","check ip","فحص ip","blacklist","نبلاك","فحص ip مشبوه"]),
+    ("wifi",          ["واي فاي","wifi","wireless","شبكات لاسلكية","wlan","حماية الواي فاي","فحص wifi"]),
     # USB
-    ("usb_control",   ["usb","يو اس بي","فلاشة","flash","هاتف","phone","أجهزة","devices","bluetooth","بلوتوث","wifi adapter"]),
+    ("usb_control",   ["usb","يو اس بي","فلاشة","flash","هاتف","phone","أجهزة","devices","bluetooth","بلوتوث","wifi adapter","التحكم بأجهزة usb"]),
     # System
-    ("scan_system",   ["فحص النظام","scan system","نظام","system","suid","cron","processes","عمليات","مستخدمون","users"]),
-    ("scan_logs",     ["سجلات","logs","log analysis","تحليل سجلات","brute force","auth"]),
+    ("scan_system",   ["فحص النظام","scan system","نظام","system","suid","cron","processes","عمليات","مستخدمون","users","فحص الأمان المحلي","تدقيق النظام"]),
+    ("scan_logs",     ["سجلات","logs","log analysis","تحليل سجلات","brute force","auth","تحليل سجلات النظام","سجلات الأحداث"]),
     # Web/CVE
-    ("scan_website",  ["فحص موقع","scan website","website","موقع","url","http","https","ssl","headers"]),
-    ("cve_search",    ["cve","ثغرة","ثغرات","vulnerability","exploit","سيفي","cisa","nvd"]),
+    ("scan_website",  ["فحص موقع","scan website","website","موقع","url","http","https","ssl","headers","اختبار أمان موقع"]),
+    ("cve_search",    ["cve","ثغرة","ثغرات","vulnerability","exploit","سيفي","cisa","nvd","بحث عن ثغرة cve"]),
     ("pkg_vuln_search", ["ثغرات حزمة","ثغرة حزمة","ثغرات مكتبة","package vulnerabilities",
                           "package vulnerability","osv","pypi vulnerabilities","npm audit",
-                          "dependency vulnerabilities","vulnerable package"]),
+                          "dependency vulnerabilities","vulnerable package","فحص مكتبات النظام"]),
     # GitHub
     ("github",        ["github","جيتهاب","مستودع","repo","repository","token","push report","أدوات"]),
     # Search
-    ("web_search",    ["بحث","search","ابحث","google","دك دك","duckduckgo","إنترنت","internet"]),
+    ("web_search",    ["بحث","search","ابحث","google","دك دك","duckduckgo","إنترنت","internet","ابحث في الويب"]),
     # Fix
-    ("autofix",       ["إصلاح","fix","repair","علاج","حل مشكلة","تطبيق إصلاح"]),
-    ("full_scan",     ["فحص شامل","full scan","شامل","كامل","everything","كل شيء"]),
+    ("autofix",       ["إصلاح","fix","repair","علاج","حل مشكلة","تطبيق إصلاح","تصليح الثغرة","تطبيق العلاج التلقائي"]),
+    ("full_scan",     ["فحص شامل","full scan","شامل","كامل","everything","كل شيء","فحص كامل للنظام والشبكة"]),
     # Update
-    ("update_intel",  ["تحديث","update","تهديدات","threats","intel","kev","cisa update"]),
+    ("update_intel",  ["تحديث","update","تهديدات","threats","intel","kev","cisa update","تحديث قاعدة التهديدات"]),
     # Agent self
-    ("agent_status",  ["كيف حالك","how are you","ما وضعك","status","حالة الوكيل","agent status","معلوماتك"]),
-    ("agent_update",  ["تحديث قاعدة البيانات","update knowledge","تعلّم","learn","improve","تطور","self improve","حدّث نفسك"]),
-    ("explain",       ["اشرح","explain","ما هو","what is","ما معنى","define","تعريف","وصف","describe"]),
-    ("help",          ["مساعدة","help","وش أفعل","ماذا تفعل","قائمة","menu","list","أوامر","commands"]),
-    ("config",        ["إعدادات","settings","config","configuration","ضبط"]),
+    ("agent_status",  ["كيف حالك","how are you","ما وضعك","status","حالة الوكيل","agent status","معلوماتك","وضع الأداء"]),
+    ("agent_update",  ["تحديث قاعدة البيانات","update knowledge","تعلّم","learn","improve","تطور","self improve","حدّث نفسك","تحديث الذكاء المحلي"]),
+    ("explain",       ["اشرح","explain","ما هو","what is","ما معنى","define","تعريف","وصف","describe","وضح لي"]),
+    ("help",          ["مساعدة","help","وش أفعل","ماذا تفعل","قائمة","menu","list","أوامر","commands","كيف استخدمك"]),
+    ("config",        ["إعدادات","settings","config","configuration","ضبط","تغيير الخيارات"]),
     ("exit",          ["خروج","exit","quit","bye","وداعاً","إنهاء"]),
     # Learning / personal library
     ("learn_file",    ["تعلم من ملف","تعلم من كتاب","اقرأ هذا الملف","اقرأ هذا الكتاب","علمك من ملف",
@@ -89,6 +89,11 @@ SEED_KNOWLEDGE = [
     ("port", "3306", "MySQL — قاعدة بيانات. يجب ألا يكون مفتوحاً للخارج."),
     ("port", "5432", "PostgreSQL — قاعدة بيانات. نفس تحذير MySQL."),
     ("port", "27017","MongoDB — قاعدة بيانات. تسببت في تسريبات ضخمة عند تركها مفتوحة."),
+    ("port", "53",   "DNS — تحويل الأسماء إلى عناوين IP. يستهدف في هجمات DNS Amplification."),
+    ("port", "123",  "NTP — مزامنة الوقت. يستهدف في هجمات NTP Amplification."),
+    ("port", "139",  "NetBIOS — مشاركة الملفات والطابعات في شبكات ويندوز القديمة."),
+    ("port", "445",  "SMB — مشاركة الملفات في شبكات ويندوز. استُهدف بثغرات EternalBlue وWannaCry."),
+
     # Attack types
     ("attack", "brute_force",   "هجوم القوة الغاشمة: تجربة كلمات مرور بشكل آلي حتى الوصول. الحل: fail2ban + كلمة مرور قوية."),
     ("attack", "sql_injection",  "حقن SQL: إدخال كود SQL في نماذج الويب للوصول للبيانات. خطير جداً."),
@@ -99,6 +104,18 @@ SEED_KNOWLEDGE = [
     ("attack", "phishing",       "التصيد الاحتيالي: رسائل مزيفة تنتحل هوية جهات موثوقة."),
     ("attack", "rootkit",        "Rootkit: برنامج خبيث يختبئ في عمق النظام ويمنح المخترق تحكماً كاملاً."),
     ("attack", "keylogger",      "Keylogger: يسجل كل ما تكتبه. خطير جداً على كلمات المرور."),
+    ("attack", "zero_day",       "Zero-Day: ثغرة أمنية غير معروفة لمطور البرنامج ولا يوجد لها علاج فور اكتشافها."),
+    ("attack", "privilege_escalation", "تصعيد الصلاحيات: رفع مستوى صلاحيات المستخدم العادي إلى جذر النظام (root)."),
+    ("attack", "supply_chain",   "هجوم سلسلة التوريد: استهداف الموردين أو المكتبات البرمجية للوصول للهدف النهائي."),
+
+    # Linux & Mint administration & hardening
+    ("linux_admin", "linux_mint", "نظام Linux Mint هو توزيعة مبنية على Ubuntu/Debian، توفر بيئة سطح مكتب استثنائية وسلسة للمستخدمين مع مستويات أمان عالية."),
+    ("linux_admin", "ufw", "Uncomplicated Firewall: أداة إدارة جدار الحماية المبسطة في نظام لينكس مينت وأوبونتو."),
+    ("linux_admin", "polkit", "PolicyKit: إطار عمل لإدارة الصلاحيات في أنظمة لينكس يتيح للتطبيقات غير المرتفعة تشغيل العمليات الممتازة عبر المساعد المخصص بصورة آمنة."),
+    ("linux_admin", "sysctl_hardening", "تشديد النواة عبر sysctl: تعديل إعدادات /etc/sysctl.conf لمنع هجمات IP Spoofing وASLR bypass وSYN flood."),
+    ("linux_admin", "apparmor", "AppArmor: نظام تحكم بالوصول الإجباري (MAC) يحد من الصلاحيات والوصول للملفات لكل تطبيق."),
+    ("linux_admin", "auditd", "Auditd: نظام التفتيش والمراقبة لـ Linux Kernel الذي يسجل الأحداث الأمنية والتغييرات الحساسة."),
+
     # Linux commands
     ("cmd", "ss -tulpn",         "يعرض جميع المنافذ المفتوحة والعمليات المرتبطة بها. أسرع من netstat."),
     ("cmd", "netstat -tulpn",    "قائمة المنافذ المفتوحة. مشابه لـ ss لكن أقدم."),
@@ -110,11 +127,15 @@ SEED_KNOWLEDGE = [
     ("cmd", "last",              "سجل تسجيل الدخول الأخير للمستخدمين."),
     ("cmd", "who",               "المستخدمون المسجلون الدخول حالياً."),
     ("cmd", "dmesg",             "رسائل نواة Linux — مفيدة لتشخيص مشاكل الأجهزة."),
+    ("cmd", "journalctl -xe",    "عرض سجلات النظام التفصيلية والأخطاء مع آخر الأحداث."),
+    ("cmd", "sysctl -a",         "عرض جميع إعدادات النواة الجارية."),
+
     # CVE severity
     ("cve_severity", "critical", "CVSS 9.0-10.0: ثغرة خطيرة جداً — تستدعي إجراءً فورياً خلال 24 ساعة."),
     ("cve_severity", "high",     "CVSS 7.0-8.9: خطيرة — يجب معالجتها خلال أسبوع."),
     ("cve_severity", "medium",   "CVSS 4.0-6.9: متوسطة — يجب معالجتها خلال شهر."),
     ("cve_severity", "low",      "CVSS 0.1-3.9: منخفضة — معالجة عند الفرصة."),
+
     # Tools
     ("tool", "nmap",      "أداة فحص الشبكات الأقوى. تكشف المنافذ والخدمات وأنظمة التشغيل."),
     ("tool", "wireshark", "محلل حزم الشبكة. يُظهر كل حزمة بيانات تمر عبر الشبكة."),
@@ -126,6 +147,7 @@ SEED_KNOWLEDGE = [
     ("tool", "john",       "John the Ripper — كسر كلمات المرور. الأقدم والأكثر استخداماً."),
     ("tool", "aircrack",   "فحص واختراق شبكات WiFi. يكشف كلمات مرور WEP/WPA."),
     ("tool", "hydra",      "تجربة كلمات مرور على خدمات متعددة (SSH, FTP, HTTP)."),
+    ("tool", "yara",       "أداة مطابقة الأنماط وتصنيف البرمجيات الخبيثة بناءً على قواعد نصية وثنائية."),
 ]
 
 SEED_ERRORS = [

@@ -31,7 +31,7 @@ def qapp():
     return app
 
 def test_tokens_definition():
-    assert Tokens.DARK_BG_PRIMARY == "#0D1117"
+    assert Tokens.DARK_BG_PRIMARY == "#030712"
     stylesheet = Tokens.get_qss_stylesheet()
     assert "font-family" in stylesheet
     assert Tokens.get_qss_stylesheet(dark_mode=False) != stylesheet
