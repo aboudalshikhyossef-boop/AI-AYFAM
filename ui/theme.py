@@ -899,4 +899,4 @@ def severity_color(severity: str) -> str:
 
 def severity_bg(severity: str) -> str:
     """إرجاع خلفية شفافة مطابقة لمستوى الخطورة."""
-    return f"rgba(45, 212, 191, 0.15)"
+    return alpha(severity_color(severity), 38)
