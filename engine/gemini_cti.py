@@ -451,6 +451,9 @@ def validate_threat_feed(data: Any, window_hours: int = 48) -> dict[str, Any]:
         severity = _text(item.get("severity")).lower()
         if severity not in {"critical", "high", "medium", "low", "info"}:
             severity = "info"
+        sources = _string_list(item.get("sources"))
+        if not any(src.lower().startswith(("http://", "https://")) for src in sources):
+            continue
         clean.append({
             "id": _text(item.get("id")), "title": _text(item.get("title")), "severity": severity,
             "description": _text(item.get("description")),
@@ -458,7 +461,7 @@ def validate_threat_feed(data: Any, window_hours: int = 48) -> dict[str, Any]:
             "affected_versions": _string_list(item.get("affected_versions")),
             "iocs": _string_list(item.get("iocs")),
             "recommendations": _string_list(item.get("recommendations")),
-            "sources": _string_list(item.get("sources")),
+            "sources": sources,
             "published_at": _text(item.get("published_at")),
         })
     return {"generated_at": _text(data.get("generated_at")) or datetime.now(timezone.utc).isoformat(), "window_hours": window_hours, "threats": clean}

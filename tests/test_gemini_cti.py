@@ -146,6 +146,30 @@ class GeminiCTITests(unittest.TestCase):
     def test_cti_search_uses_free_tier_search_model(self):
         self.assertEqual(CTI_SEARCH_MODEL, "gemini-2.5-flash-lite")
 
+    def test_source_validation_filters_invalid_or_missing_sources(self):
+        raw_feed = {
+            "threats": [
+                {
+                    "id": "CVE-001", "title": "HTTP source", "sources": ["http://example.com/advisory"],
+                },
+                {
+                    "id": "CVE-002", "title": "HTTPS source", "sources": ["https://example.com/advisory"],
+                },
+                {
+                    "id": "CVE-003", "title": "Non HTTP/HTTPS source", "sources": ["ftp://example.com/advisory"],
+                },
+                {
+                    "id": "CVE-004", "title": "Empty sources list", "sources": [],
+                },
+                {
+                    "id": "CVE-005", "title": "Missing sources field",
+                },
+            ]
+        }
+        validated = validate_threat_feed(raw_feed)
+        threat_ids = [t["id"] for t in validated["threats"]]
+        self.assertEqual(threat_ids, ["CVE-001", "CVE-002"])
+
     def test_invalid_listed_model_stops_without_fallback_burst(self):
         class Response:
             def __init__(self, status_code, text, output=None):
