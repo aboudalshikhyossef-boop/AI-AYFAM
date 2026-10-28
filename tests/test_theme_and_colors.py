@@ -50,3 +50,57 @@ def test_no_unapproved_hardcoded_hex_colors():
             unapproved.append((filepath, forbidden))
 
     assert not unapproved, f"Found unapproved hex colors outside theme.py: {unapproved}"
+
+
+def test_severity_bg():
+    from ui.theme import (
+        SEV_CRITICAL,
+        SEV_HIGH,
+        SEV_MEDIUM,
+        SEV_LOW,
+        SEV_INFO,
+        SEV_SAFE,
+        alpha,
+        severity_bg,
+        severity_color,
+    )
+
+    # 1. critical
+    assert severity_bg("critical") == alpha(SEV_CRITICAL, 38)
+    assert severity_bg("CRITICAL") == alpha(severity_color("critical"), 38)
+
+    # 2. high
+    assert severity_bg("high") == alpha(SEV_HIGH, 38)
+    assert severity_bg("HIGH") == alpha(severity_color("high"), 38)
+
+    # 3. medium
+    assert severity_bg("medium") == alpha(SEV_MEDIUM, 38)
+    assert severity_bg("Medium") == alpha(severity_color("medium"), 38)
+
+    # 4. low
+    assert severity_bg("low") == alpha(SEV_LOW, 38)
+    assert severity_bg("LOW") == alpha(severity_color("low"), 38)
+
+    # 5. info
+    assert severity_bg("info") == alpha(SEV_INFO, 38)
+    assert severity_bg("INFO") == alpha(severity_color("info"), 38)
+
+    # 6. safe
+    assert severity_bg("safe") == alpha(SEV_SAFE, 38)
+    assert severity_bg("SAFE") == alpha(severity_color("safe"), 38)
+
+    # 7. unknown value
+    assert severity_bg("unknown_level") == alpha(SEV_INFO, 38)
+    assert severity_bg("unknown_level") == alpha(severity_color("unknown_level"), 38)
+
+    # 8. empty value
+    assert severity_bg("") == alpha(SEV_INFO, 38)
+    assert severity_bg(None) == alpha(SEV_INFO, 38)
+    assert severity_bg("") == alpha(severity_color(""), 38)
+
+    # Verify that different severities produce distinct background colors matching severity_color
+    assert severity_bg("critical") != severity_bg("high")
+    assert severity_bg("high") != severity_bg("medium")
+    assert severity_bg("medium") != severity_bg("low")
+    assert severity_bg("low") != severity_bg("info")
+    assert severity_bg("info") != severity_bg("safe")
