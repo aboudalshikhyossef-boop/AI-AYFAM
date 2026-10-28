@@ -38,6 +38,9 @@ class ParallelTrainer:
 
     def generate_synthetic_dataset(self, samples_per_intent: int = 25) -> List[EvaluationSample]:
         """توليد مجموعة بيانات سينتاتيكية ضخمة بناءً على الأنماط والأوامر المعرفة"""
+        if isinstance(samples_per_intent, bool) or not isinstance(samples_per_intent, int) or samples_per_intent < 0:
+            raise ValueError("samples_per_intent must be a non-negative integer")
+
         dataset = []
         intents = self.kb.get_intents()
 
@@ -74,8 +77,19 @@ class ParallelTrainer:
 
     def run_benchmark(self, dataset: Optional[List[EvaluationSample]] = None, max_workers: int = 4) -> BenchmarkReport:
         """تشغيل التقييم المقارن بشكل متوازي وحساب الدقة وسرعة الاستجابة"""
-        if not dataset:
+        if isinstance(max_workers, bool) or not isinstance(max_workers, int) or max_workers <= 0:
+            raise ValueError("max_workers must be a positive integer")
+
+        if dataset is None:
             dataset = self.generate_synthetic_dataset()
+        elif len(dataset) == 0:
+            return BenchmarkReport(
+                total_samples=0,
+                correct_matches=0,
+                accuracy_percentage=0.0,
+                average_response_ms=0.0,
+                failures=[]
+            )
 
         correct = 0
         total_ms = 0.0
