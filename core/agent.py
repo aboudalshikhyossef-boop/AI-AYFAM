@@ -275,17 +275,24 @@ class AYFAMAgent(AgentV5Mixin):
         حزم فقط لتفادي بطء ملحوظ أو تجاوز حد الطلبات). كل نتيجة هنا موسومة
         بوضوح بمصدرها حتى يُفرَّق بينها وبين نتائج الفحص المحلي الخام."""
         findings = []
-        if not packages:
+        if not isinstance(packages, list) or not packages:
             return findings
 
         kev = web.get_cisa_known_exploited(max_results=100)
-        kev_products = {(v.get("product") or "").lower() for v in kev if "error" not in v and v.get("product")}
+        kev_products = {(v.get("product") or "").lower() for v in kev if isinstance(v, dict) and "error" not in v and v.get("product")}
 
         nvd_key = self.settings.get("nvd_api_key", "")
         checked_via_nvd = 0
         for pkg in packages[:8]:
-            name = pkg["package"]
-            if any(name in p or p in name for p in kev_products if len(p) > 2):
+            if not isinstance(pkg, dict):
+                continue
+            name = pkg.get("package")
+            if not isinstance(name, str) or not name.strip():
+                continue
+            name = name.strip()
+            name_lower = name.lower()
+
+            if any(name_lower in p or p in name_lower for p in kev_products if isinstance(p, str) and len(p) > 2):
                 findings.append({
                     "severity": "critical",
                     "title": self._t(
@@ -301,7 +308,9 @@ class AYFAMAgent(AgentV5Mixin):
                 continue
             checked_via_nvd += 1
             cves = web.search_cve(name, days_back=180, max_results=3, api_key=nvd_key)
-            valid = [c for c in cves if "error" not in c and (c.get("severity") or "").upper() in ("HIGH", "CRITICAL")]
+            if not isinstance(cves, list):
+                continue
+            valid = [c for c in cves if isinstance(c, dict) and "error" not in c and (c.get("severity") or "").upper() in ("HIGH", "CRITICAL")]
             if valid:
                 top = valid[0]
                 findings.append({
