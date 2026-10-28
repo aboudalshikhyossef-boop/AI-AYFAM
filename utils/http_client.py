@@ -5,7 +5,7 @@ AI AYFAM — Unified HTTP Client with Standard Library Fallback
 
 from __future__ import annotations
 
-import json
+import json as _json
 import urllib.request
 import urllib.error
 import urllib.parse
@@ -30,7 +30,7 @@ class ResponseWrapper:
         self.ok = 200 <= status_code < 400
 
     def json(self) -> Any:
-        return json.loads(self.text)
+        return _json.loads(self.text)
 
 
 def get(url: str, headers: dict | None = None, params: dict | None = None, timeout: float = 15.0, stream: bool = False, **kwargs: Any) -> Any:
@@ -66,7 +66,7 @@ def post(url: str, headers: dict | None = None, json_data: Any = None, data: Any
     hdrs = dict(headers or {})
     payload: bytes = b""
     if target_json is not None:
-        payload = __import__("json").dumps(target_json).encode("utf-8")
+        payload = _json.dumps(target_json).encode("utf-8")
         hdrs["Content-Type"] = "application/json"
     elif isinstance(data, (dict, list)):
         payload = urllib.parse.urlencode(data).encode("utf-8")
@@ -95,9 +95,18 @@ def put(url: str, headers: dict | None = None, json_data: Any = None, timeout: f
         return requests.put(url, headers=headers, json=target_json, data=data, timeout=timeout, **kwargs)
 
     hdrs = dict(headers or {})
-    payload = json.dumps(target_json).encode("utf-8") if target_json is not None else (data or b"")
+    payload: bytes = b""
     if target_json is not None:
+        payload = _json.dumps(target_json).encode("utf-8")
         hdrs["Content-Type"] = "application/json"
+    elif isinstance(data, (dict, list)):
+        payload = urllib.parse.urlencode(data).encode("utf-8")
+        hdrs["Content-Type"] = "application/x-www-form-urlencoded"
+    elif isinstance(data, str):
+        payload = data.encode("utf-8")
+    elif isinstance(data, bytes):
+        payload = data
+
     req = urllib.request.Request(url, data=payload, headers=hdrs, method="PUT")
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
