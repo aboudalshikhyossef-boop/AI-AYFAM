@@ -164,3 +164,37 @@ def test_confirm_sound_profile_does_not_play_success_for_each_click(qapp):
     assert click.volume == 0.18
     sound.play("success")
     assert success.plays == 1
+
+
+def test_attack_graph_render_chain_fallback_and_summary_sync(qapp):
+    graph = AttackChainGraphView()
+    graph.render_chain([{
+        "severity": "high",
+        "title": "Chain with no evidence",
+        "detail": "Test detail",
+    }])
+    assert not graph.view.isHidden()
+    assert graph.empty_state.isHidden()
+    assert len(graph.scene.items()) > 0
+    assert "1 سلسلة / chains" in graph.summary.text()
+    assert "1 دليل / evidence" in graph.summary.text()
+
+
+def test_attack_graph_render_chain_empty_clears_scene(qapp):
+    graph = AttackChainGraphView()
+    graph.render_chain([{
+        "severity": "critical",
+        "title": "SSH compromise path",
+        "detail": "Correlated fixture chain.",
+        "evidence": {
+            "ssh_title": "Weak SSH configuration",
+        },
+    }])
+    assert not graph.view.isHidden()
+    assert len(graph.scene.items()) > 0
+
+    graph.render_chain([])
+    assert len(graph.scene.items()) == 0
+    assert graph.view.isHidden()
+    assert not graph.empty_state.isHidden()
+    assert "لا توجد سلاسل مرتبطة / No correlated chains" in graph.summary.text()
