@@ -56,6 +56,21 @@ class TestCoreAgentCVEEnrichment(unittest.TestCase):
             findings = self.agent._enrich_packages_with_cve(invalid_packages)
             self.assertEqual(findings, [], "Invalid package entries must be safely skipped without errors or false findings")
 
+    def test_enrich_packages_malformed_kev_and_cve_dict(self):
+        """Test handling of non-list or malformed KEV responses and CVE items missing 'id'."""
+        malformed_kev = "not_a_list"
+        mock_cves = [
+            {"severity": "HIGH", "description": "CVE without ID key", "cvss_score": 7.5}
+        ]
+        packages = [{"package": "validpkg"}]
+
+        with patch("tools.web.get_cisa_known_exploited", return_value=malformed_kev), \
+             patch("tools.web.search_cve", return_value=mock_cves):
+            findings = self.agent._enrich_packages_with_cve(packages)
+            self.assertEqual(len(findings), 1)
+            self.assertIn("CVE", findings[0]["title"])
+            self.assertEqual(findings[0]["severity"], "high")
+
     def test_enrich_packages_cisa_kev_case_insensitive(self):
         """Test that matching against CISA KEV products is case-insensitive."""
         mock_kev = [

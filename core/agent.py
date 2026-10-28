@@ -279,7 +279,15 @@ class AYFAMAgent(AgentV5Mixin):
             return findings
 
         kev = web.get_cisa_known_exploited(max_results=100)
-        kev_products = {(v.get("product") or "").lower() for v in kev if isinstance(v, dict) and "error" not in v and v.get("product")}
+        if not isinstance(kev, list):
+            kev = []
+
+        kev_products = set()
+        for v in kev:
+            if isinstance(v, dict) and "error" not in v:
+                prod = v.get("product")
+                if isinstance(prod, str) and prod.strip():
+                    kev_products.add(prod.strip().lower())
 
         nvd_key = self.settings.get("nvd_api_key", "")
         checked_via_nvd = 0
@@ -292,7 +300,7 @@ class AYFAMAgent(AgentV5Mixin):
             name = name.strip()
             name_lower = name.lower()
 
-            if any(name_lower in p or p in name_lower for p in kev_products if isinstance(p, str) and len(p) > 2):
+            if any(name_lower in p or p in name_lower for p in kev_products if len(p) > 2):
                 findings.append({
                     "severity": "critical",
                     "title": self._t(
@@ -313,10 +321,11 @@ class AYFAMAgent(AgentV5Mixin):
             valid = [c for c in cves if isinstance(c, dict) and "error" not in c and (c.get("severity") or "").upper() in ("HIGH", "CRITICAL")]
             if valid:
                 top = valid[0]
+                cve_id = top.get("id", "CVE")
                 findings.append({
                     "severity": "high" if (top.get("severity") or "").upper() == "HIGH" else "critical",
-                    "title": self._t(f"حزمة {name} قابلة للترقية — ثغرة محتملة الصلة: {top['id']}",
-                                       f"Package {name} is upgradable — potentially related CVE: {top['id']}"),
+                    "title": self._t(f"حزمة {name} قابلة للترقية — ثغرة محتملة الصلة: {cve_id}",
+                                       f"Package {name} is upgradable — potentially related CVE: {cve_id}"),
                     "detail": f"{(top.get('description') or '')[:150]} (CVSS: {top.get('cvss_score','?')})",
                     "fix": f"sudo apt-get install --only-upgrade {name}\n{top.get('url','')}",
                     "cve_enriched": True,
