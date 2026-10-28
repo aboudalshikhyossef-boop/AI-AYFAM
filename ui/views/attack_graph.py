@@ -87,6 +87,7 @@ class AttackChainGraphView(QWidget):
             self.view.hide()
             return
 
+        total_evidence = 0
         for chain_index, chain in enumerate(chains):
             y = chain_index * self.ROW_GAP
             severity = str(chain.get("severity", "high")).lower()
@@ -97,7 +98,9 @@ class AttackChainGraphView(QWidget):
 
             if not evidence:
                 evidence = ["لا تتوفر تفاصيل أدلة منفصلة لهذه السلسلة / No separate evidence details are available."]
-            for evidence_index, title in enumerate(evidence[:4]):
+            displayed_evidence = evidence[:4]
+            total_evidence += len(displayed_evidence)
+            for evidence_index, title in enumerate(displayed_evidence):
                 node_x = 40 + (evidence_index % 2) * 310
                 node_y = y + (evidence_index // 2) * 98
                 self._add_edge(QPointF(node_x + self.NODE_WIDTH, node_y + self.NODE_HEIGHT / 2),
@@ -106,7 +109,6 @@ class AttackChainGraphView(QWidget):
 
         scene_rect = self.scene.itemsBoundingRect().adjusted(-24, -24, 24, 24)
         self.scene.setSceneRect(scene_rect)
-        total_evidence = sum(len(self._evidence_titles(c.get("evidence"), sources)) for c in chains)
         self.summary.setText(f"{len(chains)} سلسلة / chains  •  {total_evidence} دليل / evidence")
         self.empty_state.hide()
         self.view.show()
