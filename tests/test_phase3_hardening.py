@@ -23,6 +23,43 @@ def test_critical_paths_and_current_process_are_rejected():
     assert "AI AYFAM" in message
 
 
+def test_validate_safe_path_symlink_and_unprotected_paths(tmp_path):
+    # 1. Symlink pointing to a protected file (/etc/passwd)
+    symlink_file = tmp_path / "symlink_passwd"
+    try:
+        os.symlink("/etc/passwd", symlink_file)
+    except OSError:
+        pass
+    else:
+        ok, msg = validators.validate_safe_path(str(symlink_file))
+        assert not ok
+        assert "محم" in msg
+
+    # 2. Symlink pointing to a protected directory (/etc)
+    symlink_dir = tmp_path / "symlink_etc"
+    try:
+        os.symlink("/etc", symlink_dir)
+    except OSError:
+        pass
+    else:
+        ok, msg = validators.validate_safe_path(str(symlink_dir))
+        assert not ok
+        assert "محم" in msg
+
+    # 3. Normal temporary file
+    normal_file = tmp_path / "normal.txt"
+    normal_file.write_text("safe content", encoding="utf-8")
+    ok, val = validators.validate_safe_path(str(normal_file))
+    assert ok
+    assert val == str(normal_file)
+
+    # 4. Non-existent path in normal directory
+    non_existent = tmp_path / "does_not_exist.txt"
+    ok, val = validators.validate_safe_path(str(non_existent))
+    assert ok
+    assert val == str(non_existent)
+
+
 def test_pickle_artifacts_must_be_owned_and_private(tmp_path):
     artifact = tmp_path / "index.pkl"
     artifact.write_bytes(b"not a pickle")
