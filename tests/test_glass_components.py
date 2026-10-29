@@ -36,7 +36,7 @@ def test_glass_analog_clock(qapp):
     clock = GlassAnalogClock()
     assert clock.width() == 58
     assert clock.height() == 58
-    assert clock.timer.interval() == 50
+    assert clock.timer.interval() == 1000
 
 
 def test_navigation_wheel_animates_between_pages(qapp):
