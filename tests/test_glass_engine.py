@@ -3,13 +3,45 @@ import os
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+import pytest
 from PyQt6.QtGui import QImage, QPainter
-from PyQt6.QtCore import QRectF
+from PyQt6.QtCore import QEvent, QRectF
 from PyQt6.QtWidgets import QApplication, QGroupBox, QVBoxLayout, QWidget
 
 from ui.glass_engine import BackdropCanvas, FrostedGlassController, LiveBackdrop, paint_frosted
 
 _app = QApplication.instance() or QApplication([])
+
+
+@pytest.fixture(autouse=True)
+def _cleanup_qt_objects():
+    """Release test widgets before the interpreter tears down Qt bindings."""
+    yield
+    app = QApplication.instance()
+    if app is None:
+        return
+    for widget in list(QApplication.topLevelWidgets()):
+        widget.close()
+        widget.deleteLater()
+    app.processEvents()
+    app.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    app.processEvents()
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _shutdown_qt_session():
+    """Stop the shared QApplication cleanly after all Qt tests finish."""
+    yield
+    app = QApplication.instance()
+    if app is None:
+        return
+    for widget in list(QApplication.topLevelWidgets()):
+        widget.close()
+        widget.deleteLater()
+    app.processEvents()
+    app.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    app.quit()
+    app.processEvents()
 
 
 def test_backdrop_builds_blurred_frame_and_moves():
