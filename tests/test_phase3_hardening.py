@@ -46,6 +46,24 @@ def test_validate_safe_path_symlink_and_unprotected_paths(tmp_path):
         assert not ok
         assert "محم" in msg
 
+    # Symlink pointing to a file inside a protected directory (/etc/issue)
+    symlink_issue = tmp_path / "symlink_issue"
+    try:
+        os.symlink("/etc/issue", symlink_issue)
+    except OSError:
+        pass
+    else:
+        ok, msg = validators.validate_safe_path(str(symlink_issue))
+        assert not ok
+        assert "محم" in msg
+
+    # Virtual path through symlinked directory pointing inside /etc
+    if symlink_dir.exists():
+        file_under_symdir = symlink_dir / "some_file"
+        ok, msg = validators.validate_safe_path(str(file_under_symdir))
+        assert not ok
+        assert "محم" in msg
+
     # 3. Normal temporary file
     normal_file = tmp_path / "normal.txt"
     normal_file.write_text("safe content", encoding="utf-8")
