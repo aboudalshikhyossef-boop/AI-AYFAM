@@ -1260,6 +1260,8 @@ class FrostedGlassController(QObject):
             return False
         if not isinstance(obj, QWidget) or isinstance(obj, self.VIEWS):
             return False       # الألواح الزجاجية للعروض تُرسم على الـ viewport فقط
+        if obj.__class__.__name__ in ("Glass", "NavigationWheel", "TelemetryChart", "SecurityGauge"):
+            return False       # هذه العناصر ترسم الزجاج داخل paintEvent الخاص بها
         try:
             self.paints += 1
             p = QPainter(obj)

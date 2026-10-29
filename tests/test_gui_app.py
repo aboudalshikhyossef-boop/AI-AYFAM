@@ -9,7 +9,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 try:
     from PyQt6.QtCore import QEventLoop, QTimer
-    from PyQt6.QtWidgets import QApplication
+    from PyQt6.QtGui import QCloseEvent
+    from PyQt6.QtWidgets import QApplication, QMainWindow
     from ui.gui_app import GuiTerminalUI, UnifiedCockpitWindow, WorkerThread
 except (ImportError, OSError) as exc:
     pytest.skip(f"Qt runtime is unavailable ({exc})", allow_module_level=True)
@@ -86,5 +87,58 @@ from ui.intro_splash import AyfamIntroSplash, SystemOverviewDialog
 check("AyfamIntroSplash class is loadable", hasattr(AyfamIntroSplash, "BOOT_STEPS"))
 check("boot sequence defines 5 stages", len(AyfamIntroSplash.BOOT_STEPS) == 5)
 check("SystemOverviewDialog class is loadable", issubclass(SystemOverviewDialog, object))
+
+
+def test_close_event_never_waits_for_a_running_worker():
+    class Signal:
+        def connect(self, callback):
+            self.callback = callback
+
+    class RunningWorker:
+        def __init__(self):
+            self.running = True
+            self.interruption_requested = False
+            self.quit_requested = False
+            self.finished = Signal()
+
+        def isRunning(self):
+            return self.running
+
+        def requestInterruption(self):
+            self.interruption_requested = True
+
+        def quit(self):
+            self.quit_requested = True
+
+        def wait(self, *_args):
+            raise AssertionError("closeEvent must not block waiting for workers")
+
+    window = UnifiedCockpitWindow.__new__(UnifiedCockpitWindow)
+    QMainWindow.__init__(window)
+    window.timer = QTimer(window)
+    window.event_timer = QTimer(window)
+    window.timer.start(100)
+    window.event_timer.start(100)
+    worker = RunningWorker()
+    window.worker = worker
+    window.telemetry_worker = None
+    window._closing_after_workers = False
+    window.show()
+    app.processEvents()
+    assert window.isVisible()
+
+    event = QCloseEvent()
+    window.closeEvent(event)
+    assert not event.isAccepted()
+    assert worker.interruption_requested and worker.quit_requested
+    assert not window.timer.isActive() and not window.event_timer.isActive()
+    assert not window.isVisible()
+
+    worker.running = False
+    window._finish_close_after_workers()
+    app.processEvents()
+    assert not window._closing_after_workers
+    window.deleteLater()
+
 
 print(f"\nTOTAL GUI TESTS: {passed} passed, {failed} failed")

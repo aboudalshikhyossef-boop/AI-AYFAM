@@ -418,7 +418,7 @@ class GlassAnalogClock(QWidget):
         self.hover_animation.valueChanged.connect(self._set_hover_strength)
         self.timer = QTimer(self)
         self.timer.timeout.connect(self._tick)
-        self.timer.start(50)
+        self.timer.start(1000)
 
     def _set_hover_strength(self, value) -> None:
         self.hover_strength = float(value)
@@ -550,7 +550,7 @@ class AccentLine(QWidget):
         self.accent = QColor(ACCENT)
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._tick)
-        self._timer.start(40)
+        self._timer.start(80)
 
     def set_accent(self, color: str) -> None:
         self.accent = QColor(color)
@@ -1309,7 +1309,8 @@ class FlowController(QObject):
         widget.destroyed.connect(lambda _=None, key=widget: self.borders.pop(key, None))
 
     def _tick(self):
-        if not self.root.isActiveWindow():
+        window = self.root.window()
+        if not window.isActiveWindow() or window.isMinimized():
             return
         step = self.INTERVAL / 1000
         for widget, border in tuple(self.borders.items()):
@@ -1374,11 +1375,15 @@ class HoverController(QObject):
             widget.setCursor(shape)
 
     def _tick(self):
-        window = self.root
+        window = self.root.window()
+        if not window.isActiveWindow() or window.isMinimized():
+            self.active.clear()
+            return
+
         pos = QCursor.pos()
         moved = pos != self._last_cursor
         self._last_cursor = pos
-        if window.isActiveWindow() and (moved or self.animating):
+        if moved or self.animating:
             chain = set()
             widget = QApplication.widgetAt(pos)
             while widget is not None:
@@ -1390,8 +1395,6 @@ class HoverController(QObject):
                         chain.add(widget)
                 widget = widget.parentWidget()
             self.active = chain
-        elif not window.isActiveWindow():
-            self.active = set()
         for key in self.active:
             overlay = self.overlays[key]
             if overlay.geometry() != key.rect():

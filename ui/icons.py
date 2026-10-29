@@ -14,10 +14,39 @@ from ui.theme import ACCENT, COLOR_ICON_INACTIVE, COLOR_ICON_ACTIVE, PAGE_ACCENT
 ICON_DIR = Path(__file__).resolve().parents[1] / "resources" / "icons"
 ICON_COLORS = {**PAGE_ACCENTS, "send": COLOR_ICON_ACTIVE}
 
+_SVG_COLOR_RE = re.compile(r'(stroke|fill)[:=]["\']?#[0-9a-fA-F]{3,8}["\']?')
+_SVG_STYLE_RE = re.compile(r'\bstyle\s*=\s*(["\'])(.*?)\1', re.DOTALL)
 
+
+@lru_cache(maxsize=64)
+def _read_svg(name: str) -> str:
+    """Read each source SVG only once; recoloring never performs disk I/O."""
+    return (ICON_DIR / f"{name}.svg").read_text(encoding="utf-8")
+
+
+@lru_cache(maxsize=128)
 def _recolor(name: str, color: str) -> QByteArray:
-    text = (ICON_DIR / f"{name}.svg").read_text(encoding="utf-8")
-    text = re.sub(r'(stroke|fill)="#[0-9a-fA-F]{3,8}"', rf'\1="{color}"', text)
+    text = _read_svg(name)
+
+    # Keep inline CSS declarations as valid CSS (rather than inserting XML
+    # attributes inside the quoted style value).
+    styles: list[str] = []
+
+    def preserve_style(match: re.Match[str]) -> str:
+        quote, declarations = match.groups()
+        recolored = re.sub(
+            r'(stroke|fill)\s*:\s*#[0-9a-fA-F]{3,8}\b',
+            lambda property_match: f"{property_match.group(1)}:{color}",
+            declarations,
+            flags=re.IGNORECASE,
+        )
+        styles.append(f"style={quote}{recolored}{quote}")
+        return f"__AYFAM_SVG_STYLE_{len(styles) - 1}__"
+
+    text = _SVG_STYLE_RE.sub(preserve_style, text)
+    text = _SVG_COLOR_RE.sub(rf'\1="{color}"', text)
+    for index, style_attribute in enumerate(styles):
+        text = text.replace(f"__AYFAM_SVG_STYLE_{index}__", style_attribute)
     return QByteArray(text.encode("utf-8"))
 
 
