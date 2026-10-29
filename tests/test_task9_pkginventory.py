@@ -33,23 +33,25 @@ def test_query_osv_batch_chunks_and_network_error():
         assert "OSV.dev" in err or "انقطاع الشبكة" in err
 
     # Simulate successful batch response
-    sample_resp = MagicMock()
-    sample_resp.read.return_value = json.dumps({
-        "results": [
-            {
-                "vulns": [
-                    {
-                        "id": "GHSA-1234",
-                        "details": "Critical issue"
-                    }
-                ]
-            }
-            for _ in range(50)
-        ]
-    }).encode("utf-8")
-    sample_resp.__enter__.return_value = sample_resp
+    def _create_mock_resp():
+        resp = MagicMock()
+        resp.read.return_value = json.dumps({
+            "results": [
+                {
+                    "vulns": [
+                        {
+                            "id": "GHSA-1234",
+                            "details": "Critical issue"
+                        }
+                    ]
+                }
+                for _ in range(50)
+            ]
+        }).encode("utf-8")
+        resp.__enter__.return_value = resp
+        return resp
 
-    with patch("urllib.request.urlopen", return_value=sample_resp):
+    with patch("urllib.request.urlopen", side_effect=lambda req, **kw: _create_mock_resp()):
         findings, err = engine.query_osv_batch(pkgs, batch_size=50)
         assert err is None
         assert len(findings) > 0
