@@ -39,6 +39,7 @@ from tools.usb_control import (
 from tools.websearch import DEFAULT_GOOGLE_CSE_CX
 from ui.terminal import TerminalUI
 from ui.icons import ICON_COLORS, framed_icon, glyph_icon
+from ui.qt_safety import install_exception_guard
 from ui.glass_engine import BackdropCanvas, FrostedGlassController, LiveBackdrop
 from ui.widgets import (
     AccentLine, AmbientSurface, ChatView, Glass, GlassAnalogClock, HoverController,
@@ -3012,6 +3013,7 @@ def launch_gui() -> None:
     if not preflight.ok:
         print(preflight.text(), file=sys.stderr)
         raise SystemExit(2)
+    install_exception_guard()
     app = QApplication.instance() or QApplication(sys.argv)
     load_application_fonts()
     splash = AuroraSplash()

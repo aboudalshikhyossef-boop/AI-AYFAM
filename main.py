@@ -94,12 +94,14 @@ def run_gui(no_splash: bool = False) -> int:
         from PyQt6.QtWidgets import QApplication
         from ui.gui_app import UnifiedCockpitWindow
         from ui.intro_splash import AyfamIntroSplash
+        from ui.qt_safety import install_exception_guard
     except ImportError as exc:
         print(f"[!] PyQt6 غير مثبت أو مكتبات الواجهة ناقصة: {exc}", file=sys.stderr)
         print("[*] ثبّت التطبيق عبر setup.sh أو: python3 -m pip install PyQt6", file=sys.stderr)
         print("[*] هذا الإصدار يعمل كتطبيق سطح مكتب فقط، بدون طرفية وبدون واجهة ويب.", file=sys.stderr)
         return 2
 
+    install_exception_guard()
     try:
         app = QApplication.instance()
         if not app:

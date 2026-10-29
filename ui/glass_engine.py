@@ -23,6 +23,7 @@ import time
 import weakref
 from dataclasses import dataclass
 
+from ui.qt_safety import safe_slot
 from PyQt6.QtCore import QEvent, QLineF, QObject, QPoint, QPointF, QRectF, QSize, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import (QBrush, QColor, QCursor, QImage, QKeySequence, QLinearGradient, QPainter, QPainterPath, QPen,
                          QPixmap, QRadialGradient, QShortcut)
@@ -407,6 +408,7 @@ class LiveBackdrop(QObject):
     def _link_dist(self, w: float) -> float:
         return self.LINK_BASE * max(0.2, w / 1400.0)
 
+    @safe_slot
     def _tick(self) -> None:
         if self.paused:
             self._last = time.perf_counter()
@@ -1172,6 +1174,7 @@ class FrostedGlassController(QObject):
                 SLOW_WIDGETS.add(vp)
 
     # ---- دورة الإطار ----
+    @safe_slot
     def _on_frame(self) -> None:
         win = self.root.window()
         bd = self.backdrop

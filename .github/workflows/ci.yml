@@ -54,6 +54,7 @@ jobs:
           mypy engine/ --ignore-missing-imports || true
 
       - name: Run Pytest Suite
+        shell: bash
         env:
           QT_QPA_PLATFORM: offscreen
           PYTHONPATH: .
@@ -62,8 +63,14 @@ jobs:
           # tests on the hosted runner. The complete suite runs on Python 3.10;
           # keep direct UI compatibility coverage on 3.12 without changing
           # application code.
+          set +e
           if [ "${{ matrix.python-version }}" = "3.12" ]; then
-            python -m pytest -q tests/test_glass_engine.py tests/test_theme_and_colors.py
+            python -X faulthandler -m pytest -q -p no:cacheprovider tests/test_glass_engine.py tests/test_theme_and_colors.py tests/test_qt_safety.py 2>&1 | tee pytest.log
           else
-            xvfb-run -a python -m pytest -q
+            python -X faulthandler -m pytest -v -p no:cacheprovider 2>&1 | tee pytest.log
           fi
+          code=${PIPESTATUS[0]}
+          if [ "$code" -ne 0 ]; then
+            python .github/scripts/ci_failure_summary.py pytest.log "$code"
+          fi
+          exit "$code"
