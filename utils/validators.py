@@ -109,11 +109,13 @@ def validate_safe_path(value: str, must_be_absolute: bool = True):
     if must_be_absolute and not os.path.isabs(v):
         return False, f"يجب أن يكون المسار مطلقاً: '{value}'"
     normalized = os.path.normpath(v)
-    if normalized in _PROTECTED_PATHS:
-        return False, f"المسار محمي ولا يُسمح بتعديله تلقائياً: '{normalized}'"
     real_p = os.path.realpath(normalized)
-    if real_p in _PROTECTED_PATHS:
-        return False, f"المسار محمي ولا يُسمح بتعديله تلقائياً: '{normalized}'"
+    for p in (normalized, real_p):
+        if p in _PROTECTED_PATHS:
+            return False, f"المسار محمي ولا يُسمح بتعديله تلقائياً: '{normalized}'"
+        for prot in _PROTECTED_PATHS:
+            if prot != "/" and p.startswith(prot + "/"):
+                return False, f"المسار محمي ولا يُسمح بتعديله تلقائياً: '{normalized}'"
     return True, v
 
 
