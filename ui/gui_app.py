@@ -19,7 +19,6 @@ from PyQt6.QtWidgets import (
     QPlainTextEdit, QProgressBar, QPushButton, QSplitter, QStackedWidget, QTabWidget,
     QTableWidget, QTableWidgetItem, QTextEdit, QVBoxLayout, QWidget, QScrollArea, QSizePolicy,
     QInputDialog, QCheckBox,
-    QSplashScreen,
 )
 
 from config.settings import Settings
@@ -299,6 +298,7 @@ class UnifiedCockpitWindow(QMainWindow):
             self.setStyleSheet(get_qss("#6d8f8c", "#7d83a6"))
         self.agent = AYFAMAgent(settings=self.settings, ui=GuiTerminalUI(no_color=True))
         self.worker: WorkerThread | None = None
+        self._closing_after_workers = False
         self.active_task_title = ""
         self.active_result_handler: Callable[[Any], None] | None = None
         self.visible_events: list[tuple[str, str, str]] = []
@@ -636,16 +636,43 @@ class UnifiedCockpitWindow(QMainWindow):
         QTimer.singleShot(60, self._refresh_navigation_wheel)
 
     def closeEvent(self, event) -> None:
+        for timer in (getattr(self, "timer", None), getattr(self, "event_timer", None)):
+            if timer is not None:
+                timer.stop()
+        # Stop UI animation/refresh timers too while a non-cooperative task
+        # finishes; the close handler must never block the GUI thread.
+        for timer in self.findChildren(QTimer):
+            timer.stop()
+
         running_workers = [worker for worker in (getattr(self, "worker", None), getattr(self, "telemetry_worker", None))
                            if worker is not None and worker.isRunning()]
-        for worker in running_workers:
-            worker.requestInterruption()
-            worker.quit()
-        if any(not worker.wait(3000) for worker in running_workers):
-            self.chat_display.append("[النظام] توجد عملية فحص جارية؛ أوقفها من المصدر ثم أغلق التطبيق لتجنب قطعها قسراً.")
+        if running_workers:
+            if not self._closing_after_workers:
+                self._closing_after_workers = True
+                for worker in running_workers:
+                    worker.finished.connect(self._finish_close_after_workers)
+            for worker in running_workers:
+                worker.requestInterruption()
+                worker.quit()
+            self.hide()
             event.ignore()
+            # Cover the race where a worker finishes just before its signal is
+            # connected, without waiting or terminating a thread unsafely.
+            QTimer.singleShot(0, self._finish_close_after_workers)
             return
         super().closeEvent(event)
+
+    def _finish_close_after_workers(self) -> None:
+        if not getattr(self, "_closing_after_workers", False):
+            return
+        running_workers = [
+            worker for worker in (getattr(self, "worker", None), getattr(self, "telemetry_worker", None))
+            if worker is not None and worker.isRunning()
+        ]
+        if running_workers:
+            return
+        self._closing_after_workers = False
+        self.close()
 
     def switch_page(self, key: str) -> None:
         page_map = {
@@ -2916,86 +2943,6 @@ class UnifiedCockpitWindow(QMainWindow):
         self.library_results.setPlainText("\n".join(output))
 
 
-class AuroraSplash(QSplashScreen):
-    """Welcome screen: transparent rounded glass panel, blue/green light, no opaque blocks."""
-
-    def __init__(self) -> None:
-        pix = QPixmap(600, 360)
-        pix.fill(Qt.GlobalColor.transparent)
-        super().__init__(pix)
-        self.setWindowFlag(Qt.WindowType.FramelessWindowHint)
-        self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint)
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self._t = 0
-        self._logo = QIcon(str(ROOT_DIR / "resources" / "icon.svg")).pixmap(88, 88)
-        self._timer = QTimer(self)
-        self._timer.timeout.connect(self._tick)
-        self._timer.start(16)
-
-    def _tick(self) -> None:
-        self._t += 1
-        self.update()
-
-    def paintEvent(self, e) -> None:
-        p = QPainter(self)
-        p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        w, h = self.width(), self.height()
-        t = self._t / 60
-        panel = QRectF(14, 14, w - 28, h - 28)
-        base = QLinearGradient(0, 0, w, h)
-        base.setColorAt(0, QColor(12, 30, 48, 238))
-        base.setColorAt(1, QColor(7, 18, 29, 238))
-        p.setPen(Qt.PenStyle.NoPen)
-        p.setBrush(base)
-        p.drawRoundedRect(panel, 28, 28)
-        # Moving light gives life without hiding text.
-        for i, color in enumerate(("#2dd4bf", "#a78bfa", "#f59e0b")):
-            cx = w * (0.25 + 0.25 * i) + 40 * math.sin(t * 0.9 + i * 2)
-            glow = QRadialGradient(cx, h * 0.28, 150)
-            c = QColor(color)
-            c.setAlpha(34 if i < 2 else 18)
-            glow.setColorAt(0, c)
-            c.setAlpha(0)
-            glow.setColorAt(1, c)
-            p.setBrush(glow)
-            p.drawRoundedRect(panel, 28, 28)
-        rim = QLinearGradient(0, 0, w, h)
-        rim.setColorAt(0, QColor(125, 211, 252, 230))
-        rim.setColorAt(0.5 + 0.15 * math.sin(t), QColor(220, 245, 255, 235))
-        rim.setColorAt(1, QColor(52, 211, 153, 220))
-        p.setBrush(Qt.BrushStyle.NoBrush)
-        p.setPen(QPen(rim, 1.6))
-        p.drawRoundedRect(panel, 28, 28)
-        p.drawPixmap(int(w / 2 - 44), 48 + int(3 * math.sin(t * 2)), self._logo)
-        p.setPen(QColor(TEXT_PRIMARY))
-        title = QFont(FONT_FAMILY.split(",")[0].strip('" '))
-        title.setPointSize(25)
-        title.setWeight(QFont.Weight.Bold)
-        p.setFont(title)
-        p.drawText(QRect(0, 150, w, 44), Qt.AlignmentFlag.AlignHCenter, "AI AYFAM")
-        sub = QFont(title)
-        sub.setPointSize(11)
-        sub.setWeight(QFont.Weight.Medium)
-        p.setFont(sub)
-        p.setPen(QColor(TEXT_SECONDARY))
-        p.drawText(QRect(0, 198, w, 28), Qt.AlignmentFlag.AlignHCenter, "مركز العمليات الأمنية الذكي")
-        bw, bx, by = 300, (w - 300) // 2, 262
-        p.setPen(Qt.PenStyle.NoPen)
-        p.setBrush(QColor(56, 189, 248, 45))
-        p.drawRoundedRect(QRectF(bx, by, bw, 7), 3.5, 3.5)
-        prog = (self._t % 180) / 180
-        bar = QLinearGradient(bx, 0, bx + bw, 0)
-        bar.setColorAt(0, QColor("#2dd4bf"))
-        bar.setColorAt(1, QColor("#a78bfa"))
-        p.setBrush(bar)
-        p.drawRoundedRect(QRectF(bx, by, max(8, bw * prog), 7), 3.5, 3.5)
-        p.setPen(QColor(TEXT_MUTED))
-        p.drawText(QRect(0, 282, w, 28), Qt.AlignmentFlag.AlignHCenter, "جارٍ تجهيز الواجهة…")
-
-    def mousePressEvent(self, e) -> None:
-        self.close()
-
-
 def load_application_fonts() -> None:
     """Load embedded OFL fonts (Tajawal) before creating UI widgets."""
     from PyQt6.QtGui import QFontDatabase
@@ -3014,25 +2961,10 @@ def launch_gui() -> None:
         raise SystemExit(2)
     app = QApplication.instance() or QApplication(sys.argv)
     load_application_fonts()
-    splash = AuroraSplash()
-    splash.show()
-    app.processEvents()
-
-    # Let splash animate for ~2s while window builds
-    import time
-    t0 = time.time()
-
-    def finish_splash() -> None:
-        if time.time() - t0 >= 2.0:
-            splash.close()
-        else:
-            QTimer.singleShot(80, finish_splash)
-
-    QTimer.singleShot(80, finish_splash)
-
     window = UnifiedCockpitWindow()
-    window.show()
-    splash.finish(window)
+    splash = AyfamIntroSplash(auto_close=True)
+    splash.ready_to_launch.connect(window.show)
+    splash.show()
     sys.exit(app.exec())
 
 

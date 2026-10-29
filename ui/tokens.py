@@ -4,15 +4,17 @@ AI AYFAM — Centralized Design Tokens & Glassmorphism Theme Definitions
 """
 
 from PyQt6.QtGui import QColor
+from ui import theme
+
 
 class Tokens:
     # Colors (QColor and Hex)
-    TEAL_HEX = "#2dd4bf"
-    BLUE_HEX = "#60a5fa"
-    VIOLET_HEX = "#a78bfa"
-    AMBER_HEX = "#fbbf24"
-    RED_HEX = "#f87171"
-    GREEN_HEX = "#34d399"
+    TEAL_HEX = theme.ACCENT
+    BLUE_HEX = theme.SEV_LOW
+    VIOLET_HEX = theme.ACCENT_SECONDARY
+    AMBER_HEX = theme.SEV_HIGH
+    RED_HEX = theme.SEV_CRITICAL
+    GREEN_HEX = theme.SEV_SAFE
 
     TEAL = QColor(TEAL_HEX)
     BLUE = QColor(BLUE_HEX)
@@ -21,32 +23,32 @@ class Tokens:
     RED = QColor(RED_HEX)
     GREEN = QColor(GREEN_HEX)
 
-    DARK_BG_PRIMARY = "#030712"
-    DARK_BG_SECONDARY = "#090f1f"
-    DARK_BG_GLASS = "rgba(15, 23, 42, 0.35)"
-    DARK_BORDER_GLASS = "rgba(255, 255, 255, 0.16)"
-    SPECULAR_REFLECTION = "rgba(255, 255, 255, 0.38)"
-    LUMINOUS_INNER_BORDER = "rgba(255, 255, 255, 0.18)"
+    DARK_BG_PRIMARY = theme.BG_BASE
+    DARK_BG_SECONDARY = theme.BG_ELEVATED
+    DARK_BG_GLASS = theme.BG_SURFACE
+    DARK_BORDER_GLASS = theme.BORDER
+    SPECULAR_REFLECTION = theme.BG_HOVER
+    LUMINOUS_INNER_BORDER = theme.BORDER
 
-    TEXT_PRIMARY = "#f8fafc"
-    TEXT_SECONDARY = "rgba(226, 238, 250, 0.62)"
-    TEXT_MUTED = "rgba(226, 238, 250, 0.38)"
+    TEXT_PRIMARY = theme.TEXT_PRIMARY
+    TEXT_SECONDARY = theme.TEXT_SECONDARY
+    TEXT_MUTED = theme.TEXT_MUTED
 
     # Severity Palette
     SEVERITY_CRITICAL = RED_HEX
     SEVERITY_HIGH = AMBER_HEX
-    SEVERITY_MEDIUM = AMBER_HEX
+    SEVERITY_MEDIUM = theme.SEV_MEDIUM
     SEVERITY_LOW = BLUE_HEX
-    SEVERITY_INFO = TEAL_HEX
+    SEVERITY_INFO = theme.SEV_INFO
     SEVERITY_SAFE = GREEN_HEX
 
     # Typography
-    FONT_FAMILY = "Tajawal, Inter, SF Pro Display, -apple-system, Cairo, sans-serif"
+    FONT_FAMILY = theme.FONT_FAMILY
 
-    FONT_SIZE_XL = "24px"
-    FONT_SIZE_LARGE = "18px"
-    FONT_SIZE_BODY = "13px"
-    FONT_SIZE_SMALL = "11px"
+    FONT_SIZE_XL = f"{theme.SP_2XL}px"
+    FONT_SIZE_LARGE = f"{theme.FONT_SIZE_TITLE}px"
+    FONT_SIZE_BODY = f"{theme.FONT_SIZE_BASE}px"
+    FONT_SIZE_SMALL = f"{theme.FONT_SIZE_SMALL}px"
 
     # Radii
     RADIUS_CARD = 24
