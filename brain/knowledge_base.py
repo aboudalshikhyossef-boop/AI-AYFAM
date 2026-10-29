@@ -5,6 +5,7 @@ AI AYFAM — Knowledge Base Engine
 """
 
 import sqlite3
+import threading
 import re
 import json
 import os
@@ -192,17 +193,25 @@ class KnowledgeBase:
             fallback = _os.path.join(tempfile.gettempdir(), "ayfam-brain.db")
             print(f"[KB] Cannot use {self.db_path} ({e}); falling back to {fallback}")
             self.db_path = fallback
-        self._conn = None
+        self._local = threading.local()      # اتصال SQLite مستقل لكل خيط (مشاركة اتصال واحد بين الخيوط تُسبب انهياراً)
         self._init_db()
         self._seed_if_empty()
         self._migrate_new_intents()
 
     def _connect(self):
-        if not self._conn:
-            self._conn = sqlite3.connect(self.db_path, check_same_thread=False)
-            self._conn.row_factory = sqlite3.Row
-            self._conn.execute("PRAGMA foreign_keys = ON")
-        return self._conn
+        """اتصال خاص بالخيط الحالي.
+
+        كان اتصال واحد مشترك (check_same_thread=False) بلا قفل، فتسبب التقييم المتوازي في
+        ParallelTrainer (4 خيوط تستدعي nlp.parse ثم increment_intent) في تلف ذاكرة وانهيار Segfault
+        (exit 139) على Python 3.10. الآن لكل خيط اتصاله الخاص، وتتولى SQLite التنسيق بين الاتصالات.
+        """
+        conn = getattr(self._local, "conn", None)
+        if conn is None:
+            conn = sqlite3.connect(self.db_path, timeout=30)
+            conn.row_factory = sqlite3.Row
+            conn.execute("PRAGMA foreign_keys = ON")
+            self._local.conn = conn
+        return conn
 
     def _init_db(self):
         conn = self._connect()
@@ -423,11 +432,12 @@ class KnowledgeBase:
         return [(r["name"], json.loads(r["patterns"])) for r in rows]
 
     def increment_intent(self, intent_name):
-        self._connect().execute(
-            "UPDATE intents SET hit_count = hit_count + 1 WHERE name = ?",
-            (intent_name,)
-        )
-        self._connect().commit()
+        conn = self._connect()
+        try:
+            conn.execute("UPDATE intents SET hit_count = hit_count + 1 WHERE name = ?", (intent_name,))
+            conn.commit()
+        except sqlite3.OperationalError:
+            conn.rollback()      # عدّاد الاستخدام إحصائي؛ ازدحام قفل قاعدة البيانات لا يجب أن يُفشل التحليل
 
     # ─── Knowledge Lookup ─────────────────────────────────────────────────
     def lookup(self, category: str, key: str) -> str:

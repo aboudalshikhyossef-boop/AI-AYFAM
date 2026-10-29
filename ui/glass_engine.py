@@ -1000,11 +1000,16 @@ def _canvas_origin(widget: QWidget, rect: QRectF) -> QPoint | None:
     """موضع اللوح داخل القماشة الخلفية (أو None إن لم تتوفر الخلفية لهذا الودجت)."""
     backdrop: LiveBackdrop | None = _STATE["backdrop"]
     canvas: QWidget | None = _STATE["canvas"]
-    if (backdrop is None or canvas is None or backdrop.blurred.isNull() or canvas.width() <= 0
-            or canvas.window() is not widget.window() or not canvas.parentWidget().isAncestorOf(widget)):
-        return None
     try:
+        if (backdrop is None or canvas is None or backdrop.blurred.isNull() or canvas.width() <= 0
+                or canvas.window() is not widget.window() or not canvas.parentWidget().isAncestorOf(widget)):
+            return None
         return widget.mapTo(canvas.parentWidget(), QPoint(int(rect.x()), int(rect.y())))
+    except RuntimeError:
+        # القماشة أو الخلفية حُذفت (نافذة أُغلقت/اختبار انتهى): انسَ المرجع القديم بدل الانهيار
+        _STATE["canvas"] = None
+        _STATE["backdrop"] = None
+        return None
     except Exception:
         return None
 
