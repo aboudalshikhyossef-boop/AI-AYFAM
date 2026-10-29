@@ -98,6 +98,42 @@ class TestHTTPClient(unittest.TestCase):
         self.assertEqual(req.headers.get("Content-type"), "application/x-www-form-urlencoded")
         self.assertEqual(req.data, b"field=val")
 
+    @patch("utils.http_client.REQUESTS_AVAILABLE", False)
+    @patch("urllib.request.urlopen")
+    def test_put_fallback_with_str_data(self, mock_urlopen):
+        mock_resp = MagicMock()
+        mock_resp.status = 200
+        mock_resp.read.return_value = b"OK"
+        mock_resp.headers.items.return_value = []
+        mock_resp.__enter__.return_value = mock_resp
+        mock_urlopen.return_value = mock_resp
+
+        str_data = "plain string payload"
+        resp = http_client.put(self.url, data=str_data)
+
+        self.assertEqual(resp.status_code, 200)
+        req = mock_urlopen.call_args[0][0]
+        self.assertEqual(req.data, b"plain string payload")
+
+    @patch("utils.http_client.REQUESTS_AVAILABLE", False)
+    @patch("urllib.request.urlopen")
+    def test_put_fallback_http_error(self, mock_urlopen):
+        import urllib.error
+        from io import BytesIO
+
+        error_headers = {"Content-Type": "application/json"}
+        error_body = json.dumps({"error": "not found"}).encode("utf-8")
+        http_error = urllib.error.HTTPError(
+            self.url, 404, "Not Found", error_headers, BytesIO(error_body)
+        )
+        mock_urlopen.side_effect = http_error
+
+        resp = http_client.put(self.url, json={"id": 123})
+
+        self.assertEqual(resp.status_code, 404)
+        self.assertFalse(resp.ok)
+        self.assertEqual(resp.json(), {"error": "not found"})
+
     @patch("utils.http_client.REQUESTS_AVAILABLE", True)
     @patch("utils.http_client.requests")
     def test_put_when_requests_available(self, mock_requests):
