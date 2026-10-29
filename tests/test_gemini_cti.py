@@ -146,29 +146,61 @@ class GeminiCTITests(unittest.TestCase):
     def test_cti_search_uses_free_tier_search_model(self):
         self.assertEqual(CTI_SEARCH_MODEL, "gemini-2.5-flash-lite")
 
-    def test_source_validation_filters_invalid_or_missing_sources(self):
+    def test_validate_threat_feed_http_source(self):
         raw_feed = {
-            "threats": [
-                {
-                    "id": "CVE-001", "title": "HTTP source", "sources": ["http://example.com/advisory"],
-                },
-                {
-                    "id": "CVE-002", "title": "HTTPS source", "sources": ["https://example.com/advisory"],
-                },
-                {
-                    "id": "CVE-003", "title": "Non HTTP/HTTPS source", "sources": ["ftp://example.com/advisory"],
-                },
-                {
-                    "id": "CVE-004", "title": "Empty sources list", "sources": [],
-                },
-                {
-                    "id": "CVE-005", "title": "Missing sources field",
-                },
-            ]
+            "threats": [{
+                "id": "CVE-HTTP-1",
+                "title": "HTTP Advisory",
+                "sources": ["http://example.com/advisory"],
+            }]
         }
         validated = validate_threat_feed(raw_feed)
-        threat_ids = [t["id"] for t in validated["threats"]]
-        self.assertEqual(threat_ids, ["CVE-001", "CVE-002"])
+        self.assertEqual(len(validated["threats"]), 1)
+        self.assertEqual(validated["threats"][0]["id"], "CVE-HTTP-1")
+
+    def test_validate_threat_feed_https_source(self):
+        raw_feed = {
+            "threats": [{
+                "id": "CVE-HTTPS-1",
+                "title": "HTTPS Advisory",
+                "sources": ["https://example.com/advisory"],
+            }]
+        }
+        validated = validate_threat_feed(raw_feed)
+        self.assertEqual(len(validated["threats"]), 1)
+        self.assertEqual(validated["threats"][0]["id"], "CVE-HTTPS-1")
+
+    def test_validate_threat_feed_non_http_https_source(self):
+        raw_feed = {
+            "threats": [{
+                "id": "CVE-FTP-1",
+                "title": "FTP Advisory",
+                "sources": ["ftp://example.com/advisory"],
+            }]
+        }
+        validated = validate_threat_feed(raw_feed)
+        self.assertEqual(len(validated["threats"]), 0)
+
+    def test_validate_threat_feed_empty_sources(self):
+        raw_feed = {
+            "threats": [{
+                "id": "CVE-EMPTY-1",
+                "title": "Empty Sources Advisory",
+                "sources": [],
+            }]
+        }
+        validated = validate_threat_feed(raw_feed)
+        self.assertEqual(len(validated["threats"]), 0)
+
+    def test_validate_threat_feed_missing_sources(self):
+        raw_feed = {
+            "threats": [{
+                "id": "CVE-MISSING-1",
+                "title": "Missing Sources Advisory",
+            }]
+        }
+        validated = validate_threat_feed(raw_feed)
+        self.assertEqual(len(validated["threats"]), 0)
 
     def test_invalid_listed_model_stops_without_fallback_burst(self):
         class Response:
