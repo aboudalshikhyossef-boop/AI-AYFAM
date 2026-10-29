@@ -9,6 +9,7 @@ import re
 import json
 import os
 import hashlib
+import threading
 from datetime import datetime
 from pathlib import Path
 import pathlib
@@ -192,17 +193,19 @@ class KnowledgeBase:
             fallback = _os.path.join(tempfile.gettempdir(), "ayfam-brain.db")
             print(f"[KB] Cannot use {self.db_path} ({e}); falling back to {fallback}")
             self.db_path = fallback
-        self._conn = None
+        self._local = threading.local()
         self._init_db()
         self._seed_if_empty()
         self._migrate_new_intents()
 
     def _connect(self):
-        if not self._conn:
-            self._conn = sqlite3.connect(self.db_path, check_same_thread=False)
-            self._conn.row_factory = sqlite3.Row
-            self._conn.execute("PRAGMA foreign_keys = ON")
-        return self._conn
+        conn = getattr(self._local, "conn", None)
+        if conn is None:
+            conn = sqlite3.connect(self.db_path)
+            conn.row_factory = sqlite3.Row
+            conn.execute("PRAGMA foreign_keys = ON")
+            self._local.conn = conn
+        return conn
 
     def _init_db(self):
         conn = self._connect()
