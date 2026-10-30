@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 from typing import Any, Mapping
 
 from brain.context_engine import ContextEngine
+from brain.weight_policy import WeightPolicy
 
 
 class LearningGovernance:
@@ -23,6 +24,7 @@ class LearningGovernance:
         self.kb = knowledge_base
         self.db_path = knowledge_base.db_path
         self._init_schema()
+        self.weight_policy = WeightPolicy(knowledge_base)
 
     def _conn(self):
         return self.kb._connect()
@@ -154,6 +156,11 @@ class LearningGovernance:
             key=f"external-{interaction_id}",
             interaction_id=interaction_id,
             risk="high" if evaluation["flags"] else "medium",
+        )
+        # Generate a calculated local-policy candidate from observable style only.
+        # The candidate is versioned and remains proposed until separately reviewed.
+        self.weight_policy.propose_from_observation(
+            evaluation.get("style_features", {}), interaction_id=interaction_id
         )
         return interaction_id
 

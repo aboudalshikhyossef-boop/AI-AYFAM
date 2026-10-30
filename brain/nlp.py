@@ -379,12 +379,19 @@ class NLPEngine:
         learned_style = None
         external_count = 0
         try:
-            from brain.learning_governance import LearningGovernance
+            from brain.weight_policy import WeightPolicy
             external_count = self.kb._connect().execute(
                 "SELECT COUNT(*) FROM external_interactions"
             ).fetchone()[0]
             if external_count:
-                learned_style = LearningGovernance(self.kb).get_style_profile()
+                active_policy = WeightPolicy(self.kb).active()
+                weights = active_policy.get("weights", {})
+                learned_style = {
+                    "evidence": weights.get("evidence_first", 0.0),
+                    "caution": weights.get("uncertainty_disclosure", 0.0),
+                    "steps": weights.get("stepwise_reasoning", 0.0),
+                    "structured": weights.get("structured_response", 0.0),
+                }
         except Exception:
             pass
 

@@ -30,6 +30,10 @@ def test_external_answer_is_persisted_and_quarantined(tmp_path):
     proposals = gov.list_proposals("proposed")
     assert len(proposals) == 1
     assert proposals[0]["kind"] == "knowledge"
+    profiles = gov.weight_policy.list_profiles("proposed")
+    assert len(profiles) == 1
+    assert profiles[0]["source_interaction_id"] == interaction_id
+    assert gov.weight_policy.active()["id"] != profiles[0]["id"]
 
 
 def test_knowledge_cannot_apply_without_review_and_passing_test(tmp_path):
