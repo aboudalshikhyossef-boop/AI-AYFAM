@@ -1660,6 +1660,15 @@ class UnifiedCockpitWindow(QMainWindow):
         self.setting_gemini_key.setEchoMode(QLineEdit.EchoMode.PasswordEchoOnEdit)
         self.setting_gemini_key.setPlaceholderText("AI Studio Gemini API Key")
 
+        self.setting_openai_model = QLineEdit(
+            self.settings.get("openai_model", "gpt-4o-mini")
+        )
+        self.setting_openai_model.setPlaceholderText("gpt-4o-mini")
+
+        self.setting_openai_key = QLineEdit(self.settings.get("openai_api_key", ""))
+        self.setting_openai_key.setEchoMode(QLineEdit.EchoMode.PasswordEchoOnEdit)
+        self.setting_openai_key.setPlaceholderText("OpenAI API Key — يبدأ عادةً بـ sk-")
+
         self.setting_abuseipdb_key = QLineEdit(self.settings.get("abuseipdb_key", ""))
         self.setting_abuseipdb_key.setEchoMode(QLineEdit.EchoMode.PasswordEchoOnEdit)
         self.setting_abuseipdb_key.setPlaceholderText("AbuseIPDB API Key (اختياري)")
@@ -1704,32 +1713,37 @@ class UnifiedCockpitWindow(QMainWindow):
         grid.addWidget(QLabel("Gemini API Key:"), 2, 0)
         grid.addWidget(self.setting_gemini_key, 2, 1)
 
-        grid.addWidget(QLabel("AbuseIPDB Key:"), 3, 0)
-        grid.addWidget(self.setting_abuseipdb_key, 3, 1)
+        grid.addWidget(QLabel("نموذج OpenAI:"), 3, 0)
+        grid.addWidget(self.setting_openai_model, 3, 1)
+        grid.addWidget(QLabel("OpenAI API Key:"), 4, 0)
+        grid.addWidget(self.setting_openai_key, 4, 1)
 
-        grid.addWidget(QLabel("NVD API Key:"), 4, 0)
-        grid.addWidget(self.setting_nvd_key, 4, 1)
+        grid.addWidget(QLabel("AbuseIPDB Key:"), 5, 0)
+        grid.addWidget(self.setting_abuseipdb_key, 5, 1)
 
-        grid.addWidget(QLabel("GitHub Token:"), 5, 0)
-        grid.addWidget(self.setting_github_token, 5, 1)
+        grid.addWidget(QLabel("NVD API Key:"), 6, 0)
+        grid.addWidget(self.setting_nvd_key, 6, 1)
 
-        grid.addWidget(QLabel("Google Search Key:"), 6, 0)
-        grid.addWidget(self.setting_cse_key, 6, 1)
+        grid.addWidget(QLabel("GitHub Token:"), 7, 0)
+        grid.addWidget(self.setting_github_token, 7, 1)
 
-        grid.addWidget(QLabel("Google Search cx:"), 7, 0)
-        grid.addWidget(self.setting_cse_cx, 7, 1)
+        grid.addWidget(QLabel("Google Search Key:"), 8, 0)
+        grid.addWidget(self.setting_cse_key, 8, 1)
 
-        grid.addWidget(QLabel("مجلد التقارير:"), 8, 0)
-        grid.addWidget(self.setting_report_dir, 8, 1)
+        grid.addWidget(QLabel("Google Search cx:"), 9, 0)
+        grid.addWidget(self.setting_cse_cx, 9, 1)
 
-        grid.addWidget(QLabel("اللغة (Language):"), 9, 0)
-        grid.addWidget(self.setting_lang_combo, 9, 1)
-        grid.addWidget(QLabel("التجربة الحسية:"), 10, 0)
-        grid.addWidget(self.setting_sound_ux, 10, 1)
-        grid.addWidget(QLabel("نمط النغمة:"), 11, 0)
-        grid.addWidget(self.setting_sound_profile, 11, 1)
-        grid.addWidget(QLabel("نمط العرض:"), 12, 0)
-        grid.addWidget(self.setting_dark_mode, 12, 1)
+        grid.addWidget(QLabel("مجلد التقارير:"), 10, 0)
+        grid.addWidget(self.setting_report_dir, 10, 1)
+
+        grid.addWidget(QLabel("اللغة (Language):"), 11, 0)
+        grid.addWidget(self.setting_lang_combo, 11, 1)
+        grid.addWidget(QLabel("التجربة الحسية:"), 12, 0)
+        grid.addWidget(self.setting_sound_ux, 12, 1)
+        grid.addWidget(QLabel("نمط النغمة:"), 13, 0)
+        grid.addWidget(self.setting_sound_profile, 13, 1)
+        grid.addWidget(QLabel("نمط العرض:"), 14, 0)
+        grid.addWidget(self.setting_dark_mode, 14, 1)
 
         layout.addWidget(form_group)
 
@@ -1743,6 +1757,9 @@ class UnifiedCockpitWindow(QMainWindow):
         test_gemini_btn = QPushButton("اختبار مفتاح Gemini")
         test_gemini_btn.clicked.connect(self.test_gemini_settings)
 
+        test_openai_btn = QPushButton("اختبار مفتاح OpenAI")
+        test_openai_btn.clicked.connect(self.test_openai_settings)
+
         test_search_btn = QPushButton("اختبار البحث في الإنترنت")
         test_search_btn.setToolTip("يتحقق من Google وويكيبيديا ويعرض حالة كل محرك")
         test_search_btn.clicked.connect(self.test_search_settings)
@@ -1752,6 +1769,7 @@ class UnifiedCockpitWindow(QMainWindow):
 
         btns_row.addWidget(save_btn)
         btns_row.addWidget(test_gemini_btn)
+        btns_row.addWidget(test_openai_btn)
         btns_row.addWidget(test_search_btn)
         btns_row.addWidget(clear_hist_btn)
         btns_row.addStretch()
@@ -1766,6 +1784,8 @@ class UnifiedCockpitWindow(QMainWindow):
     def save_settings(self) -> None:
         self.settings.set("gemini_api_key", self.setting_gemini_key.text().strip())
         self.settings.set("gemini_model", self.setting_gemini_model.text().strip() or DEFAULT_GEMINI_MODEL)
+        self.settings.set("openai_api_key", self.setting_openai_key.text().strip())
+        self.settings.set("openai_model", self.setting_openai_model.text().strip() or "gpt-4o-mini")
         self.settings.set("ai_provider", str(self.setting_ai_provider.currentData() or "auto"))
         self.settings.set("abuseipdb_key", self.setting_abuseipdb_key.text().strip())
         self.settings.set("nvd_api_key", self.setting_nvd_key.text().strip())
@@ -1852,6 +1872,60 @@ class UnifiedCockpitWindow(QMainWindow):
             "اختبار Gemini",
             preserve_findings=True,
             result_handler=handle_gemini_result,
+        )
+
+    def test_openai_settings(self) -> None:
+        configured_key = self.setting_openai_key.text().strip() or self.settings.get("openai_api_key", "")
+        environment_key = os.environ.get("OPENAI_API_KEY", "").strip()
+        effective_key = environment_key or configured_key
+        if not effective_key:
+            self.settings_log.setPlainText("[خطأ] لم يتم إدخال مفتاح OpenAI. يرجى إدخاله أولاً.")
+            return
+        model = self.setting_openai_model.text().strip() or "gpt-4o-mini"
+        key_source = "متغير البيئة OPENAI_API_KEY" if environment_key else "إعدادات التطبيق"
+        if self.setting_openai_key.text().strip():
+            self.settings.set("openai_api_key", self.setting_openai_key.text().strip())
+        self.settings.set("openai_model", model)
+        self.settings_log.setPlainText(
+            f"[فحص] يجري إرسال طلب فعلي إلى OpenAI API.\nالنموذج: {model}\nمصدر المفتاح: {key_source}\n"
+        )
+
+        def run_test():
+            from engine.ai_assistant import AssistantConfig, build_provider
+            provider = build_provider(AssistantConfig(
+                provider="openai",
+                openai_api_key=configured_key,
+                openai_model=model,
+                timeout=25.0,
+            ))
+            if provider is None:
+                raise RuntimeError("OpenAI provider is not configured")
+            answer = provider.ask("Reply with exactly: AI AYFAM OpenAI API test succeeded.")
+            return getattr(provider, "model", model), answer
+
+        def handle_openai_result(result: Any):
+            if isinstance(result, Exception):
+                self.settings_log.setPlainText(
+                    f"[خطأ] فشل طلب Chat Completions إلى OpenAI.\n\n{result}\n\n"
+                    f"• النموذج: {model}\n• مصدر المفتاح: {key_source}\n"
+                    "• راجع صحة المفتاح والحصة والاتصال. لا تشارك المفتاح."
+                )
+            elif isinstance(result, tuple):
+                tested_model, answer = result
+                self.settings_log.setPlainText(
+                    "[نجاح] نجح طلب التوليد الفعلي إلى OpenAI API.\n\n"
+                    f"• النموذج المختبَر: {tested_model}\n• مصدر المفتاح: {key_source}\n"
+                    f"• رد الاختبار: {answer[:240]}\n\n"
+                    "إذا أردت استخدام OpenAI في المحادثة، اختر OpenAI أو تلقائي ثم احفظ الإعدادات."
+                )
+            else:
+                self.settings_log.setPlainText("[تنبيه] لم يُرجع اختبار OpenAI نتيجة قابلة للعرض.")
+
+        self.run_background_task(
+            run_test,
+            "اختبار OpenAI",
+            preserve_findings=True,
+            result_handler=handle_openai_result,
         )
 
     def clear_history_settings(self) -> None:

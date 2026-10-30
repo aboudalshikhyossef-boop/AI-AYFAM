@@ -20,6 +20,7 @@ from brain.knowledge_base import KnowledgeBase
 from brain.nlp import NLPEngine
 from brain.context_engine import ContextEngine
 from brain.self_heal import SelfHealEngine
+from brain.learning_governance import LearningGovernance
 from tools import network, system
 from tools.usb import list_usb_devices, scan_mounted_drives, get_connected_phones
 from tools.usb_control import (
@@ -75,6 +76,7 @@ class AYFAMAgent(AgentV5Mixin):
         self.nlp        = NLPEngine(knowledge_base=self.kb)
         self.ctx        = ContextEngine()
         self.healer     = SelfHealEngine(knowledge_base=self.kb, ui=ui)
+        self.learning_governance = LearningGovernance(self.kb)
         self.phrases    = PhraseMemory(self.kb)
         self.chat_engine = ConversationEngine(self.kb, self.nlp, self.phrases)
         self.last_answer_was_gap = False
@@ -201,6 +203,21 @@ class AYFAMAgent(AgentV5Mixin):
             if provider:
                 answer = provider.ask(prompt, system_context=f"{persona} Hostname: {self._hostname}; language: {self.lang}")
                 if answer:
+                    # External output is evidence only: persist provenance and quarantine
+                    # a proposal for review; never auto-write it into local knowledge.
+                    try:
+                        self.learning_governance.record_external_answer(
+                            provider=provider.name,
+                            model=getattr(provider, "model", ""),
+                            prompt=prompt,
+                            context={"language": self.lang, "history_turns": len(history or []),
+                                     "purpose": "assistant_response"},
+                            answer=answer,
+                            source=f"{provider.name}:{getattr(provider, 'model', '')}",
+                        )
+                    except Exception as record_error:
+                        if self.verbose:
+                            self.ui.warning(f"External answer recorded with warning: {record_error}")
                     return f"🧠 [{provider.name.title()} AI Agent]\n\n{answer}"
         except AssistantError as exc:
             self.last_provider_error = str(exc)
