@@ -23,6 +23,7 @@ class LearningGovernance:
     def __init__(self, knowledge_base):
         self.kb = knowledge_base
         self.db_path = knowledge_base.db_path
+        self.last_report = None
         self._init_schema()
         self.weight_policy = WeightPolicy(knowledge_base)
 
@@ -148,7 +149,7 @@ class LearningGovernance:
         self._conn().commit()
         interaction_id = int(cur.lastrowid)
         # Create a quarantined knowledge candidate; nothing is inserted into knowledge.
-        self.create_knowledge_proposal(
+        knowledge_proposal_id = self.create_knowledge_proposal(
             title=f"External answer from {provider}",
             description="Candidate knowledge extracted from an external answer; review evidence before accepting.",
             content=answer,
@@ -159,10 +160,39 @@ class LearningGovernance:
         )
         # Generate a calculated local-policy candidate from observable style only.
         # The candidate is versioned and remains proposed until separately reviewed.
-        self.weight_policy.propose_from_observation(
+        weight_profile_id = self.weight_policy.propose_from_observation(
             evaluation.get("style_features", {}), interaction_id=interaction_id
         )
+        self.last_report = {
+            "mode": "external",
+            "interaction_id": interaction_id,
+            "saved": True,
+            "knowledge_proposal_id": knowledge_proposal_id,
+            "weight_profile_id": weight_profile_id,
+            "screening_score": evaluation["screening_score"],
+            "flags": evaluation["flags"],
+            "knowledge_status": "quarantined",
+            "weight_status": "proposed_not_active",
+            "learned_facts": 0,
+            "inferences": 0,
+        }
         return interaction_id
+
+    def local_learning_report(self, question: str) -> dict:
+        """Report measurable local evidence used for a response."""
+        active = self.weight_policy.active()
+        matches = self.kb.search_knowledge(question, limit=5)
+        return {
+            "mode": "local",
+            "saved": False,
+            "question": question,
+            "evidence_count": len(matches),
+            "evidence_keys": [item.get("key", "") for item in matches],
+            "active_weight_profile": active.get("name", "unknown"),
+            "active_weight_id": active.get("id", 0),
+            "learned_facts": sum(1 for item in matches if item.get("source") in ("user", "self_learned")),
+            "inferences": 0,
+        }
 
     def create_knowledge_proposal(self, *, title: str, description: str, content: str,
                                   category: str, key: str, interaction_id: int | None = None,

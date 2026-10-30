@@ -34,6 +34,18 @@ def test_external_answer_is_persisted_and_quarantined(tmp_path):
     assert len(profiles) == 1
     assert profiles[0]["source_interaction_id"] == interaction_id
     assert gov.weight_policy.active()["id"] != profiles[0]["id"]
+    assert gov.last_report["saved"] is True
+    assert gov.last_report["knowledge_status"] == "quarantined"
+
+
+def test_local_report_counts_evidence_and_active_profile(tmp_path):
+    kb, gov = make_governance(tmp_path)
+    kb.add_knowledge("concept", "firewall", "Filters traffic.", source="user")
+    report = gov.local_learning_report("firewall")
+    assert report["mode"] == "local"
+    assert report["evidence_count"] >= 1
+    assert report["learned_facts"] == 1
+    assert report["active_weight_profile"]
 
 
 def test_knowledge_cannot_apply_without_review_and_passing_test(tmp_path):

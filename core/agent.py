@@ -182,6 +182,7 @@ class AYFAMAgent(AgentV5Mixin):
         """
         self.last_answer_was_gap = False
         self.last_provider_error = ""
+        self.learning_governance.last_report = None
         persona = (
             "أنت AI AYFAM، مساعد أمن معلومات على لينكس. أجب بلغة المستخدم بإيجاز ودقة. "
             "فكّر قبل الجواب: افهم قصد المستخدم، وإن كان في كلامه مفهوم خاطئ فصححه بلطف مع السبب. "
@@ -234,6 +235,7 @@ class AYFAMAgent(AgentV5Mixin):
             if explanation and "لم أجد شرحاً محدداً" in explanation:
                 pass  # يُسجَّل كفجوة فقط إن لم يتوفر دليل محلي أدناه
             elif explanation and len(explanation.strip()) > 30:
+                self.learning_governance.last_report = self.learning_governance.local_learning_report(prompt)
                 return f"🛡️ [المحرك المحلي - بدون إنترنت]\n\n{explanation}"
         except Exception:
             pass

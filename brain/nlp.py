@@ -474,19 +474,13 @@ class NLPEngine:
                 pass
 
         if sections:
-            if learned_style:
-                method = []
-                if learned_style.get("evidence", 0) >= 0.45:
-                    method.append("فصل الدليل عن الاستنتاج")
-                if learned_style.get("caution", 0) >= 0.45:
-                    method.append("ذكر الحدود ودرجة الثقة")
-                if learned_style.get("steps", 0) >= 0.35:
-                    method.append("ترتيب الخطوات عند الحاجة")
-                if method:
-                    sections.insert(0, "🧠 منهج محلي مكتسب من أنماط الرد الخارجية (دون نسخ محتواها):\n  "
-                                    + "، ".join(method))
-            sections.insert(0, f"🎯 السؤال المرتبط: {target.strip()}")
-            return "\n".join(sections)
+            from brain.composer import compose
+            from brain.weight_policy import WeightPolicy
+            active = WeightPolicy(self.kb).active()
+            evidence = [{"text": section, "source": "قاعدة المعرفة المحلية", "confidence": 0.75}
+                        for section in sections]
+            answer = compose(active["weights"], evidence, "explain", profile_name=active["name"])
+            return answer.text
 
         # 3) احتياطي: منفذ شبكي معروف
         port_m = re.search(r'\b(\d{2,5})\b', target)

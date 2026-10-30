@@ -2200,13 +2200,16 @@ class UnifiedCockpitWindow(QMainWindow):
                 self.agent.ask_ai_or_local(text, history),
                 self.agent.last_answer_was_gap,
                 self.agent.last_provider_error,
+                self.agent.learning_governance.last_report,
             ),
             "المساعد الذكي", preserve_findings=True,
-            result_handler=lambda out: self._deliver_answer(out[0], text, out[1], out[2]),
+            result_handler=lambda out: self._deliver_answer(out[0], text, out[1], out[2], out[3]),
         )
 
-    def _deliver_answer(self, answer: str, topic: str, gap: bool, provider_error: str = "") -> None:
+    def _deliver_answer(self, answer: str, topic: str, gap: bool, provider_error: str = "", learning_report=None) -> None:
         self._say(answer)
+        if learning_report:
+            self._show_learning_report(learning_report)
         if provider_error:
             self.chat_display.append(
                 f"\n[تشخيص الاتصال الخارجي] {provider_error}\n"
@@ -2217,6 +2220,31 @@ class UnifiedCockpitWindow(QMainWindow):
                 "ما رأيك أن أبحث لك الآن؟",
                 [("ابحث في الإنترنت", lambda: self._run_web_search(topic), "primary"),
                  ("تعلّم من الإنترنت", lambda: self._run_learning(topic), "")],
+            )
+
+    def _show_learning_report(self, report: dict) -> None:
+        """Tell the user what was persisted, proposed, or actually used."""
+        if report.get("mode") == "external":
+            flags = ", ".join(report.get("flags") or []) or "لا توجد إشارات أولية"
+            self.chat_display.append(
+                "\n[تقرير التعلم الخارجي]\n"
+                f"✓ حُفظت الإجابة للتدقيق: interaction #{report.get('interaction_id')}\n"
+                f"✓ اقتراح معرفة: #{report.get('knowledge_proposal_id')} — حجر للمراجعة، لم تُدمج بعد\n"
+                f"✓ مرشح وزن أسلوب: #{report.get('weight_profile_id')} — مقترح، غير نشط\n"
+                f"• درجة الفحص الأولي: {report.get('screening_score', 0):.2f}\n"
+                f"• التنبيهات: {flags}\n"
+                "• حقائق معتمدة: 0 | استنتاجات معتمدة: 0"
+            )
+        elif report.get("mode") == "local":
+            keys = ", ".join(report.get("evidence_keys") or []) or "لا توجد مفاتيح معرفة مطابقة"
+            self.chat_display.append(
+                "\n[تقرير التعلم المحلي]\n"
+                f"✓ الأدلة المستخدمة من المعرفة المحلية: {report.get('evidence_count', 0)}\n"
+                f"• المفاتيح المطابقة: {keys}\n"
+                f"• ملف الأوزان الفعّال: {report.get('active_weight_profile')} "
+                f"(#{report.get('active_weight_id')})\n"
+                f"• حقائق مكتسبة مستخدمة: {report.get('learned_facts', 0)} | "
+                f"استنتاجات موثقة: {report.get('inferences', 0)}"
             )
 
     # ── البحث الدقيق (Google + ويكيبيديا) ──
