@@ -36,6 +36,7 @@ from tools.usb_control import (
     fix_flash_issues,
 )
 from tools.websearch import DEFAULT_GOOGLE_CSE_CX
+from engine.gemini_rate_limit import DEFAULT_GEMINI_MODEL
 from ui.terminal import TerminalUI
 from ui.icons import ICON_COLORS, framed_icon, glyph_icon
 from ui.glass_engine import BackdropCanvas, FrostedGlassController, LiveBackdrop
@@ -1636,6 +1637,25 @@ class UnifiedCockpitWindow(QMainWindow):
         grid = QGridLayout(form_group)
         grid.setSpacing(SP_MD)
 
+        self.setting_ai_provider = QComboBox()
+        for label, value in (
+            ("تلقائي (OpenAI ثم Gemini)", "auto"),
+            ("Google Gemini", "gemini"),
+            ("OpenAI", "openai"),
+            ("المحرك المحلي فقط", "local"),
+        ):
+            self.setting_ai_provider.addItem(label, value)
+        provider_index = self.setting_ai_provider.findData(self.settings.get("ai_provider", "auto"))
+        self.setting_ai_provider.setCurrentIndex(provider_index if provider_index >= 0 else 0)
+        self.setting_ai_provider.setToolTip(
+            "اختر Gemini صراحةً إذا أردت أن تستخدم واجهة المحادثة Gemini بدلاً من الاختيار التلقائي."
+        )
+
+        self.setting_gemini_model = QLineEdit(
+            self.settings.get("gemini_model", DEFAULT_GEMINI_MODEL)
+        )
+        self.setting_gemini_model.setPlaceholderText(DEFAULT_GEMINI_MODEL)
+
         self.setting_gemini_key = QLineEdit(self.settings.get("gemini_api_key", ""))
         self.setting_gemini_key.setEchoMode(QLineEdit.EchoMode.PasswordEchoOnEdit)
         self.setting_gemini_key.setPlaceholderText("AI Studio Gemini API Key")
@@ -1677,35 +1697,39 @@ class UnifiedCockpitWindow(QMainWindow):
         self.setting_dark_mode.setChecked(bool(self.settings.get("dark_mode", True)))
         self.setting_dark_mode.setToolTip("يحافظ على واجهة Dark / Obsidian المريحة للعمل الطويل")
 
-        grid.addWidget(QLabel("Gemini API Key:"), 0, 0)
-        grid.addWidget(self.setting_gemini_key, 0, 1)
+        grid.addWidget(QLabel("مزود المحادثة:"), 0, 0)
+        grid.addWidget(self.setting_ai_provider, 0, 1)
+        grid.addWidget(QLabel("نموذج Gemini:"), 1, 0)
+        grid.addWidget(self.setting_gemini_model, 1, 1)
+        grid.addWidget(QLabel("Gemini API Key:"), 2, 0)
+        grid.addWidget(self.setting_gemini_key, 2, 1)
 
-        grid.addWidget(QLabel("AbuseIPDB Key:"), 1, 0)
-        grid.addWidget(self.setting_abuseipdb_key, 1, 1)
+        grid.addWidget(QLabel("AbuseIPDB Key:"), 3, 0)
+        grid.addWidget(self.setting_abuseipdb_key, 3, 1)
 
-        grid.addWidget(QLabel("NVD API Key:"), 2, 0)
-        grid.addWidget(self.setting_nvd_key, 2, 1)
+        grid.addWidget(QLabel("NVD API Key:"), 4, 0)
+        grid.addWidget(self.setting_nvd_key, 4, 1)
 
-        grid.addWidget(QLabel("GitHub Token:"), 3, 0)
-        grid.addWidget(self.setting_github_token, 3, 1)
+        grid.addWidget(QLabel("GitHub Token:"), 5, 0)
+        grid.addWidget(self.setting_github_token, 5, 1)
 
-        grid.addWidget(QLabel("Google Search Key:"), 4, 0)
-        grid.addWidget(self.setting_cse_key, 4, 1)
+        grid.addWidget(QLabel("Google Search Key:"), 6, 0)
+        grid.addWidget(self.setting_cse_key, 6, 1)
 
-        grid.addWidget(QLabel("Google Search cx:"), 5, 0)
-        grid.addWidget(self.setting_cse_cx, 5, 1)
+        grid.addWidget(QLabel("Google Search cx:"), 7, 0)
+        grid.addWidget(self.setting_cse_cx, 7, 1)
 
-        grid.addWidget(QLabel("مجلد التقارير:"), 6, 0)
-        grid.addWidget(self.setting_report_dir, 6, 1)
+        grid.addWidget(QLabel("مجلد التقارير:"), 8, 0)
+        grid.addWidget(self.setting_report_dir, 8, 1)
 
-        grid.addWidget(QLabel("اللغة (Language):"), 7, 0)
-        grid.addWidget(self.setting_lang_combo, 7, 1)
-        grid.addWidget(QLabel("التجربة الحسية:"), 8, 0)
-        grid.addWidget(self.setting_sound_ux, 8, 1)
-        grid.addWidget(QLabel("نمط النغمة:"), 9, 0)
-        grid.addWidget(self.setting_sound_profile, 9, 1)
-        grid.addWidget(QLabel("نمط العرض:"), 10, 0)
-        grid.addWidget(self.setting_dark_mode, 10, 1)
+        grid.addWidget(QLabel("اللغة (Language):"), 9, 0)
+        grid.addWidget(self.setting_lang_combo, 9, 1)
+        grid.addWidget(QLabel("التجربة الحسية:"), 10, 0)
+        grid.addWidget(self.setting_sound_ux, 10, 1)
+        grid.addWidget(QLabel("نمط النغمة:"), 11, 0)
+        grid.addWidget(self.setting_sound_profile, 11, 1)
+        grid.addWidget(QLabel("نمط العرض:"), 12, 0)
+        grid.addWidget(self.setting_dark_mode, 12, 1)
 
         layout.addWidget(form_group)
 
@@ -1741,6 +1765,8 @@ class UnifiedCockpitWindow(QMainWindow):
 
     def save_settings(self) -> None:
         self.settings.set("gemini_api_key", self.setting_gemini_key.text().strip())
+        self.settings.set("gemini_model", self.setting_gemini_model.text().strip() or DEFAULT_GEMINI_MODEL)
+        self.settings.set("ai_provider", str(self.setting_ai_provider.currentData() or "auto"))
         self.settings.set("abuseipdb_key", self.setting_abuseipdb_key.text().strip())
         self.settings.set("nvd_api_key", self.setting_nvd_key.text().strip())
         self.settings.set("github_token", self.setting_github_token.text().strip())
@@ -1775,38 +1801,51 @@ class UnifiedCockpitWindow(QMainWindow):
         self.run_background_task(lambda: self.agent.smart_search("Kali Linux"), "اختبار البحث", preserve_findings=True, result_handler=show)
 
     def test_gemini_settings(self) -> None:
-        key = self.setting_gemini_key.text().strip() or self.settings.get("gemini_api_key", "")
-        if not key:
+        configured_key = self.setting_gemini_key.text().strip() or self.settings.get("gemini_api_key", "")
+        environment_key = os.environ.get("GOOGLE_API_KEY", "").strip() or os.environ.get("GEMINI_API_KEY", "").strip()
+        effective_key = environment_key or configured_key
+        if not effective_key:
             self.settings_log.setPlainText("[خطأ] لم يتم إدخال مفتاح Gemini. يرجى إدخال مفتاحك أولاً.")
             return
-        self.settings.set("gemini_api_key", key)
-        self.settings_log.setPlainText("[فحص] جارٍ فحص الاتصال واكتشاف نماذج Gemini المتاحة لهذا المفتاح...\n")
+        model = self.setting_gemini_model.text().strip() or DEFAULT_GEMINI_MODEL
+        key_source = "متغيرات البيئة" if environment_key else "إعدادات التطبيق"
+        if self.setting_gemini_key.text().strip():
+            self.settings.set("gemini_api_key", self.setting_gemini_key.text().strip())
+        self.settings.set("gemini_model", model)
+        self.settings_log.setPlainText(
+            f"[فحص] يجري إرسال طلب توليد فعلي إلى Gemini.\nالنموذج: {model}\nمصدر المفتاح: {key_source}\n"
+        )
 
         def run_test():
-            from engine.gemini_cti import GeminiThreatClient
-            client = GeminiThreatClient(key)
-            models = client.discover_models(force=True)
-            return models
+            from engine.ai_assistant import AssistantConfig, build_provider
+            provider = build_provider(AssistantConfig(
+                provider="gemini",
+                gemini_api_key=configured_key,
+                gemini_model=model,
+                timeout=25.0,
+            ))
+            if provider is None:
+                raise RuntimeError("Gemini provider is not configured")
+            answer = provider.ask("Reply with exactly: AI AYFAM Gemini API test succeeded.")
+            return getattr(provider, "model", model), answer
 
         def handle_gemini_result(result: Any):
             if isinstance(result, Exception):
                 self.settings_log.setPlainText(
-                    f"[خطأ] فشل اختبار الاتصال بـ Gemini API:\n\n{result}\n\n"
-                    "• تأكد من صحة المفتاح الصادر من Google AI Studio.\n"
-                    "• تأكد من اتصال الجهاز بشبكة الإنترنت.\n"
-                    "• سيعمل الوكيل تلقائياً في الوضع المحلي Offline لحين توفر المفتاح."
+                    f"[خطأ] فشل طلب generateContent إلى Gemini.\n\n{result}\n\n"
+                    f"• النموذج: {model}\n• مصدر المفتاح: {key_source}\n"
+                    "• راجع نص الخطأ وحالة المفتاح/قيوده والحصة في Google AI Studio. لا تشارك المفتاح."
                 )
-            elif isinstance(result, list) and result:
-                primary = result[0].short_name
-                models_list = ", ".join(m.short_name for m in result[:8])
+            elif isinstance(result, tuple):
+                tested_model, answer = result
                 self.settings_log.setPlainText(
-                    f"[نجاح] تم الاتصال بنجاح بـ Google Gemini API!\n\n"
-                    f"• النموذج الرئيسي المعتمد: {primary}\n"
-                    f"• النماذج النشطة المكتشفة ({len(result)}): {models_list}\n\n"
-                    "مساعد الذكاء الاصطناعي واستخبارات التهديدات CTI يعملان الآن بكامل الكفاءة."
+                    "[نجاح] نجح طلب التوليد الفعلي إلى Google Gemini API.\n\n"
+                    f"• النموذج المختبَر: {tested_model}\n• مصدر المفتاح: {key_source}\n"
+                    f"• رد الاختبار: {answer[:240]}\n\n"
+                    "إذا أردت استخدام Gemini في المحادثة، اختر Google Gemini في «مزود المحادثة» ثم احفظ الإعدادات."
                 )
             else:
-                self.settings_log.setPlainText("[تنبيه] لم يتم العثور على نماذج متوافقة لهذا المفتاح.")
+                self.settings_log.setPlainText("[تنبيه] لم يُرجع اختبار Gemini نتيجة قابلة للعرض.")
 
         self.run_background_task(
             run_test,
@@ -2079,13 +2118,22 @@ class UnifiedCockpitWindow(QMainWindow):
     def _ask_assistant(self, text: str) -> None:
         history = list(self.chat_history[:-1])
         self.run_background_task(
-            lambda: (self.agent.ask_ai_or_local(text, history), self.agent.last_answer_was_gap),
+            lambda: (
+                self.agent.ask_ai_or_local(text, history),
+                self.agent.last_answer_was_gap,
+                self.agent.last_provider_error,
+            ),
             "المساعد الذكي", preserve_findings=True,
-            result_handler=lambda out: self._deliver_answer(out[0], text, out[1]),
+            result_handler=lambda out: self._deliver_answer(out[0], text, out[1], out[2]),
         )
 
-    def _deliver_answer(self, answer: str, topic: str, gap: bool) -> None:
+    def _deliver_answer(self, answer: str, topic: str, gap: bool, provider_error: str = "") -> None:
         self._say(answer)
+        if provider_error:
+            self.chat_display.append(
+                f"\n[تشخيص الاتصال الخارجي] {provider_error}\n"
+                "استخدمت الإجابة المحلية بدلاً من Gemini لهذه الرسالة."
+            )
         if gap:
             self.chat_display.append_actions(
                 "ما رأيك أن أبحث لك الآن؟",
