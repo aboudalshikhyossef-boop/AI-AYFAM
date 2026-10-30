@@ -33,28 +33,48 @@ class ResponseWrapper:
         return _json.loads(self.text)
 
 
+def _urllib_timeout(timeout: Any) -> float:
+    """urllib accepts one float; requests may receive (connect, read)."""
+    if isinstance(timeout, (tuple, list)):
+        values = [float(value) for value in timeout if value is not None]
+        return max(values) if values else 15.0
+    try:
+        return float(timeout)
+    except (TypeError, ValueError):
+        return 15.0
+
+
 def get(url: str, headers: dict | None = None, params: dict | None = None, timeout: float = 15.0, stream: bool = False, **kwargs: Any) -> Any:
     """تنفيذ طلب GET مع دعم requests أو urllib التلقائي."""
     if REQUESTS_AVAILABLE:
         return requests.get(url, headers=headers, params=params, timeout=timeout, stream=stream, **kwargs)
-
-    # Fallback to urllib.request
     if params:
         query_string = urllib.parse.urlencode(params)
         sep = "&" if "?" in url else "?"
         url = f"{url}{sep}{query_string}"
-
     req = urllib.request.Request(url, headers=headers or {}, method="GET")
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            content = resp.read()
-            resp_headers = dict(resp.headers.items())
-            return ResponseWrapper(resp.status, content, resp_headers, url)
+        with urllib.request.urlopen(req, timeout=_urllib_timeout(timeout)) as resp:
+            return ResponseWrapper(resp.status, resp.read(), dict(resp.headers.items()), url)
     except urllib.error.HTTPError as exc:
-        content = exc.read()
-        return ResponseWrapper(exc.code, content, dict(exc.headers.items()), url)
+        return ResponseWrapper(exc.code, exc.read(), dict(exc.headers.items()), url)
     except Exception as exc:
         raise RuntimeError(f"HTTP GET Error ({url}): {exc}") from exc
+
+
+def _request_body(target_json: Any, data: Any, headers: dict | None) -> tuple[bytes, dict]:
+    hdrs = dict(headers or {})
+    if target_json is not None:
+        hdrs["Content-Type"] = "application/json"
+        return _json.dumps(target_json).encode("utf-8"), hdrs
+    if isinstance(data, (dict, list)):
+        hdrs["Content-Type"] = "application/x-www-form-urlencoded"
+        return urllib.parse.urlencode(data).encode("utf-8"), hdrs
+    if isinstance(data, str):
+        return data.encode("utf-8"), hdrs
+    if isinstance(data, bytes):
+        return data, hdrs
+    return b"", hdrs
 
 
 def post(url: str, headers: dict | None = None, json_data: Any = None, data: Any = None, timeout: float = 15.0, json: Any = None, **kwargs: Any) -> Any:
@@ -62,28 +82,13 @@ def post(url: str, headers: dict | None = None, json_data: Any = None, data: Any
     target_json = json_data if json_data is not None else json
     if REQUESTS_AVAILABLE:
         return requests.post(url, headers=headers, json=target_json, data=data, timeout=timeout, **kwargs)
-
-    hdrs = dict(headers or {})
-    payload: bytes = b""
-    if target_json is not None:
-        payload = _json.dumps(target_json).encode("utf-8")
-        hdrs["Content-Type"] = "application/json"
-    elif isinstance(data, (dict, list)):
-        payload = urllib.parse.urlencode(data).encode("utf-8")
-        hdrs["Content-Type"] = "application/x-www-form-urlencoded"
-    elif isinstance(data, str):
-        payload = data.encode("utf-8")
-    elif isinstance(data, bytes):
-        payload = data
-
+    payload, hdrs = _request_body(target_json, data, headers)
     req = urllib.request.Request(url, data=payload, headers=hdrs, method="POST")
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            content = resp.read()
-            return ResponseWrapper(resp.status, content, dict(resp.headers.items()), url)
+        with urllib.request.urlopen(req, timeout=_urllib_timeout(timeout)) as resp:
+            return ResponseWrapper(resp.status, resp.read(), dict(resp.headers.items()), url)
     except urllib.error.HTTPError as exc:
-        content = exc.read()
-        return ResponseWrapper(exc.code, content, dict(exc.headers.items()), url)
+        return ResponseWrapper(exc.code, exc.read(), dict(exc.headers.items()), url)
     except Exception as exc:
         raise RuntimeError(f"HTTP POST Error ({url}): {exc}") from exc
 
@@ -93,27 +98,12 @@ def put(url: str, headers: dict | None = None, json_data: Any = None, timeout: f
     target_json = json_data if json_data is not None else json
     if REQUESTS_AVAILABLE:
         return requests.put(url, headers=headers, json=target_json, data=data, timeout=timeout, **kwargs)
-
-    hdrs = dict(headers or {})
-    payload: bytes = b""
-    if target_json is not None:
-        payload = _json.dumps(target_json).encode("utf-8")
-        hdrs["Content-Type"] = "application/json"
-    elif isinstance(data, (dict, list)):
-        payload = urllib.parse.urlencode(data).encode("utf-8")
-        hdrs["Content-Type"] = "application/x-www-form-urlencoded"
-    elif isinstance(data, str):
-        payload = data.encode("utf-8")
-    elif isinstance(data, bytes):
-        payload = data
-
+    payload, hdrs = _request_body(target_json, data, headers)
     req = urllib.request.Request(url, data=payload, headers=hdrs, method="PUT")
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            content = resp.read()
-            return ResponseWrapper(resp.status, content, dict(resp.headers.items()), url)
+        with urllib.request.urlopen(req, timeout=_urllib_timeout(timeout)) as resp:
+            return ResponseWrapper(resp.status, resp.read(), dict(resp.headers.items()), url)
     except urllib.error.HTTPError as exc:
-        content = exc.read()
-        return ResponseWrapper(exc.code, content, dict(exc.headers.items()), url)
+        return ResponseWrapper(exc.code, exc.read(), dict(exc.headers.items()), url)
     except Exception as exc:
         raise RuntimeError(f"HTTP PUT Error ({url}): {exc}") from exc

@@ -50,6 +50,38 @@ def test_openai_response_is_parsed_without_logging_key():
     assert post.call_args.kwargs["json_data"]["model"] == "gpt-test"
 
 
+def test_environment_selects_provider_and_model(monkeypatch):
+    monkeypatch.setenv("AI_PROVIDER", "openai")
+    monkeypatch.setenv("OPENAI_MODEL", "gpt-env")
+    provider = build_provider(AssistantConfig(openai_api_key="saved", openai_model="gpt-saved"))
+    assert isinstance(provider, OpenAIAssistant)
+    assert provider.model == "gpt-env"
+
+
+def test_openai_scrubs_private_context_before_transmission():
+    response = Response(200, {"choices": [{"message": {"content": "safe"}}]})
+    with patch("engine.ai_assistant.http_client.post", return_value=response) as post, \
+         patch("socket.gethostname", return_value="linux-mint-dev"), \
+         patch("os.getuid", return_value=1000), \
+         patch("pwd.getpwuid") as getpwuid:
+        getpwuid.return_value.pw_name = "developer"
+        assert OpenAIAssistant("secret").ask(
+            "Analyze linux-mint-dev for user developer",
+            system_context="Context for developer on linux-mint-dev",
+        ) == "safe"
+    sent = post.call_args.kwargs["json_data"]
+    assert "linux-mint-dev" not in str(sent)
+    assert "developer" not in str(sent)
+
+
+def test_transient_openai_failure_is_retried():
+    response = Response(200, {"choices": [{"message": {"content": "recovered"}}]})
+    with patch("engine.ai_assistant.http_client.post", side_effect=[RuntimeError("temporary"), response]) as post, \
+         patch("engine.ai_assistant.time.sleep"):
+        assert OpenAIAssistant("secret").ask("hello") == "recovered"
+    assert post.call_count == 2
+
+
 def test_gemini_response_is_parsed():
     response = Response(200, {"candidates": [{"content": {"parts": [{"text": "Gemini answer"}]}}]})
     with patch("engine.ai_assistant.http_client.post", return_value=response) as post, \
