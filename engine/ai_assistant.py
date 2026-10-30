@@ -63,6 +63,11 @@ def _error_message(response: Any) -> str:
     return _text(getattr(response, "text", ""))
 
 
+def _redact_secret(value: Any, secret: str) -> str:
+    message = _text(value)
+    return message.replace(secret, "[redacted]") if secret else message
+
+
 class OpenAIAssistant:
     name = "openai"
 
@@ -143,21 +148,27 @@ class GeminiAssistant:
         )
         if context:
             instruction += f"\nContext: {context}"
-        wait_for_slot(self.api_key)
-        response = http_client.post(
-            f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent",
-            headers={"x-goog-api-key": self.api_key, "Content-Type": "application/json"},
-            json_data={
-                "systemInstruction": {"parts": [{"text": instruction}]},
-                "contents": [{"role": "user", "parts": [{"text": prompt}]}],
-                # 256 tokens is too small for Arabic answers and can stop
-                # Gemini in the middle of a sentence.
-                "generationConfig": {"temperature": 0.1, "maxOutputTokens": 2048},
-            },
-            timeout=self.timeout,
-        )
+        try:
+            wait_for_slot(self.api_key)
+            response = http_client.post(
+                f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent",
+                headers={"x-goog-api-key": self.api_key, "Content-Type": "application/json"},
+                json_data={
+                    "systemInstruction": {"parts": [{"text": instruction}]},
+                    "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+                    # 256 tokens is too small for Arabic answers and can stop
+                    # Gemini in the middle of a sentence.
+                    "generationConfig": {"temperature": 0.1, "maxOutputTokens": 2048},
+                },
+                timeout=self.timeout,
+            )
+        except Exception as exc:
+            detail = _redact_secret(exc, self.api_key)
+            raise AssistantError(
+                f"Gemini connection failed: {detail or type(exc).__name__}"
+            ) from exc
         if getattr(response, "status_code", 0) != 200:
-            detail = _error_message(response)
+            detail = _redact_secret(_error_message(response), self.api_key)
             raise AssistantError(f"Gemini request failed ({response.status_code}): {detail or 'unknown error'}")
         try:
             payload = response.json()

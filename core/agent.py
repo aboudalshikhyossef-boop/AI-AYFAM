@@ -78,6 +78,7 @@ class AYFAMAgent(AgentV5Mixin):
         self.phrases    = PhraseMemory(self.kb)
         self.chat_engine = ConversationEngine(self.kb, self.nlp, self.phrases)
         self.last_answer_was_gap = False
+        self.last_provider_error = ""
 
         # ── Conversation state ──
         self._chat_history = []   # [(role, msg)]
@@ -178,6 +179,7 @@ class AYFAMAgent(AgentV5Mixin):
         history: آخر رسائل المحادثة [(role, text)] ليفهم الذكاء السياق ويصحح المفاهيم الخاطئة.
         """
         self.last_answer_was_gap = False
+        self.last_provider_error = ""
         persona = (
             "أنت AI AYFAM، مساعد أمن معلومات على لينكس. أجب بلغة المستخدم بإيجاز ودقة. "
             "فكّر قبل الجواب: افهم قصد المستخدم، وإن كان في كلامه مفهوم خاطئ فصححه بلطف مع السبب. "
@@ -201,8 +203,13 @@ class AYFAMAgent(AgentV5Mixin):
                 if answer:
                     return f"🧠 [{provider.name.title()} AI Agent]\n\n{answer}"
         except AssistantError as exc:
+            self.last_provider_error = str(exc)
             if self.verbose:
                 self.ui.warning(f"AI provider fallback to local brain: {exc}")
+        except Exception as exc:
+            self.last_provider_error = f"Provider request failed ({type(exc).__name__})."
+            if self.verbose:
+                self.ui.warning(f"AI provider fallback to local brain: {self.last_provider_error}")
 
         # Local Offline Brain Fallback
         try:
