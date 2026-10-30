@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from datetime import datetime, timezone
 from typing import Any, Mapping
 
@@ -83,13 +84,49 @@ class LearningGovernance:
         if not any(token in lower for token in ("evidence", "دليل", "confidence", "ثقة", "limitation", "حدود")):
             flags.append("missing_limitations")
         score = max(0.0, min(1.0, 0.8 - 0.15 * len(flags)))
+        style = LearningGovernance.extract_style_features(text)
         return {
             "screening_score": round(score, 2),
             "flags": flags,
             "review_required": True,
             "answer_sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
+            "style_features": style,
             "evaluated_at": datetime.now(timezone.utc).isoformat(),
         }
+
+    @staticmethod
+    def extract_style_features(answer: str) -> dict:
+        """Extract reusable response behavior, never facts or verbatim text."""
+        text = LearningGovernance._safe_text(answer)
+        sentences = [s for s in re.split(r"[.!؟?\n]+", text) if s.strip()]
+        words = re.findall(r"[\w\u0600-\u06FF]+", text, flags=re.UNICODE)
+        bullets = len(re.findall(r"(?m)^\s*(?:[-*•]|\d+[.)])\s+", text))
+        evidence = len(re.findall(r"evidence|دليل|سبب|because|لأن|استناد", text, re.I))
+        caution = len(re.findall(r"حدود|تحقق|مراجعة|احتمال|قد |لا يمكن الجزم|limitation|verify|review", text, re.I))
+        steps = len(re.findall(r"(?m)^\s*\d+[.)]\s+|first|then|أولاً|ثم|بعد ذلك", text, re.I))
+        return {
+            "structured": round(min(1.0, bullets / max(1, len(sentences))), 3),
+            "evidence": round(min(1.0, evidence / max(1, len(sentences))), 3),
+            "caution": round(min(1.0, caution / max(1, len(sentences))), 3),
+            "steps": round(min(1.0, steps / max(1, len(sentences))), 3),
+            "avg_sentence_words": round(len(words) / max(1, len(sentences)), 1),
+        }
+
+    def get_style_profile(self) -> dict:
+        """Return aggregate style weights; only approved-safe style metadata is used."""
+        rows = self._conn().execute("SELECT evaluation FROM external_interactions ORDER BY id DESC LIMIT 100").fetchall()
+        profiles = []
+        for row in rows:
+            try:
+                style = json.loads(row["evaluation"]).get("style_features", {})
+                if style:
+                    profiles.append(style)
+            except (TypeError, ValueError, json.JSONDecodeError):
+                continue
+        if not profiles:
+            return {"structured": 0.5, "evidence": 0.7, "caution": 0.7, "steps": 0.3, "avg_sentence_words": 18.0}
+        keys = ("structured", "evidence", "caution", "steps", "avg_sentence_words")
+        return {key: round(sum(float(p.get(key, 0.0)) for p in profiles) / len(profiles), 3) for key in keys}
 
     def record_external_answer(self, *, provider: str, model: str, prompt: str,
                                context: Mapping[str, Any] | None, answer: str,

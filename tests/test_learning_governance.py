@@ -25,6 +25,8 @@ def test_external_answer_is_persisted_and_quarantined(tmp_path):
     assert row["source"] == "openai:gpt-test"
     assert json.loads(row["context"])["purpose"] == "assistant_response"
     assert json.loads(row["evaluation"])["review_required"] is True
+    assert "style_features" in json.loads(row["evaluation"])
+    assert gov.get_style_profile()["evidence"] > 0
     proposals = gov.list_proposals("proposed")
     assert len(proposals) == 1
     assert proposals[0]["kind"] == "knowledge"
@@ -54,3 +56,11 @@ def test_code_proposal_never_modifies_files_and_needs_review_and_test(tmp_path):
     assert gov.record_test_result(proposal_id, passed=True, command="pytest -q") is True
     assert gov.apply(proposal_id) is False
     assert gov.list_proposals()[0]["status"] == "ready_for_merge"
+
+
+def test_local_search_rejects_unrelated_knowledge(tmp_path):
+    kb, _ = make_governance(tmp_path)
+    kb.add_knowledge("concept", "firewall", "A firewall filters network traffic.", source="reviewed_external:1")
+    kb.add_knowledge("concept", "database", "A database stores structured records.", source="reviewed_external:2")
+    assert kb.search_knowledge("ما هو firewall", limit=3)[0]["key"] == "firewall"
+    assert kb.search_knowledge("ما هو quantum entanglement", limit=3) == []

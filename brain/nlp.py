@@ -376,6 +376,17 @@ class NLPEngine:
             return f"لا تتوفر قاعدة معرفة لشرح: {target}"
 
         sections = []
+        learned_style = None
+        external_count = 0
+        try:
+            from brain.learning_governance import LearningGovernance
+            external_count = self.kb._connect().execute(
+                "SELECT COUNT(*) FROM external_interactions"
+            ).fetchone()[0]
+            if external_count:
+                learned_style = LearningGovernance(self.kb).get_style_profile()
+        except Exception:
+            pass
 
         # 0) هل هذا سؤال عن أداة معروفة (nmap, ping, curl...)؟ إن كان كذلك،
         #    أعطِ أولوية قصوى للمعرفة المُهيكَلة (structured) المستخرجة من
@@ -456,6 +467,18 @@ class NLPEngine:
                 pass
 
         if sections:
+            if learned_style:
+                method = []
+                if learned_style.get("evidence", 0) >= 0.45:
+                    method.append("فصل الدليل عن الاستنتاج")
+                if learned_style.get("caution", 0) >= 0.45:
+                    method.append("ذكر الحدود ودرجة الثقة")
+                if learned_style.get("steps", 0) >= 0.35:
+                    method.append("ترتيب الخطوات عند الحاجة")
+                if method:
+                    sections.insert(0, "🧠 منهج محلي مكتسب من أنماط الرد الخارجية (دون نسخ محتواها):\n  "
+                                    + "، ".join(method))
+            sections.insert(0, f"🎯 السؤال المرتبط: {target.strip()}")
             return "\n".join(sections)
 
         # 3) احتياطي: منفذ شبكي معروف

@@ -144,6 +144,12 @@ GEMINI_MODEL=gemini-3.8-flash
 AI_PROVIDER=auto        # auto | openai | gemini | local
 ```
 
+`gpt-4o-mini` نموذج منخفض التكلفة وليس وعداً بحصة مجانية. OpenAI لا توفر نموذج API
+خاصاً يضمن المجانية لكل الحسابات؛ إذا كان حسابك يملك `free credits` فستُستهلك أولاً،
+وإلا يحتاج API إلى رصيد موجب. اشتراك ChatGPT منفصل عن فوترة API. راجع
+[سياسة OpenAI للفوترة المسبقة](https://help.openai.com/en/articles/8264644-setting-up-and-managing-prepaid-api-billing)
+قبل اختبار المفتاح.
+
 بديلًا عن `.env` يمكن إدخال المفتاح من واجهة الإعدادات؛ يُحفظ محليًا في
 `~/.ayfam/config.json` بصلاحيات مقيدة أو في نظام keyring إن كان متاحًا. في وضع
 `auto` يختار التطبيق OpenAI أولًا ثم Gemini. تتم إزالة أسماء المضيفين والمستخدمين

@@ -1664,6 +1664,10 @@ class UnifiedCockpitWindow(QMainWindow):
             self.settings.get("openai_model", "gpt-4o-mini")
         )
         self.setting_openai_model.setPlaceholderText("gpt-4o-mini")
+        self.setting_openai_model.setToolTip(
+            "نماذج API لا تعتمد على اشتراك ChatGPT؛ تُستخدم حصتك المجانية إن كانت متاحة، "
+            "وإلا يتطلب الحساب رصيد API موجباً."
+        )
 
         self.setting_openai_key = QLineEdit(self.settings.get("openai_api_key", ""))
         self.setting_openai_key.setEchoMode(QLineEdit.EchoMode.PasswordEchoOnEdit)

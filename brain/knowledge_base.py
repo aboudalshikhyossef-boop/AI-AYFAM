@@ -76,6 +76,37 @@ SEED_INTENTS = [
                         "summarize the book","book summary"]),
 ]
 
+_SEARCH_STOPWORDS = {
+    "ما", "ماذا", "كيف", "هل", "لماذا", "متى", "اين", "أين", "هو", "هي", "من", "عن",
+    "الى", "إلى", "في", "على", "the", "what", "how", "why", "when", "where", "is", "are",
+    "a", "an", "of", "to", "in", "on", "and", "or", "explain", "اشرح", "لي", "please",
+}
+
+
+def _meaningful_search_terms(text: str) -> list[str]:
+    terms = re.findall(r"[\w\u0600-\u06FF]+", text or "", flags=re.UNICODE)
+    return [term.lower() for term in terms if len(term) >= 2 and term.lower() not in _SEARCH_STOPWORDS]
+
+
+def _relevance_filter(rows: list[dict], query: str, *, limit: int) -> list[dict]:
+    """Keep only results sharing meaningful query terms, ranked by overlap."""
+    query_terms = set(_meaningful_search_terms(query))
+    if not query_terms:
+        return []
+    ranked = []
+    for row in rows:
+        haystack = " ".join(str(value or "") for value in row.values()).lower()
+        overlap = query_terms.intersection(_meaningful_search_terms(haystack))
+        if not overlap:
+            continue
+        item = dict(row)
+        item["query_overlap"] = round(len(overlap) / len(query_terms), 3)
+        ranked.append(item)
+    ranked.sort(key=lambda item: item["query_overlap"], reverse=True)
+    for item in ranked:
+        item.pop("query_overlap", None)
+    return ranked[:limit]
+
 SEED_KNOWLEDGE = [
     # Ports
     ("port", "22",   "SSH — Secure Shell. يُستخدم للوصول الآمن عن بُعد. إذا كان مفتوحاً للعالم → خطر عالٍ."),
@@ -456,21 +487,25 @@ class KnowledgeBase:
                     "SELECT k.category, k.key, k.content, k.source "
                     "FROM knowledge k JOIN knowledge_fts f ON k.id = f.rowid "
                     "WHERE knowledge_fts MATCH ? ORDER BY rank LIMIT ?",
-                    (fts_query, limit)
+                    (fts_query, max(limit * 4, 12))
                 ).fetchall()
                 if rows:
-                    return [{"category": r["category"], "key": r["key"], "content": r["content"],
-                             "source": r["source"]} for r in rows]
+                    candidates = [{"category": r["category"], "key": r["key"], "content": r["content"],
+                                  "source": r["source"]} for r in rows]
+                    filtered = _relevance_filter(candidates, query, limit=limit)
+                    if filtered:
+                        return filtered
                 # else: FTS returned nothing for these tokens — fall through to LIKE
         except sqlite3.OperationalError:
             pass  # FTS5 not compiled in — fall through
         # Fallback: LIKE search
         rows = conn.execute(
             "SELECT category, key, content, source FROM knowledge WHERE content LIKE ? OR key LIKE ? LIMIT ?",
-            (f"%{query}%", f"%{query}%", limit)
+            (f"%{query}%", f"%{query}%", max(limit * 4, 12))
         ).fetchall()
-        return [{"category": r["category"], "key": r["key"], "content": r["content"],
-                 "source": r["source"]} for r in rows]
+        candidates = [{"category": r["category"], "key": r["key"], "content": r["content"],
+                      "source": r["source"]} for r in rows]
+        return _relevance_filter(candidates, query, limit=limit)
 
     def add_knowledge(self, category: str, key: str, content: str, source: str = "learned"):
         conn = self._connect()
@@ -711,10 +746,11 @@ class KnowledgeBase:
                 "JOIN library_fts f ON c.id = f.rowid "
                 "JOIN library_documents d ON d.id = c.doc_id "
                 "WHERE library_fts MATCH ? ORDER BY rank LIMIT ?",
-                (fts_query, limit)
+                (fts_query, max(limit * 4, 12))
             ).fetchall()
-            return [{"content": r["content"], "chunk_index": r["chunk_index"],
-                     "page_hint": r["page_hint"], "title": r["title"], "doc_id": r["doc_id"]} for r in rows]
+            candidates = [{"content": r["content"], "chunk_index": r["chunk_index"],
+                           "page_hint": r["page_hint"], "title": r["title"], "doc_id": r["doc_id"]} for r in rows]
+            return _relevance_filter(candidates, query, limit=limit)
         except sqlite3.OperationalError:
             return []
 
