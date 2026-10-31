@@ -109,5 +109,5 @@ def test_provider_settings_persist_only_after_successful_model_list(
     assert window.settings.values[expected_model] == (
         "gpt-4o-mini" if provider == "openai" else "gemini-2.5-flash"
     )
-    assert "12.5 ms" in window.settings_log.value
+    assert "Latency / زمن الاستجابة:" in window.settings_log.value
     assert "fake-" not in window.settings_log.value
