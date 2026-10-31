@@ -261,6 +261,7 @@ def classify_http_error(provider: str, response: Any, *, latency_ms: float | Non
         exhausted = any(token in combined for token in (
             "insufficient_quota", "billing_hard_limit", "quota_exhausted",
             "exceeded your current quota", "billing limit", "perday", "daily quota",
+            "projectspend", "spendper", "monthly quota",
         ))
         category = "quota_exhausted" if exhausted else "rate_limited"
     elif status in (408, 504):
