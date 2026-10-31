@@ -22,7 +22,7 @@ from typing import Any, Iterable, Mapping
 
 from utils import http_client as requests
 from engine.gemini_rate_limit import DEFAULT_GEMINI_MODEL, compact_text, gemini_model_name, wait_for_slot
-from engine.ai_assistant import AssistantError, validate_model_access
+from engine.ai_assistant import AssistantError, classify_http_error, validate_model_access
 from brain.context_engine import ContextEngine
 
 THREAT_SCHEMA: dict[str, Any] = {
@@ -122,7 +122,7 @@ def _is_model_scoped_quota(details: Any) -> bool:
 
 
 class GeminiHTTPError(GeminiCTIError):
-    """HTTP error that preserves Google's machine-readable error and quota details."""
+    """Secret-safe HTTP diagnostic retaining only machine-readable quota metadata."""
 
     def __init__(self, response: Any):
         self.status_code = int(response.status_code)
@@ -134,18 +134,13 @@ class GeminiHTTPError(GeminiCTIError):
         if not isinstance(error, Mapping):
             error = {}
         self.error_code = _text(error.get("status") or error.get("code"))
-        self.message = _text(error.get("message")) or _text(getattr(response, "text", ""))
         self.details = error.get("details", [])
-        self.model_scoped_quota = self.status_code == 429 and _is_model_scoped_quota(self.details)
-        parts = [f"HTTP {self.status_code}"]
-        if self.error_code:
-            parts.append(self.error_code)
-        if self.message:
-            parts.append(self.message)
-        if self.details:
-            rendered = json.dumps(self.details, ensure_ascii=False, separators=(",", ":"))
-            parts.append("details=" + rendered[:1400])
-        super().__init__("; ".join(parts))
+        self.model_scoped_quota = (
+            self.status_code == 429 and _is_model_scoped_quota(self.details)
+        )
+        # Omit provider response text: it can echo request data or credentials.
+        diagnostic = classify_http_error("gemini", response)
+        super().__init__(diagnostic.render())
 
 
 def _interaction_output_text(body: Any) -> str:
