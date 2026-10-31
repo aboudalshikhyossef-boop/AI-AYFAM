@@ -5,7 +5,7 @@ permissions:
 
 on:
   push:
-    branches: [ main, master, add-agents-md-rules* ]
+    branches: [ main, master, add-agents-md-rules*, security-phase-2-hardening ]
   pull_request:
     branches: [ main, master ]
 
