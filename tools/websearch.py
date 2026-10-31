@@ -28,9 +28,10 @@ except Exception:  # pragma: no cover
     requests = None
 
 from utils import http_client
+from engine.gemini_rate_limit import DEFAULT_GEMINI_MODEL
 
 USER_AGENT = "AI-AYFAM/9.0 (https://github.com/aboudalshikhyossef-boop/AI-AYFAM; local security assistant)"
-GEMINI_MODELS = ("gemini-3.8-flash",)
+GEMINI_MODELS = (DEFAULT_GEMINI_MODEL,)
 TIMEOUT = 9
 DEFAULT_GOOGLE_CSE_CX = "f5fbcd40fda484bc7"
 
