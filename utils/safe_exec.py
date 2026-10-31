@@ -118,7 +118,7 @@ def run_trusted_shell(cmd: str, timeout=30):
     if not isinstance(cmd, str):
         raise TypeError("run_trusted_shell() يتطلب نصاً ثابتاً")
     try:
-        r = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=timeout)
+        r = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=timeout)  # nosec B602 - trusted constant-command API only; never pass external input
         return ExecResult(r.returncode == 0, r.stdout.strip(), r.stderr.strip(), r.returncode)
     except subprocess.TimeoutExpired:
         return ExecResult(False, "", "timeout")
