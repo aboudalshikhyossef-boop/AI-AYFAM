@@ -88,7 +88,10 @@ class GeminiCTIError(RuntimeError):
             "timeout", "network/dns", "rate_limited", "server_error", "invalid_response",
         }
         self.status_code = diagnostic.status_code if diagnostic else None
-        super().__init__(message)
+        rendered = str(message)
+        if not rendered.startswith(f"[{self.category}]"):
+            rendered = f"[{self.category}] {rendered}"
+        super().__init__(rendered)
 
 
 @dataclass(frozen=True)
