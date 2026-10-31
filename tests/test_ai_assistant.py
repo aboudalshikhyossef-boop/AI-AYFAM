@@ -304,7 +304,7 @@ def test_get_transport_maps_mocked_http_status_to_category(status, payload, expe
             list_available_models("openai", FAKE_KEY, force=True)
     assert caught.value.category == expected
     assert FAKE_KEY not in str(caught.value)
-    expected_calls = 3 if expected == "server_error" else 1
+    expected_calls = 3 if expected in {"server_error", "timeout", "rate_limited"} else 1
     assert get.call_count == expected_calls
 
 
