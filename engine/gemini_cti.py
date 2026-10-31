@@ -255,7 +255,7 @@ class GeminiThreatClient:
         self._model: ModelInfo | None = None
         self._models: list[ModelInfo] = []
         if not self.api_key:
-            raise GeminiCTIError("Gemini API key is missing")
+            raise GeminiCTIError("Gemini API key is missing. مفتاح Gemini غير مُعدّ.")
 
     def ask_assistant(self, prompt: str, system_context: str = "") -> str:
         """Make exactly one compact Gemini request; no SDK/model fallback burst."""
@@ -298,7 +298,7 @@ class GeminiThreatClient:
             parts = candidates[0].get("content", {}).get("parts", []) if candidates else []
             answer = "\n".join(p.get("text", "") for p in parts if isinstance(p, dict) and p.get("text")).strip()
             if not answer:
-                raise GeminiCTIError("Gemini returned an empty response")
+                raise GeminiCTIError("Gemini returned an empty response. أعاد Gemini استجابة فارغة.")
             return answer
         except GeminiCTIError:
             raise
@@ -313,7 +313,7 @@ class GeminiThreatClient:
         try:
             from google import genai
         except ImportError as exc:
-            raise GeminiCTIError("google-genai is not installed; run: python3 -m pip install google-genai") from exc
+            raise GeminiCTIError("Optional google-genai SDK is not installed; install it with python3 -m pip install google-genai. مكتبة google-genai الاختيارية غير مثبتة؛ ثبّتها بالأمر المذكور.") from exc
         if self._client is None:
             try:
                 self._client = genai.Client(api_key=self.api_key, http_options={"timeout": int(self.timeout * 1000)})
@@ -402,7 +402,7 @@ class GeminiThreatClient:
         try:
             text = _interaction_output_text(response.json())
         except ValueError as exc:
-            raise GeminiCTIError("Gemini returned a non-JSON HTTP response") from exc
+            raise GeminiCTIError("Gemini returned a non-JSON HTTP response. أعاد Gemini استجابة HTTP ليست JSON صالحاً.") from exc
         if not text:
             raise GeminiCTIError("Gemini returned an empty response")
         return text
@@ -435,7 +435,7 @@ one recommendation, and at most 2 authoritative source URLs. Return [] when evid
         except GeminiCTIError:
             raise
         except Exception as exc:
-            raise GeminiCTIError(f"Gemini threat research failed using {model.short_name}: {exc}") from exc
+            raise GeminiCTIError(f"Gemini threat research failed using {model.short_name}. فشل بحث التهديدات عبر Gemini؛ راجع فئة التشخيص دون تفاصيل حساسة.") from exc
 
     def close(self) -> None:
         if self._client is not None:
@@ -447,10 +447,10 @@ one recommendation, and at most 2 authoritative source URLs. Return [] when evid
 
 def validate_threat_feed(data: Any, window_hours: int = 48) -> dict[str, Any]:
     if not isinstance(data, dict):
-        raise GeminiCTIError("Threat feed must be a JSON object")
+        raise GeminiCTIError("Threat feed must be a JSON object. يجب أن يكون موجز التهديدات كائن JSON.")
     threats = data.get("threats", [])
     if not isinstance(threats, list):
-        raise GeminiCTIError("Threat feed threats must be an array")
+        raise GeminiCTIError("Threat feed threats must be an array. يجب أن تكون قائمة التهديدات مصفوفة.")
     clean: list[dict[str, Any]] = []
     for item in threats:
         if not isinstance(item, dict) or not _text(item.get("id")) or not _text(item.get("title")):
