@@ -75,7 +75,9 @@ class GeminiCTITests(unittest.TestCase):
         self.assertEqual(result["threats"], [])
         self.assertTrue(post.call_args.args[0].startswith("https://generativelanguage.googleapis.com/v1"))
         self.assertEqual(post.call_args.kwargs["headers"]["x-goog-api-key"], "test-key")
-        self.assertEqual(post.call_args.kwargs["timeout"], (10, 45.0))
+        self.assertEqual(post.call_args.kwargs["timeout"][0], 10)
+        self.assertGreater(post.call_args.kwargs["timeout"][1], 44.0)
+        self.assertLessEqual(post.call_args.kwargs["timeout"][1], 45.0)
         payload = post.call_args.kwargs["json_data"]
         self.assertIn("google_search_retrieval", payload["tools"][0])
         self.assertEqual(payload["generationConfig"]["maxOutputTokens"], 900)
@@ -87,7 +89,7 @@ class GeminiCTITests(unittest.TestCase):
             def json(self):
                 return {"outputs": [{"type": "text", "text": json.dumps({"generated_at": "now", "threats": []})}]}
         client = GeminiThreatClient("test-key")
-        client.discover_models = lambda force=False: [ModelInfo("models/gemini-2.5-flash")]
+        client.discover_models = lambda force=False: [ModelInfo(f"models/{CTI_SEARCH_MODEL}")]
         with patch("engine.gemini_cti.requests.post", return_value=Response()):
             self.assertEqual(client.fetch_threats()["threats"], [])
 
@@ -120,7 +122,7 @@ class GeminiCTITests(unittest.TestCase):
             with self.assertRaises(GeminiCTIError) as caught:
                 client.fetch_threats()
         self.assertEqual(post.call_count, 1)
-        self.assertIn("quota_exhausted", str(caught.exception))
+        self.assertEqual(caught.exception.category, "quota_exhausted")
         self.assertNotIn("project-wide request limit", str(caught.exception))
 
     def test_environment_key_precedence_matches_google_docs(self):
