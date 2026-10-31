@@ -1938,24 +1938,33 @@ class UnifiedCockpitWindow(QMainWindow):
 
             def run_generation():
                 started = time.monotonic()
-                provider = (
-                    GeminiAssistant(effective_key, model, timeout=12.0)
-                    if provider_name == "gemini"
-                    else OpenAIAssistant(effective_key, model, timeout=12.0)
-                )
-                generated = provider.ask("Reply with: OK")
-                return {
-                    "answer": generated,
-                    "latency_ms": round((time.monotonic() - started) * 1000, 1),
-                    "category": "ok",
-                }
+                try:
+                    provider = (
+                        GeminiAssistant(effective_key, model, timeout=12.0)
+                        if provider_name == "gemini"
+                        else OpenAIAssistant(effective_key, model, timeout=12.0)
+                    )
+                    generated = provider.ask("Reply with: OK")
+                    return {
+                        "answer": generated,
+                        "latency_ms": round((time.monotonic() - started) * 1000, 1),
+                        "category": "ok",
+                    }
+                except Exception as exc:
+                    return {
+                        "category": getattr(exc, "category", "invalid_response"),
+                        "message": str(exc) if hasattr(exc, "diagnostic") else (
+                            "Provider generation failed. فشل توليد المزوّد."
+                        ),
+                        "latency_ms": round((time.monotonic() - started) * 1000, 1),
+                    }
 
             def handle_generation_result(generation: Any) -> None:
-                if isinstance(generation, Exception):
-                    category = getattr(generation, "category", "invalid_response")
+                if isinstance(generation, dict) and generation.get("category") != "ok":
                     self.settings_log.setPlainText(
-                        status + f"\n[{category}] Optional generation failed.\n"
-                        f"فشل اختبار التوليد الاختياري. {generation}"
+                        status + f"\n[{generation['category']}] Optional generation failed.\n"
+                        f"فشل اختبار التوليد الاختياري: {generation.get('message', '')}"
+                        f"\nGeneration latency / زمن التوليد: {generation.get('latency_ms', 0):.1f} ms"
                     )
                 elif isinstance(generation, dict) and generation.get("category") == "ok":
                     self.settings_log.setPlainText(
