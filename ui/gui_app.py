@@ -23,6 +23,7 @@ from PyQt6.QtWidgets import (
 )
 
 from config.settings import Settings
+from config.model_defaults import OPENAI_DEFAULT_MODEL
 from config.version import APP_VERSION_LABEL
 from core.agent import AYFAMAgent
 from brain import library, relevance_engine
@@ -1662,9 +1663,9 @@ class UnifiedCockpitWindow(QMainWindow):
         self.setting_gemini_key.setPlaceholderText("AI Studio Gemini API Key")
 
         self.setting_openai_model = QLineEdit(
-            self.settings.get("openai_model", "gpt-4o-mini")
+            self.settings.get("openai_model", OPENAI_DEFAULT_MODEL)
         )
-        self.setting_openai_model.setPlaceholderText("gpt-4o-mini")
+        self.setting_openai_model.setPlaceholderText(OPENAI_DEFAULT_MODEL)
         self.setting_openai_model.setToolTip(
             "نماذج API لا تعتمد على اشتراك ChatGPT؛ تُستخدم حصتك المجانية إن كانت متاحة، "
             "وإلا يتطلب الحساب رصيد API موجباً."
@@ -1845,7 +1846,7 @@ class UnifiedCockpitWindow(QMainWindow):
             model_field = self.setting_openai_model
             setting_key = "openai_api_key"
             model_setting = "openai_model"
-            default_model = "gpt-4o-mini"
+            default_model = OPENAI_DEFAULT_MODEL
             environment_names = ("OPENAI_API_KEY",)
             env_label = "OPENAI_API_KEY"
             display_name = "OpenAI"

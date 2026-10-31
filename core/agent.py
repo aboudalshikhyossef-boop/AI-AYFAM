@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from config.settings import Settings
+from config.model_defaults import OPENAI_DEFAULT_MODEL
 from ui.terminal import TerminalUI
 from core.intelligence import SecurityIntelligence
 from brain.knowledge_base import KnowledgeBase
@@ -201,7 +202,7 @@ class AYFAMAgent(AgentV5Mixin):
         config = AssistantConfig(
             provider=self.settings.get("ai_provider", "auto"),
             openai_api_key=self.settings.get("openai_api_key", ""),
-            openai_model=self.settings.get("openai_model", "gpt-4o-mini"),
+            openai_model=self.settings.get("openai_model", OPENAI_DEFAULT_MODEL),
             gemini_api_key=self.settings.get("gemini_api_key", ""),
             gemini_model=gemini_model_name(self.settings.get("gemini_model", DEFAULT_GEMINI_MODEL)),
             timeout=25.0,
