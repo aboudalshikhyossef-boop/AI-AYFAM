@@ -153,8 +153,10 @@ class Settings:
                 # Empty means explicit deletion, not retaining an old keyring value.
                 try:
                     existing = keyring.get_password(_KEYRING_SERVICE, name)
-                except Exception as exc:
-                    raise RuntimeError(f"Unable to check keyring entry for {name}") from exc
+                except Exception:
+                    # A missing/unavailable backend is valid on headless systems.
+                    # In that case there is no usable keyring value to restore.
+                    continue
                 if existing:
                     try:
                         keyring.delete_password(_KEYRING_SERVICE, name)
