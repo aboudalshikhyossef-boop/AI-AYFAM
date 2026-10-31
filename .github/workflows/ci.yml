@@ -39,19 +39,19 @@ jobs:
       - name: Code Style Check (Ruff and pyflakes)
         run: |
           ruff check --select F811,F821,F601,E722 .
-          pyflakes . || true
+          pyflakes .
 
       - name: Security Static Analysis (Bandit)
         run: |
-          bandit -r engine/ tools/ core/ utils/ -s B101,B108,B110,B311,B404,B603,B607 || true
+          bandit -r engine/ tools/ core/ utils/ -s B101,B108,B110,B311,B404,B603,B607
 
       - name: Dependency Audit (pip-audit)
         run: |
-          pip-audit || true
+          pip-audit
 
       - name: Type Check Engine (mypy)
         run: |
-          mypy engine/ --ignore-missing-imports || true
+          mypy engine/ --ignore-missing-imports || echo "::warning::mypy reported type issues (advisory)"
 
       - name: Run Pytest Suite
         env:
