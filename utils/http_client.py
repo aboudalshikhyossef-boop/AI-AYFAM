@@ -21,22 +21,55 @@ except ImportError:
 
 class ResponseWrapper:
     """محاكي لكائن requests.Response باستخدام urllib القياسي."""
-    def __init__(self, status_code: int, content: bytes, headers: Mapping[str, str] | None = None, url: str = ""):
+    def __init__(self, status_code: int, content: bytes | None = None, headers: Mapping[str, str] | None = None, url: str = "", raw_response: Any = None):
         self.status_code = status_code
-        self.content = content
-        self.text = content.decode("utf-8", errors="replace")
+        self._content = content
+        self._raw_response = raw_response
         self.headers = headers or {}
         self.url = url
         self.ok = 200 <= status_code < 400
+        self._closed = False
+
+    @property
+    def content(self) -> bytes:
+        if self._content is None:
+            self._content = b"".join(self.iter_content())
+        return self._content
+
+    @property
+    def text(self) -> str:
+        return self.content.decode("utf-8", errors="replace")
 
     def json(self) -> Any:
         return _json.loads(self.text)
 
     def iter_content(self, chunk_size: int = 65536):
-        """Yield response bytes in chunks, matching requests.Response's API."""
+        """Read urllib response chunks lazily rather than buffering the whole body."""
         size = max(1, int(chunk_size))
-        for offset in range(0, len(self.content), size):
-            yield self.content[offset:offset + size]
+        if self._raw_response is None:
+            data = self._content or b""
+            for offset in range(0, len(data), size):
+                yield data[offset:offset + size]
+            return
+        try:
+            while True:
+                chunk = self._raw_response.read(size)
+                if not chunk:
+                    break
+                yield chunk
+        finally:
+            self.close()
+
+    def close(self) -> None:
+        if not self._closed and self._raw_response is not None:
+            self._closed = True
+            self._raw_response.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, traceback):
+        self.close()
 
 
 def _urllib_timeout(timeout: Any) -> float:
@@ -60,9 +93,16 @@ def get(url: str, headers: dict | None = None, params: dict | None = None, timeo
         url = f"{url}{sep}{query_string}"
     req = urllib.request.Request(url, headers=headers or {}, method="GET")
     try:
-        with urllib.request.urlopen(req, timeout=_urllib_timeout(timeout)) as resp:
+        resp = urllib.request.urlopen(req, timeout=_urllib_timeout(timeout))
+        if stream:
+            return ResponseWrapper(resp.status, None, dict(resp.headers.items()), url, raw_response=resp)
+        try:
             return ResponseWrapper(resp.status, resp.read(), dict(resp.headers.items()), url)
+        finally:
+            resp.close()
     except urllib.error.HTTPError as exc:
+        if stream:
+            return ResponseWrapper(exc.code, None, dict(exc.headers.items()), url, raw_response=exc)
         return ResponseWrapper(exc.code, exc.read(), dict(exc.headers.items()), url)
     except Exception as exc:
         raise RuntimeError(f"HTTP GET Error ({url}): {exc}") from exc
