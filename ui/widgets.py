@@ -664,6 +664,7 @@ class StaticNavigationMenu(QWidget):
         for page_key, button in self.buttons.items():
             button.setChecked(page_key == key)
 
+
 class NavigationWheel(Glass):
     """قائمة تنقل دائرية تعرض الأيقونات على قوس بمنظور وحركة ثلاثية الأبعاد."""
 
