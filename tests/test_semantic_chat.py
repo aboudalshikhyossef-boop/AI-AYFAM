@@ -183,13 +183,23 @@ def test_port_scan_produces_findings_for_every_open_port(monkeypatch):
 
 
 # ── الواجهة (offscreen) ──
-def test_gui_chat_flow_and_summary():
+def test_gui_chat_flow_and_summary(monkeypatch):
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     try:
         from PyQt6.QtWidgets import QApplication
         from ui.gui_app import UnifiedCockpitWindow, summarize_findings, sort_findings, finding_html
     except (ImportError, OSError) as exc:
         pytest.skip(f"PyQt6 is unavailable ({exc})")
+
+    # This test covers chat routing/UI only. Window construction starts live
+    # telemetry by default, which spawns a QThread running system commands.
+    # Keep unrelated subprocess workers out of this test so Qt teardown is
+    # deterministic; telemetry lifecycle is covered by dedicated GUI tests.
+    monkeypatch.setattr(
+        UnifiedCockpitWindow,
+        "update_live_telemetry",
+        lambda self, force=False: None,
+    )
 
     findings = [{"severity": "low", "title": "ب"}, {"severity": "critical", "title": "أ", "fix": "sudo ufw enable"}]
     assert sort_findings(findings)[0]["title"] == "أ"
@@ -200,6 +210,7 @@ def test_gui_chat_flow_and_summary():
 
     app = QApplication.instance() or QApplication([])
     window = UnifiedCockpitWindow()
+    assert window.telemetry_worker is None
     window.show()
     window.agent.phrases.forget("تمام")
     for text in (TEACH, "تمام"):
