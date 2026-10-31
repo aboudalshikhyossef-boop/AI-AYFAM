@@ -194,16 +194,22 @@ def update_exploitdb_index() -> dict:
     حد لعدد الطلبات، بما يطابق فلسفة الأداة في تفضيل التخزين المحلي.
     ملاحظة صادقة: هذا فهرس عناوين/أوصاف فقط (لا يحمّل أكواد الاستغلال نفسها).
     """
+    r = None
+    tmp_path = EXPLOITDB_CACHE.with_suffix(".tmp")
     try:
         EXPLOITDB_CACHE.parent.mkdir(parents=True, exist_ok=True)
         r = requests.get(EXPLOITDB_CSV_URL, headers=HEADERS, timeout=60, stream=True)
         if r.status_code != 200:
             return {"success": False, "error": f"HTTP {r.status_code} من {EXPLOITDB_CSV_URL}"}
 
-        tmp_path = EXPLOITDB_CACHE.with_suffix(".tmp")
+        max_download_bytes = 25 * 1024 * 1024
+        downloaded_bytes = 0
         with open(tmp_path, "wb") as f:
             for chunk in r.iter_content(chunk_size=65536):
                 if chunk:
+                    downloaded_bytes += len(chunk)
+                    if downloaded_bytes > max_download_bytes:
+                        raise ValueError("Exploit-DB index exceeds the 25 MiB download limit")
                     f.write(chunk)
 
         # تحقّق من صحة الملف قبل استبدال أي نسخة قديمة صالحة
@@ -219,7 +225,11 @@ def update_exploitdb_index() -> dict:
         tmp_path.replace(EXPLOITDB_CACHE)
         return {"success": True, "count": count}
     except Exception as e:
+        tmp_path.unlink(missing_ok=True)
         return {"success": False, "error": str(e)}
+    finally:
+        if r is not None and hasattr(r, "close"):
+            r.close()
 
 
 def search_exploitdb(keyword: str, max_results: int = 10) -> list:
