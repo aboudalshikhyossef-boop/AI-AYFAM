@@ -84,7 +84,7 @@ class SecretScanner:
                 if stat_result is None or getattr(stat_result, "st_size", self.MAX_FILE_BYTES + 1) > self.MAX_FILE_BYTES:
                     continue
                 content = self.sys.read_text(fpath)
-            if not content or "\\x00" in content:
+            if not content or "\x00" in content:
                 continue
 
             for idx, line in enumerate(content.splitlines(), 1):
