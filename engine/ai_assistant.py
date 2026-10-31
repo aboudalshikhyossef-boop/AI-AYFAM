@@ -13,7 +13,7 @@ import socket
 import threading
 import time
 from dataclasses import dataclass, field
-from typing import Any, Mapping, Protocol
+from typing import Any, Callable, Mapping, Protocol
 
 from utils import http_client
 from engine.gemini_rate_limit import DEFAULT_GEMINI_MODEL, compact_text, gemini_model_name, wait_for_slot
@@ -163,7 +163,7 @@ class AssistantProvider(Protocol):
     name: str
     model: str
 
-    def ask(self, prompt: str, *, system_context: str = "") -> str:
+    def ask(self, prompt: str, *, system_context: str = "", on_wait: Callable[[float], None] | None = None) -> str:
         ...
 
 
@@ -595,7 +595,7 @@ class OpenAIAssistant:
     def validate(self, *, force: bool = False) -> dict[str, Any]:
         return validate_model_access(self.name, self.api_key, self.model, timeout=self.timeout, force=force)
 
-    def ask(self, prompt: str, *, system_context: str = "") -> str:
+    def ask(self, prompt: str, *, system_context: str = "", on_wait: Callable[[float], None] | None = None) -> str:
         try:
             answer = self._ask(prompt, system_context=system_context)
         except AssistantError:
@@ -659,7 +659,7 @@ class GeminiAssistant:
     def validate(self, *, force: bool = False) -> dict[str, Any]:
         return validate_model_access(self.name, self.api_key, self.model, timeout=self.timeout, force=force)
 
-    def ask(self, prompt: str, *, system_context: str = "", on_wait=None) -> str:
+    def ask(self, prompt: str, *, system_context: str = "", on_wait: Callable[[float], None] | None = None) -> str:
         try:
             answer = self._ask(prompt, system_context=system_context, on_wait=on_wait)
         except AssistantError:
@@ -671,7 +671,7 @@ class GeminiAssistant:
         _record_provider_success(self.name)
         return answer
 
-    def _ask(self, prompt: str, *, system_context: str = "", on_wait=None) -> str:
+    def _ask(self, prompt: str, *, system_context: str = "", on_wait: Callable[[float], None] | None = None) -> str:
         if not _text(prompt):
             raise AssistantError(_diagnostic("invalid_response"), self.name)
         started = time.monotonic()
