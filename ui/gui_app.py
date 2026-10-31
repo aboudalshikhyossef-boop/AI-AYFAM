@@ -41,11 +41,8 @@ from tools.websearch import DEFAULT_GOOGLE_CSE_CX
 from engine.gemini_rate_limit import DEFAULT_GEMINI_MODEL
 from ui.terminal import TerminalUI
 from ui.icons import ICON_COLORS, framed_icon, glyph_icon
-from ui.glass_engine import BackdropCanvas, FrostedGlassController, LiveBackdrop
-from ui.widgets import (
-    AccentLine, AmbientSurface, ChatView, Glass, GlassAnalogClock, HoverController,
-    NavigationWheel, PressFeedbackController, SecurityGauge, SoundUX, TelemetryChart,
-)
+from ui.widgets import AccentLine, ChatView, SecurityGauge, StaticNavigationMenu, TelemetryChart
+from ui.performance import EVENT_POLL_INTERVAL_MS, TELEMETRY_REFRESH_MS
 from ui.intro_splash import AyfamIntroSplash, SystemOverviewDialog
 from ui.views.findings import FindingsView
 from ui.views.timeline import TimelineView
@@ -314,31 +311,25 @@ class UnifiedCockpitWindow(QMainWindow):
         self._selected_usb_partition_data: dict = {}
         self._usb_selection_source = "none"
         self._event_store = None
-        self.page_veil_animation: QPropertyAnimation | None = None
+        self._training_mode_active = False
         self._telemetry_history = {
             "الجاهزية الأمنية (%)": [],
             "النشاط التشغيلي (%)": [],
         }
         self.init_ui()
         self.timer = QTimer(self)
+        self.timer.setObjectName("telemetryRefreshTimer")
         self.timer.timeout.connect(self.update_live_telemetry)
-        self.timer.start(3000)
+        self.timer.start(TELEMETRY_REFRESH_MS)
         self.event_timer = QTimer(self)
+        self.event_timer.setObjectName("eventPollTimer")
         self.event_timer.timeout.connect(self.update_agent_events)
-        self.event_timer.start(300)
-        # Ambient light and hover rims animate smoothly; semantic colors stay stable.
-        # Avoid restyling the entire window every 15 seconds (flicker/layout churn).
+        self.event_timer.start(EVENT_POLL_INTERVAL_MS)
         for table in self.findChildren(QTableWidget):      # كل الجداول بنفس معيار القراءة
             if table.verticalHeader().defaultSectionSize() < 44:
                 prepare_table(table, 44)
-        self.hover_controller = HoverController(self)
-        self.chat_display.hover_controller = self.hover_controller
-        self.press_feedback = PressFeedbackController(self)
-        self.sound_ux = SoundUX(self, enabled=bool(self.settings.get("sound_ux", True)))
-        self.sound_ux.set_profile(str(self.settings.get("sound_profile", "soft")))
-        self.sound_ux.bind_buttons(self)
-        if hasattr(self, "setting_sound_ux"):
-            self.setting_sound_ux.toggled.connect(self.sound_ux.set_enabled)
+        # Low-resource mode intentionally skips hover overlays, glow effects, and sound hooks.
+        self.chat_display.hover_controller = None
         if hasattr(self, "setting_dark_mode"):
             self.setting_dark_mode.toggled.connect(self._toggle_dark_mode)
         self._busy_cursor_owned = False
@@ -431,7 +422,7 @@ class UnifiedCockpitWindow(QMainWindow):
              PAGE_ACCENTS.get(key, ACCENT))
             for key, _label in NAV_ITEMS
         ]
-        self.nav_wheel = NavigationWheel(wheel_items, sidebar)
+        self.nav_wheel = StaticNavigationMenu(wheel_items, sidebar)
         self.nav_wheel.page_selected.connect(self.switch_page)
         sidebar_layout.addWidget(self.nav_wheel, 1)
 
@@ -451,8 +442,9 @@ class UnifiedCockpitWindow(QMainWindow):
         root.addWidget(sidebar)
 
         # ── Main content area ──
-        main_area = AmbientSurface()
-        self.aurora_bg = main_area  # compatibility: background IS the content container
+        main_area = QWidget()
+        self.aurora_bg = main_area  # compatibility alias; the surface is now static
+        self.main_area = main_area
         main_area.setObjectName("mainArea")
         main_layout = QVBoxLayout(main_area)
         main_layout.setContentsMargins(0, 0, 0, 0)
@@ -474,18 +466,9 @@ class UnifiedCockpitWindow(QMainWindow):
         self.page_title.setObjectName("sectionTitle")
         header_layout.addWidget(self.page_title, 0, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
 
-        # Activity lamp
+        # Static activity indicator: state changes recolor it, with no pulsing animation.
         self.activity_lamp = QFrame(objectName="activityLamp")
         self.activity_lamp.setFixedSize(8, 8)
-        opacity = QGraphicsOpacityEffect(self.activity_lamp)
-        self.activity_lamp.setGraphicsEffect(opacity)
-        self.activity_animation = QPropertyAnimation(opacity, b"opacity", self)
-        self.activity_animation.setStartValue(0.4)
-        self.activity_animation.setKeyValueAt(0.5, 1.0)
-        self.activity_animation.setEndValue(0.4)
-        self.activity_animation.setDuration(1800)
-        self.activity_animation.setLoopCount(-1)
-        self.activity_animation.start()
         header_status = QHBoxLayout()
         header_status.setSpacing(SP_MD)
         header_status.addWidget(self.activity_lamp, 0, Qt.AlignmentFlag.AlignVCenter)
@@ -500,13 +483,10 @@ class UnifiedCockpitWindow(QMainWindow):
         header_status.addWidget(self.score_badge)
         header_layout.addLayout(header_status, 0, 2, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
 
-        self.analog_clock = GlassAnalogClock(size=96)
-        self.analog_clock.setObjectName("headerAnalogClock")
+        self.analog_clock = QLabel("AI AYFAM")
+        self.analog_clock.setObjectName("headerBrand")
+        self.analog_clock.setAlignment(Qt.AlignmentFlag.AlignCenter)
         header_layout.addWidget(self.analog_clock, 0, 1, Qt.AlignmentFlag.AlignCenter)
-
-        self.clock_timer = QTimer(self)
-        self.clock_timer.timeout.connect(self.update_clock)
-        self.clock_timer.start(1000)
         self.update_clock()
 
         main_layout.addWidget(header)
@@ -588,10 +568,6 @@ class UnifiedCockpitWindow(QMainWindow):
         # AmbientSurface paints behind the layout, never occupies a layout slot.
         scroll.viewport().setAutoFillBackground(False)
         self.content_scroll = scroll
-        self.transition_veil = QFrame(scroll.viewport(), objectName="transitionVeil")
-        self.transition_veil.setGeometry(scroll.viewport().rect())
-        self.transition_veil.hide()
-
         main_layout.addWidget(scroll, 1)
 
         # ── Dynamic floating status dock ──
@@ -622,21 +598,30 @@ class UnifiedCockpitWindow(QMainWindow):
         root.addWidget(main_area)
         self.setCentralWidget(central)
 
-        # خلفية شبكية متحركة خلف كل شيء + زجاج مضبّب داكن لكل الأسطح
-        self.live_backdrop = LiveBackdrop(self)
-        self.backdrop_canvas = BackdropCanvas(central, self.live_backdrop)
-        self.glass_controller = FrostedGlassController(central, self.live_backdrop)
+        # Static logo watermark. The SVG itself contains low-opacity strokes, so
+        # no graphics effect or repeated repaint is required.
+        self.watermark = QLabel(main_area)
+        self.watermark.setObjectName("brandWatermark")
+        self.watermark.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        watermark_path = ROOT_DIR / "resources" / "brand-watermark.svg"
+        if watermark_path.exists():
+            self.watermark.setPixmap(QIcon(str(watermark_path)).pixmap(QSize(380, 380)))
+        self.watermark.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self.watermark.setGeometry(main_area.rect())
+        self.watermark.lower()
 
         # Default page
         self.switch_page("dashboard")
 
     def _refresh_navigation_wheel(self) -> None:
-        if hasattr(self, "nav_wheel"):
-            self.nav_wheel.update()
+        """Compatibility hook retained for callers; static navigation needs no refresh."""
+        return
 
-    def showEvent(self, event) -> None:
-        super().showEvent(event)
-        QTimer.singleShot(60, self._refresh_navigation_wheel)
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        if hasattr(self, "watermark") and hasattr(self, "main_area"):
+            self.watermark.setGeometry(self.main_area.rect())
+            self.watermark.lower()
 
     def closeEvent(self, event) -> None:
         for timer in (getattr(self, "timer", None), getattr(self, "event_timer", None)):
@@ -701,20 +686,6 @@ class UnifiedCockpitWindow(QMainWindow):
             changed = self.stack.currentWidget() is not widget
             self.stack.setCurrentWidget(widget)
             if changed:
-                self._run_page_transition()
-                if hasattr(self, "page_animation"):
-                    self.page_animation.stop()
-                effect = QGraphicsOpacityEffect(self.stack)
-                self.stack.setGraphicsEffect(effect)
-                animation = QPropertyAnimation(effect, b"opacity", self)
-                animation.setDuration(190)
-                animation.setStartValue(0.84)
-                animation.setEndValue(1.0)
-                animation.setEasingCurve(QEasingCurve.Type.OutCubic)
-                # Remove the effect afterwards so normal text rendering and hover stay crisp.
-                animation.finished.connect(lambda: self.stack.setGraphicsEffect(None))
-                self.page_animation = animation
-                animation.start()
                 self.content_scroll.verticalScrollBar().setValue(0)
             self.page_title.setText(title_map.get(key, ""))
             page_accent = PAGE_ACCENTS.get(key, ACCENT)
@@ -726,7 +697,6 @@ class UnifiedCockpitWindow(QMainWindow):
                                    QSizePolicy.Policy.Preferred if name == key else QSizePolicy.Policy.Ignored)
             self.stack.updateGeometry()
             self._current_nav = key
-            QTimer.singleShot(0, self._refresh_navigation_wheel)
             if key == "usb" and not self.usb_inventory_loaded:
                 self.refresh_usb_inventory()
             elif key == "findings":
@@ -739,29 +709,8 @@ class UnifiedCockpitWindow(QMainWindow):
                 self.refresh_attack_graph()
 
     def _run_page_transition(self) -> None:
-        """Reveal the new page through a short, calm veil instead of a hard swap."""
-        veil = self.transition_veil
-        if self.page_veil_animation is not None:
-            self.page_veil_animation.stop()
-        veil.setGeometry(self.content_scroll.viewport().rect())
-        veil.show()
-        veil.raise_()
-        effect = QGraphicsOpacityEffect(veil)
-        effect.setOpacity(0.16)
-        veil.setGraphicsEffect(effect)
-        animation = QPropertyAnimation(effect, b"opacity", self)
-        animation.setDuration(170)
-        animation.setStartValue(0.16)
-        animation.setEndValue(0.0)
-        animation.setEasingCurve(QEasingCurve.Type.OutCubic)
-
-        def finish() -> None:
-            veil.hide()
-            veil.setGraphicsEffect(None)
-
-        animation.finished.connect(finish)
-        self.page_veil_animation = animation
-        animation.start()
+        """Compatibility hook: page navigation is an immediate native Qt switch."""
+        return
 
     def _get_event_store(self):
         """Open the local event database only when an event-history view is requested."""
@@ -813,17 +762,13 @@ class UnifiedCockpitWindow(QMainWindow):
 
     def _sync_control_labels(self) -> None:
         if hasattr(self, "setting_sound_ux"):
-            self.setting_sound_ux.setText(
-                "تفعيل أصوات التفاعل الخفيفة" if self.setting_sound_ux.isChecked()
-                else "أصوات التفاعل متوقفة"
-            )
+            self.setting_sound_ux.setText("أصوات التفاعل متوقفة في وضع توفير الموارد")
+            self.setting_sound_ux.setChecked(False)
 
     def _toggle_sound(self, enabled: bool) -> None:
-        self.sound_ux.set_enabled(enabled)
-        self.settings.set("sound_ux", bool(enabled))
+        # Sound feedback is intentionally disabled in the low-resource profile.
+        self.settings.set("sound_ux", False)
         self._sync_control_labels()
-        if enabled:
-            self.sound_ux.play("success")
 
     def _toggle_dark_mode(self, enabled: bool) -> None:
         self.settings.set("dark_mode", bool(enabled))
@@ -1699,12 +1644,13 @@ class UnifiedCockpitWindow(QMainWindow):
         self.setting_lang_combo.addItems(["ar", "en"])
         current_lang = self.settings.get("language", "ar")
         self.setting_lang_combo.setCurrentText(current_lang if current_lang in ("ar", "en") else "ar")
-        self.setting_sound_ux = QCheckBox("تفعيل أصوات التفاعل الخفيفة")
-        self.setting_sound_ux.setChecked(bool(self.settings.get("sound_ux", True)))
-        self.setting_sound_ux.setToolTip("نقرات قصيرة منخفضة الصوت عند الضغط على الإجراءات")
+        self.setting_sound_ux = QCheckBox("أصوات التفاعل متوقفة في وضع توفير الموارد")
+        self.setting_sound_ux.setChecked(False)
+        self.setting_sound_ux.setEnabled(False)
+        self.setting_sound_ux.setToolTip("أُوقفت أصوات الواجهة لتقليل الخدمات الخلفية أثناء تجهيز التدريب المحلي.")
         self.setting_sound_profile = QComboBox()
-        self.setting_sound_profile.addItem("هادئ — نقرة ناعمة", "soft")
-        self.setting_sound_profile.addItem("تأكيد — نغمة أوضح", "confirm")
+        self.setting_sound_profile.addItem("معطل في وضع توفير الموارد", "disabled")
+        self.setting_sound_profile.setEnabled(False)
         current_profile = str(self.settings.get("sound_profile", "soft"))
         profile_index = self.setting_sound_profile.findData(current_profile)
         self.setting_sound_profile.setCurrentIndex(profile_index if profile_index >= 0 else 0)
@@ -1797,14 +1743,10 @@ class UnifiedCockpitWindow(QMainWindow):
         self.settings.set("report_dir", self.setting_report_dir.text().strip())
         lang = self.setting_lang_combo.currentText()
         self.settings.set("language", lang)
-        self.settings.set("sound_ux", bool(self.setting_sound_ux.isChecked()))
-        self.settings.set("sound_profile", str(self.setting_sound_profile.currentData() or "soft"))
+        self.settings.set("sound_ux", False)
+        self.settings.set("sound_profile", "disabled")
         self.agent.lang = lang
         self.agent.intel.language = lang
-        if hasattr(self, "sound_ux"):
-            self.sound_ux.set_enabled(self.setting_sound_ux.isChecked())
-            self.sound_ux.set_profile(str(self.setting_sound_profile.currentData() or "soft"))
-            self.sound_ux.play("success")
         self.settings_log.setPlainText("[نجاح] تم حفظ الإعدادات غير الحساسة. تُحفظ مفاتيح ونماذج AI بعد نجاح فحصها / Non-AI settings saved. AI keys and models are saved only after validation.")
         QMessageBox.information(
             self, "حفظ الإعدادات",
@@ -2121,13 +2063,32 @@ class UnifiedCockpitWindow(QMainWindow):
                     break
         table.verticalScrollBar().setValue(scroll)
 
-    def update_live_telemetry(self) -> None:
+    def update_live_telemetry(self, force: bool = False) -> None:
+        if self._training_mode_active and not force:
+            return
         if self.telemetry_worker is not None and self.telemetry_worker.isRunning():
             return
         self.telemetry_worker = LiveTelemetryWorker(self)
         self.telemetry_worker.result_ready.connect(self._render_live_telemetry)
         self.telemetry_worker.finished.connect(self._telemetry_finished)
         self.telemetry_worker.start()
+
+    def set_training_mode(self, enabled: bool) -> None:
+        """Pause optional UI polling while local model training is active.
+
+        Call this from the Qt GUI thread. It does not stop a user-requested scan;
+        it only pauses passive telemetry and event-feed refresh timers.
+        """
+        self._training_mode_active = bool(enabled)
+        if self._training_mode_active:
+            self.timer.stop()
+            self.event_timer.stop()
+            return
+
+        self.timer.start(TELEMETRY_REFRESH_MS)
+        self.event_timer.start(EVENT_POLL_INTERVAL_MS)
+        self.update_live_telemetry(force=True)
+        self.update_agent_events()
 
     def _telemetry_finished(self) -> None:
         worker = self.telemetry_worker
@@ -2192,7 +2153,7 @@ class UnifiedCockpitWindow(QMainWindow):
             external = sum(1 for c in conns if c.get("is_foreign"))
             listening = sum(1 for c in conns if str(c.get("state", "")).upper() == "LISTEN")
             self.connection_summary.setText(
-                f"{len(conns)} اتصال  |  {external} خارجي  |  {listening} منصت  |  تحديث كل 3 ثوانٍ")
+                f"{len(conns)} اتصال  |  {external} خارجي  |  {listening} منصت  |  تحديث دوري منخفض التواتر")
             activity = max(0.0, min(100.0, len(procs) * 2.6 + len(conns) * 0.7))
             self._telemetry_history["النشاط التشغيلي (%)"].append(activity)
             for values in self._telemetry_history.values():
@@ -2495,7 +2456,6 @@ class UnifiedCockpitWindow(QMainWindow):
             widget.setProperty("state", state)
             widget.style().unpolish(widget)
             widget.style().polish(widget)
-        self.activity_animation.setDuration({"idle": 1800, "running": 620, "error": 900}.get(state, 1800))
 
     def on_worker_result(self, result: Any) -> None:
         self.task_done(result, self.active_task_title)
