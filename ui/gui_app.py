@@ -488,6 +488,8 @@ class UnifiedCockpitWindow(QMainWindow):
 
         self.analog_clock = QLabel("AI AYFAM")
         self.analog_clock.setObjectName("headerBrand")
+        # Keep the former 96px clock footprint; otherwise the grid stretches this label.
+        self.analog_clock.setFixedWidth(96)
         self.analog_clock.setAlignment(Qt.AlignmentFlag.AlignCenter)
         header_layout.addWidget(self.analog_clock, 0, 1, Qt.AlignmentFlag.AlignCenter)
         self.update_clock()
