@@ -7,12 +7,11 @@ import os
 import json
 import sqlite3
 import time
-import urllib.request
 import urllib.parse
 from typing import List, Dict, Any, Optional, Tuple
 from cryptography.hazmat.primitives.asymmetric import ed25519
 from cryptography.hazmat.primitives import serialization
-from utils import safe_exec
+from utils import safe_exec, http_client
 from engine.rules_registry import create_finding
 from engine.finding import Finding
 
@@ -130,14 +129,16 @@ class PackageInventoryEngine:
 
             try:
                 req_data = json.dumps({"queries": queries}).encode("utf-8")
-                req = urllib.request.Request(
+                resp = http_client.post(
                     "https://api.osv.dev/v1/querybatch",
                     data=req_data,
-                    headers={"Content-Type": "application/json"}
+                    headers={"Content-Type": "application/json"},
+                    timeout=12,
                 )
-                with urllib.request.urlopen(req, timeout=12) as resp:
-                    data = json.loads(resp.read().decode("utf-8"))
-                    results = data.get("results", [])
+                if resp.status_code != 200:
+                    raise RuntimeError(f"OSV HTTP {resp.status_code}")
+                data = resp.json()
+                results = data.get("results", [])
 
                     for idx, res_item in enumerate(results):
                         vulns = res_item.get("vulns", [])
