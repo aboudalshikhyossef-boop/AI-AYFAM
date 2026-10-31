@@ -150,12 +150,22 @@ class Settings:
         for name in _SECRET_KEYS:
             value = self._data.get(name, "")
             if not value:
+                # Empty means explicit deletion, not retaining an old keyring value.
+                try:
+                    existing = keyring.get_password(_KEYRING_SERVICE, name)
+                except Exception as exc:
+                    raise RuntimeError(f"Unable to check keyring entry for {name}") from exc
+                if existing:
+                    try:
+                        keyring.delete_password(_KEYRING_SERVICE, name)
+                    except Exception as exc:
+                        raise RuntimeError(f"Unable to delete keyring entry for {name}") from exc
                 continue
             try:
                 keyring.set_password(_KEYRING_SERVICE, name, value)
                 stored.add(name)
-            except Exception:
-                continue
+            except Exception as exc:
+                raise RuntimeError(f"Unable to store keyring entry for {name}") from exc
         return stored
 
     def _validate_data(self) -> None:
