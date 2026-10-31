@@ -303,7 +303,7 @@ class GeminiThreatClient:
         except GeminiCTIError:
             raise
         except Exception as exc:
-            raise GeminiCTIError(f"Could not generate assistant response: {exc}") from exc
+            raise GeminiCTIError("Gemini assistant request failed. فشل طلب مساعد Gemini؛ راجع تشخيص الاتصال دون عرض تفاصيل حساسة.") from exc
 
     @classmethod
     def from_environment(cls) -> "GeminiThreatClient":
@@ -320,7 +320,7 @@ class GeminiThreatClient:
             except TypeError:
                 self._client = genai.Client(api_key=self.api_key)
             except Exception as exc:
-                raise GeminiCTIError(f"Could not initialize Gemini client: {exc}") from exc
+                raise GeminiCTIError("Could not initialize Gemini client. تعذّر تهيئة عميل Gemini.") from exc
         return genai
 
     def discover_models(self, force: bool = False) -> list[ModelInfo]:
@@ -339,7 +339,7 @@ class GeminiThreatClient:
         except Exception as exc:
             if isinstance(exc, GeminiCTIError):
                 raise
-            raise GeminiCTIError(f"Could not list models for this API key: {exc}") from exc
+            raise GeminiCTIError("Could not list Gemini models. تعذّر جلب قائمة نماذج Gemini؛ تحقّق من المفتاح والصلاحيات والاتصال.") from exc
         models: list[ModelInfo] = []
         for raw in raw_models:
             name = _model_name(raw)
@@ -444,9 +444,9 @@ one recommendation, and at most 2 authoritative source URLs. Return [] when evid
             raw = self._request_with_interactions(model, query)
             return validate_threat_feed(json.loads(raw), window_hours=window_hours)
         except GeminiHTTPError as exc:
-            raise GeminiCTIError(f"Gemini threat research failed using {model.short_name}: {exc}") from exc
+            raise GeminiCTIError(f"Gemini threat research failed using {model.short_name}. فشل بحث التهديدات عبر Gemini.") from exc
         except json.JSONDecodeError as exc:
-            raise GeminiCTIError(f"Gemini returned invalid JSON: {exc}") from exc
+            raise GeminiCTIError("Gemini returned invalid JSON. أعاد Gemini استجابة JSON غير صالحة.") from exc
         except GeminiCTIError:
             raise
         except Exception as exc:
