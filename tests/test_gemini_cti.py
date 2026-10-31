@@ -206,19 +206,23 @@ class GeminiCTITests(unittest.TestCase):
         validated = validate_threat_feed(raw_feed)
         self.assertEqual(len(validated["threats"]), 0)
 
-    def test_invalid_listed_model_stops_without_fallback_burst(self):
+    def test_explicit_unavailable_cti_model_is_rejected_before_generation(self):
         class Response:
-            def __init__(self, status_code, text, output=None):
-                self.status_code, self.text, self._output = status_code, text, output
+            status_code = 200
             def json(self):
-                return {"output_text": self._output}
+                return {"models": [{
+                    "name": "models/gemini-2.5-flash-lite",
+                    "supportedGenerationMethods": ["generateContent"],
+                }]}
         client = GeminiThreatClient("test-key")
-        client.discover_models = lambda force=False: [ModelInfo("models/stale"), ModelInfo("models/gemini-2.5-flash")]
-        responses = [Response(400, "Model stale not found"), Response(200, "", json.dumps({"generated_at": "now", "threats": []}))]
-        with patch("engine.gemini_cti.requests.post", side_effect=responses) as post:
-            with self.assertRaises(GeminiCTIError):
+        with patch.dict(os.environ, {"AYFAM_GEMINI_CTI_MODEL": "user-selected-model"}), patch(
+            "engine.gemini_cti.requests.get", return_value=Response()
+        ), patch("engine.gemini_cti.requests.post") as post:
+            with self.assertRaises(GeminiCTIError) as caught:
                 client.fetch_threats()
-        self.assertEqual(post.call_count, 1)
+        self.assertIn("user-selected-model", str(caught.exception))
+        self.assertIn("Choose an available model", str(caught.exception))
+        post.assert_not_called()
 
 
 if __name__ == "__main__":
