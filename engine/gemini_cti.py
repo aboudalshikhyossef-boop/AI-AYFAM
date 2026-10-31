@@ -22,7 +22,7 @@ from typing import Any, Iterable, Mapping
 
 from utils import http_client as requests
 from engine.gemini_rate_limit import DEFAULT_GEMINI_MODEL, compact_text, gemini_model_name, wait_for_slot
-from engine.ai_assistant import AssistantError, classify_http_error, validate_model_access
+from engine.ai_assistant import AssistantError, classify_http_error, list_available_models, validate_model_access
 from brain.context_engine import ContextEngine
 
 THREAT_SCHEMA: dict[str, Any] = {
@@ -327,45 +327,31 @@ class GeminiThreatClient:
         if self._models and not force:
             return list(self._models)
         try:
-            response = requests.get(
-                f"{self.base_url}/models",
-                headers={"x-goog-api-key": self.api_key},
-                params={"pageSize": 1000},
-                timeout=(10, self.timeout),
+            catalog = list_available_models(
+                "gemini", self.api_key, timeout=self.timeout, force=force,
             )
-            if response.status_code >= 400:
-                raise GeminiHTTPError(response)
-            raw_models = response.json().get("models", [])
-        except Exception as exc:
-            if isinstance(exc, GeminiCTIError):
-                raise
-            raise GeminiCTIError("Could not list Gemini models. تعذّر جلب قائمة نماذج Gemini؛ تحقّق من المفتاح والصلاحيات والاتصال.") from exc
+        except AssistantError as exc:
+            raise GeminiCTIError(str(exc)) from exc
         models: list[ModelInfo] = []
-        for raw in raw_models:
-            name = _model_name(raw)
-            if not name or not _supports_generate(raw):
-                continue
+        for name in catalog.models:
             short = name.rsplit("/", 1)[-1].lower()
             if not _is_text_research_model(short):
                 continue
             models.append(ModelInfo(
-                name=name,
-                display_name=_text(_model_field(raw, "display_name", "displayName", default="")),
-                description=_text(_model_field(raw, "description", default="")),
-                input_token_limit=int(_model_field(raw, "input_token_limit", "inputTokenLimit", default=0) or 0),
-                output_token_limit=int(_model_field(raw, "output_token_limit", "outputTokenLimit", default=0) or 0),
+                name=f"models/{name}",
+                output_token_limit=int(catalog.output_limits.get(name, 0)),
             ))
         if not models:
-            raise GeminiCTIError("The Gemini key has no usable generate-content model")
+            raise GeminiCTIError(
+                "The Gemini key has no usable generate-content model. "
+                "لا يحتوي المفتاح على نموذج نصّي يدعم التوليد."
+            )
         models.sort(key=_score_model, reverse=True)
         by_name = {model.short_name.lower(): model for model in models}
         preferred = [by_name[name] for name in FREE_TIER_SEARCH_MODELS if name in by_name]
-        remaining = [m for m in models if m not in preferred]
-        usable_models = preferred + remaining
-        if not usable_models:
-            raise GeminiCTIError("No usable text model is available for this Gemini API key.")
-        self._models = usable_models
-        self._model = usable_models[0]
+        remaining = [model for model in models if model not in preferred]
+        self._models = preferred + remaining
+        self._model = self._models[0]
         return list(self._models)
 
     @property
