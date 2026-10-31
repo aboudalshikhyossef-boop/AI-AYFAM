@@ -12,10 +12,10 @@ import time
 from pathlib import Path
 from typing import Callable, Any
 
-from PyQt6.QtCore import Qt, QTimer, QThread, QPropertyAnimation, pyqtSignal, QUrl, QSize, QRect, QEasingCurve, QRectF
+from PyQt6.QtCore import Qt, QTimer, QThread, pyqtSignal, QUrl, QSize, QRect, QRectF
 from PyQt6.QtGui import QColor, QDesktopServices, QFont, QIcon, QAction, QShortcut, QKeySequence, QPainter, QPixmap, QPen, QLinearGradient, QRadialGradient
 from PyQt6.QtWidgets import (
-    QApplication, QComboBox, QFileDialog, QFrame, QGraphicsOpacityEffect, QGridLayout, QGroupBox,
+    QApplication, QComboBox, QFileDialog, QFrame, QGridLayout, QGroupBox,
     QHBoxLayout, QHeaderView, QLabel, QLineEdit, QMainWindow, QMessageBox,
     QPlainTextEdit, QProgressBar, QPushButton, QSplitter, QStackedWidget, QTabWidget,
     QTableWidget, QTableWidgetItem, QTextEdit, QVBoxLayout, QWidget, QScrollArea, QSizePolicy,
@@ -378,8 +378,8 @@ class UnifiedCockpitWindow(QMainWindow):
         chat_focus.activated.connect(lambda: self.chat_input.setFocus())
 
     def _tick_aurora(self) -> None:
-        # Kept for backwards compatibility — AmbientSurface animates itself
-        pass
+        """Compatibility hook; the low-resource UI has no animated background."""
+        return
 
     # ═══════════════════════════════════════════════════════════════════════════
     #  LAYOUT: Sidebar + Header + Stacked Content
@@ -627,8 +627,7 @@ class UnifiedCockpitWindow(QMainWindow):
         for timer in (getattr(self, "timer", None), getattr(self, "event_timer", None)):
             if timer is not None:
                 timer.stop()
-        # Stop UI animation/refresh timers too while a non-cooperative task
-        # finishes; the close handler must never block the GUI thread.
+        # Stop any remaining timers while workers finish; never block the GUI thread.
         for timer in self.findChildren(QTimer):
             timer.stop()
 
@@ -2097,6 +2096,8 @@ class UnifiedCockpitWindow(QMainWindow):
         self.telemetry_worker = None
 
     def _render_live_telemetry(self, result) -> None:
+        if self._training_mode_active:
+            return
         try:
             if isinstance(result, Exception):
                 message = str(result)
@@ -2153,7 +2154,7 @@ class UnifiedCockpitWindow(QMainWindow):
             external = sum(1 for c in conns if c.get("is_foreign"))
             listening = sum(1 for c in conns if str(c.get("state", "")).upper() == "LISTEN")
             self.connection_summary.setText(
-                f"{len(conns)} اتصال  |  {external} خارجي  |  {listening} منصت  |  تحديث دوري منخفض التواتر")
+                f"{len(conns)} اتصال  |  {external} خارجي  |  تحديث دوري كل 15 ثانية")
             activity = max(0.0, min(100.0, len(procs) * 2.6 + len(conns) * 0.7))
             self._telemetry_history["النشاط التشغيلي (%)"].append(activity)
             for values in self._telemetry_history.values():
