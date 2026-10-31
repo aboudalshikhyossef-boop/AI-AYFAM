@@ -237,11 +237,23 @@ def _error_fields(payload: Mapping[str, Any] | None) -> tuple[str, str, str]:
     kind = _text(error.get("type") or error.get("status")).lower()
     message = _text(error.get("message")).lower()
     details = error.get("details", [])
-    if isinstance(details, list):
-        message += " " + " ".join(
-            _text(item.get("quotaId") or item.get("description"))
-            for item in details if isinstance(item, Mapping)
-        ).lower()
+
+    def collect_detail_values(value: Any) -> list[str]:
+        collected: list[str] = []
+        if isinstance(value, Mapping):
+            for key in ("quotaId", "description", "reason", "message"):
+                item = value.get(key)
+                if isinstance(item, (str, int, float)):
+                    collected.append(_text(item))
+            for nested in value.values():
+                if isinstance(nested, (Mapping, list, tuple)):
+                    collected.extend(collect_detail_values(nested))
+        elif isinstance(value, (list, tuple)):
+            for nested in value:
+                collected.extend(collect_detail_values(nested))
+        return collected
+
+    message += " " + " ".join(collect_detail_values(details)).lower()
     return code, kind, message
 
 
