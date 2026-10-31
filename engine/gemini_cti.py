@@ -412,10 +412,9 @@ class GeminiThreatClient:
 Research window: the last {int(window_hours)} hours from now (UTC).
 Return one compact JSON object with at most 5 significant items. Each item must have one short description,
 one recommendation, and at most 2 authoritative source URLs. Return [] when evidence is insufficient."""
-        # Keep the operational path to one API call: model discovery is an
-        # explicit settings/diagnostic action, not part of threat collection.
-        # Do not inherit the normal chat model here: Gemini 3.x Search
-        # grounding is unavailable on the Free tier and returns HTTP 429.
+        # The shared, short-lived model catalogue validates the explicit CTI
+        # selection before generation. Do not inherit the normal chat model:
+        # Search grounding support is model- and account-tier-specific.
         configured_model = os.getenv("AYFAM_GEMINI_CTI_MODEL", CTI_SEARCH_MODEL).strip() or CTI_SEARCH_MODEL
         try:
             available = {item.short_name for item in self.discover_models()}
