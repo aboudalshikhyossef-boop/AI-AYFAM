@@ -1874,19 +1874,32 @@ class UnifiedCockpitWindow(QMainWindow):
 
         def run_catalog_check():
             started = time.monotonic()
-            result = validate_model_access(
-                provider_name, effective_key, model, timeout=12.0, force=True,
-            )
-            result["latency_ms"] = round((time.monotonic() - started) * 1000, 1)
-            return result
+            try:
+                result = validate_model_access(
+                    provider_name, effective_key, model, timeout=12.0, force=True,
+                )
+                result["latency_ms"] = round((time.monotonic() - started) * 1000, 1)
+                return {"ok": True, **result}
+            except Exception as exc:
+                category = getattr(exc, "category", "invalid_response")
+                message = str(exc) if hasattr(exc, "diagnostic") else (
+                    "Provider model check failed. فشل التحقق من قائمة نماذج المزوّد."
+                )
+                return {
+                    "ok": False, "category": category, "message": message,
+                    "latency_ms": round((time.monotonic() - started) * 1000, 1),
+                }
 
         def handle_catalog_result(result: Any) -> None:
-            if isinstance(result, Exception):
-                category = getattr(result, "category", "invalid_response")
+            if not isinstance(result, dict) or not result.get("ok"):
+                category = result.get("category", "invalid_response") if isinstance(result, dict) else "invalid_response"
+                diagnostic = result.get("message", "Invalid diagnostic result.") if isinstance(result, dict) else "Invalid diagnostic result."
+                latency = result.get("latency_ms", 0.0) if isinstance(result, dict) else 0.0
                 self.settings_log.setPlainText(
                     f"[{category}] {display_name}: model/key check failed.\n"
-                    f"{result}\n"
+                    f"{diagnostic}\n"
                     f"Model / النموذج: {model}\nKey source / مصدر المفتاح: {key_source}"
+                    f"\nLatency / زمن الاستجابة: {latency:.1f} ms"
                 )
                 return
             if not isinstance(result, dict) or result.get("category") != "ok" or not result.get("exists"):
