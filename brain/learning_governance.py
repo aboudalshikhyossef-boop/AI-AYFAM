@@ -76,15 +76,15 @@ class LearningGovernance:
     def _sanitize_external_text(value: Any, limit: int = 12000) -> str:
         """Remove local identifiers, filesystem paths, and recognizable API secrets."""
         text = ContextEngine.sanitize_privacy_data(str(value or ""))
-        text = re.sub(r"(?i)\\bBearer\\s+[A-Za-z0-9._~+/-]{8,}={0,2}", "Bearer [REDACTED]", text)
-        text = re.sub(r"\\bsk-[A-Za-z0-9_-]{12,}\\b", "[API_KEY]", text)
-        text = re.sub(r"\\bAIza[0-9A-Za-z_-]{20,}\\b", "[API_KEY]", text)
+        text = re.sub(r"(?i)\bBearer\s+[A-Za-z0-9._~+/-]{8,}={0,2}", "Bearer [REDACTED]", text)
+        text = re.sub(r"\bsk-[A-Za-z0-9_-]{12,}\b", "[API_KEY]", text)
+        text = re.sub(r"\bAIza[0-9A-Za-z_-]{20,}\b", "[API_KEY]", text)
         text = re.sub(
-            r"(?i)\\b(?:OPENAI_API_KEY|GEMINI_API_KEY|GOOGLE_API_KEY)\\s*[:=]\\s*[^\\s,;]+",
+            r"(?i)\b(?:OPENAI_API_KEY|GEMINI_API_KEY|GOOGLE_API_KEY)\s*[:=]\s*[^\s,;]+",
             "[API_KEY_ASSIGNMENT]",
             text,
         )
-        text = re.sub(r"(?<![A-Za-z0-9])/(?:home|root)/[^\\s,;)]*", "[LOCAL_PATH]", text)
+        text = re.sub(r"(?<![A-Za-z0-9])/(?:home|root)/[^\s,;)]*", "[LOCAL_PATH]", text)
         return text.strip()[:limit]
 
     @classmethod
