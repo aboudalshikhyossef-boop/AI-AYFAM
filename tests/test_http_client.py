@@ -139,13 +139,14 @@ class TestHTTPClient(unittest.TestCase):
     def test_get_fallback_response_supports_iter_content(self, mock_urlopen):
         mock_resp = MagicMock()
         mock_resp.status = 200
-        mock_resp.read.return_value = b"abcdef"
+        mock_resp.read.side_effect = [b"ab", b"cd", b"ef", b""]
         mock_resp.headers.items.return_value = []
-        mock_resp.__enter__.return_value = mock_resp
         mock_urlopen.return_value = mock_resp
 
         response = http_client.get(self.url, stream=True)
+        self.assertIsNone(response._content)
         self.assertEqual(list(response.iter_content(chunk_size=2)), [b"ab", b"cd", b"ef"])
+        mock_resp.close.assert_called_once()
 
     @patch("utils.http_client.REQUESTS_AVAILABLE", True)
     @patch("utils.http_client.requests")
@@ -159,6 +160,32 @@ class TestHTTPClient(unittest.TestCase):
 
         mock_requests.put.assert_called_once_with(self.url, headers=None, json=payload, data=None, timeout=15.0)
         self.assertEqual(resp, mock_resp)
+
+    @patch("utils.http_client.REQUESTS_AVAILABLE", False)
+    @patch("urllib.request.urlopen")
+    def test_get_fallback_stream_is_lazy_and_reads_chunks(self, mock_urlopen):
+        mock_resp = MagicMock()
+        mock_resp.status = 200
+        mock_resp.read.side_effect = [b"ab", b"cd", b""]
+        mock_resp.headers.items.return_value = []
+        mock_urlopen.return_value = mock_resp
+
+        response = http_client.get(self.url, stream=True)
+        mock_resp.read.assert_not_called()
+        self.assertEqual(list(response.iter_content(chunk_size=2)), [b"ab", b"cd"])
+        self.assertEqual(mock_resp.read.call_count, 3)
+        mock_resp.close.assert_called_once()
+
+
+    def test_http_client_rejects_non_http_schemes(self):
+        for method in (http_client.get, http_client.post, http_client.put):
+            with self.subTest(method=method.__name__):
+                with self.assertRaises(ValueError):
+                    method("file:///etc/passwd")
+
+    def test_http_client_rejects_embedded_url_credentials(self):
+        with self.assertRaises(ValueError):
+            http_client.get("https://user:secret@example.com/")
 
 
 if __name__ == "__main__":

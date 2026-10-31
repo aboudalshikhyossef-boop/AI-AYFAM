@@ -36,32 +36,40 @@ jobs:
           pip install -r requirements.txt
           pip install -r requirements-dev.txt
 
-      - name: Code Style Check (Ruff and pyflakes)
+      - name: Show pinned dependency versions
         run: |
+          pip show defusedxml bandit pip-audit pypdf
+
+      - name: Code Style Check (Ruff)
+        run: |
+          # Enforce the selected correctness/safety rules without failing on legacy
+          # repository-wide unused-import warnings that predate this workflow.
           ruff check --select F811,F821,F601,E722 .
-          pyflakes . || true
 
       - name: Security Static Analysis (Bandit)
         run: |
-          bandit -r engine/ tools/ core/ utils/ -s B101,B108,B110,B311,B404,B603,B607 || true
+          bandit -ll -r engine/ tools/ core/ utils/ -s B101,B108,B110,B311,B404,B603,B607
 
       - name: Dependency Audit (pip-audit)
         run: |
-          pip-audit || true
+          pip-audit -r requirements.txt
 
       - name: Type Check Engine (mypy)
         run: |
-          mypy engine/ --ignore-missing-imports || true
+          mypy engine/ --ignore-missing-imports || echo "::warning::mypy reported type issues (advisory)"
+
+      - name: Run targeted regression tests
+        env:
+          QT_QPA_PLATFORM: offscreen
+          PYTHONPATH: .
+        run: |
+          python -m pytest -q tests/test_phase5_release.py tests/test_task9_pkginventory.py tests/test_http_client.py
 
       - name: Run Pytest Suite
         env:
           QT_QPA_PLATFORM: offscreen
           PYTHONPATH: .
         run: |
-          # Split test execution in Python 3.10 to prevent C-extension/PyQt6 state cleanup conflicts across test modules
-          if [ "${{ matrix.python-version }}" = "3.12" ]; then
-            python -m pytest -q tests/test_glass_engine.py tests/test_theme_and_colors.py
-          else
-            xvfb-run -a python -m pytest -q --ignore=tests/test_glass_engine.py --ignore=tests/test_glass_components.py --ignore=tests/test_gui_app.py --ignore=tests/test_gui_empty_states.py --ignore=tests/test_task11_ui_modular.py
-            xvfb-run -a python -m pytest -q tests/test_glass_engine.py tests/test_glass_components.py tests/test_gui_app.py tests/test_gui_empty_states.py tests/test_task11_ui_modular.py
-          fi
+          # Run the complete suite on every supported Python version; split GUI/C-extension groups to isolate Qt cleanup.
+          xvfb-run -a python -m pytest -q --ignore=tests/test_glass_engine.py --ignore=tests/test_glass_components.py --ignore=tests/test_gui_app.py --ignore=tests/test_gui_empty_states.py --ignore=tests/test_task11_ui_modular.py
+          xvfb-run -a python -m pytest -q tests/test_glass_engine.py tests/test_glass_components.py tests/test_gui_app.py tests/test_gui_empty_states.py tests/test_task11_ui_modular.py

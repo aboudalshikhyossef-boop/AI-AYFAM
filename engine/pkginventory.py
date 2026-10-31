@@ -7,12 +7,11 @@ import os
 import json
 import sqlite3
 import time
-import urllib.request
 import urllib.parse
 from typing import List, Dict, Any, Optional, Tuple
 from cryptography.hazmat.primitives.asymmetric import ed25519
 from cryptography.hazmat.primitives import serialization
-from utils import safe_exec
+from utils import safe_exec, http_client
 from engine.rules_registry import create_finding
 from engine.finding import Finding
 
@@ -130,33 +129,35 @@ class PackageInventoryEngine:
 
             try:
                 req_data = json.dumps({"queries": queries}).encode("utf-8")
-                req = urllib.request.Request(
+                resp = http_client.post(
                     "https://api.osv.dev/v1/querybatch",
                     data=req_data,
-                    headers={"Content-Type": "application/json"}
+                    headers={"Content-Type": "application/json"},
+                    timeout=12,
                 )
-                with urllib.request.urlopen(req, timeout=12) as resp:
-                    data = json.loads(resp.read().decode("utf-8"))
-                    results = data.get("results", [])
+                if resp.status_code != 200:
+                    raise RuntimeError(f"OSV HTTP {resp.status_code}")
+                data = resp.json()
+                results = data.get("results", [])
 
-                    for idx, res_item in enumerate(results):
-                        vulns = res_item.get("vulns", [])
-                        pkg_name = queries[idx]["package"]["name"]
-                        installed_ver = queries[idx]["version"]
+                for idx, res_item in enumerate(results):
+                    vulns = res_item.get("vulns", [])
+                    pkg_name = queries[idx]["package"]["name"]
+                    installed_ver = queries[idx]["version"]
 
-                        for v in vulns[:3]:
-                            cve_id = v.get("id", "OSV-VULN")
-                            details = v.get("details", "Vulnerability detected in package")[:200]
-                            findings.append(create_finding(
-                                rule_id="SYS-UPDATE-001",
-                                severity="high",
-                                title_ar=f"ثغرة أمنية مؤكدة في الحزمة {pkg_name} ({cve_id})",
-                                title_en=f"Vulnerability in package {pkg_name} ({cve_id})",
-                                detail=f"الحزمة المثبتة: {pkg_name} ({installed_ver})\nالثغرة: {cve_id}\nالتفاصيل: {details}",
-                                fix=f"sudo apt-get --only-upgrade install {pkg_name}",
-                                evidence={"package": pkg_name, "installed_version": installed_ver, "cve_id": cve_id},
-                                stable_key=f"{pkg_name}:{cve_id}",
-                            ))
+                    for v in vulns[:3]:
+                        cve_id = v.get("id", "OSV-VULN")
+                        details = v.get("details", "Vulnerability detected in package")[:200]
+                        findings.append(create_finding(
+                            rule_id="SYS-UPDATE-001",
+                            severity="high",
+                            title_ar=f"ثغرة أمنية مؤكدة في الحزمة {pkg_name} ({cve_id})",
+                            title_en=f"Vulnerability in package {pkg_name} ({cve_id})",
+                            detail=f"الحزمة المثبتة: {pkg_name} ({installed_ver})\nالثغرة: {cve_id}\nالتفاصيل: {details}",
+                            fix=f"sudo apt-get --only-upgrade install {pkg_name}",
+                            evidence={"package": pkg_name, "installed_version": installed_ver, "cve_id": cve_id},
+                            stable_key=f"{pkg_name}:{cve_id}",
+                        ))
             except Exception as exc:
                 network_errors += 1
                 # If network fails for all/first batch, report network error

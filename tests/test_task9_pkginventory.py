@@ -3,7 +3,6 @@ Unit tests for Task 9 — Package Inventory, Version Comparison, and Rules Bundl
 """
 
 import os
-import json
 import tempfile
 import pytest
 from engine.pkginventory import PackageInventoryEngine
@@ -21,47 +20,45 @@ def test_query_osv_batch_chunks_and_network_error():
     engine = PackageInventoryEngine()
     pkgs = {f"pkg-{i}": "1.0.0" for i in range(150)}
 
-    # Mocking network response
     from unittest.mock import patch, MagicMock
-    import urllib.error
 
-    # Simulate network error
-    with patch("urllib.request.urlopen", side_effect=urllib.error.URLError("Network Unreachable")):
+    # The production path uses utils.http_client.post; keep the test offline.
+    with patch(
+        "engine.pkginventory.http_client.post",
+        side_effect=RuntimeError("Network Unreachable"),
+    ) as mock_post:
         findings, err = engine.query_osv_batch(pkgs, batch_size=50)
         assert len(findings) == 0
         assert err is not None
         assert "OSV.dev" in err or "انقطاع الشبكة" in err
+        mock_post.assert_called_once()
 
-    # Simulate successful batch response without heavy MagicMock context manager
     class MockResponse:
-        def __init__(self):
-            self.data = json.dumps({
+        status_code = 200
+
+        def json(self):
+            return {
                 "results": [
                     {
                         "vulns": [
                             {
                                 "id": "GHSA-1234",
-                                "details": "Critical issue"
+                                "details": "Critical issue",
                             }
                         ]
                     }
                     for _ in range(50)
                 ]
-            }).encode("utf-8")
+            }
 
-        def read(self):
-            return self.data
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, exc_type, exc_val, exc_tb):
-            pass
-
-    with patch("urllib.request.urlopen", side_effect=lambda req, **kw: MockResponse()):
+    with patch(
+        "engine.pkginventory.http_client.post",
+        return_value=MockResponse(),
+    ) as mock_post:
         findings, err = engine.query_osv_batch(pkgs, batch_size=50)
         assert err is None
         assert len(findings) > 0
+        assert mock_post.call_count == 3
 
 def test_version_comparison_via_dpkg():
     engine = PackageInventoryEngine()
