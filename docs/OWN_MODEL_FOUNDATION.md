@@ -77,6 +77,12 @@ refuses architecture, tokenizer, data fingerprint or key optimizer-setting
 mismatches. This first version resumes at an epoch boundary with a fresh
 deterministic shuffle pass; it does not save an exact mid-epoch data cursor.
 
+## Local inference and evaluation
+
+Once a training run has produced a checkpoint, export the optimizer-free model
+artifact, then use the generation/evaluation/benchmark commands in
+[INFERENCE_EVALUATION_BENCHMARK.md](INFERENCE_EVALUATION_BENCHMARK.md).
+
 ## Current limits and next steps
 
 - The BPE implementation is a transparent byte-level baseline with whitespace

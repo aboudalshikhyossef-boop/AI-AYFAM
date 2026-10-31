@@ -319,12 +319,18 @@ class ByteBPETokenizer:
 
 
 
-def load_tokenizer(path: str | Path) -> ByteTokenizer | ByteBPETokenizer:
-    """Load a supported, versioned tokenizer configuration by its declared type."""
-    payload = _load_json_object(path)
+def tokenizer_from_dict(payload: dict[str, object]) -> ByteTokenizer | ByteBPETokenizer:
+    """Rebuild a supported tokenizer using only its versioned JSON configuration."""
+    if not isinstance(payload, dict):
+        raise TypeError("tokenizer configuration must be a JSON object")
     tokenizer_type = payload.get("type")
     if tokenizer_type == "utf8-byte":
         return ByteTokenizer.from_dict(payload)
     if tokenizer_type == "utf8-byte-bpe":
         return ByteBPETokenizer.from_dict(payload)
     raise ValueError(f"unsupported tokenizer type: {tokenizer_type!r}")
+
+
+def load_tokenizer(path: str | Path) -> ByteTokenizer | ByteBPETokenizer:
+    """Load a supported, versioned tokenizer configuration by its declared type."""
+    return tokenizer_from_dict(_load_json_object(path))
