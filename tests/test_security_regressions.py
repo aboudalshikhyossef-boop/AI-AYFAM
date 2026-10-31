@@ -31,7 +31,7 @@ def test_limited_reader_rejects_oversized_and_binary_files(tmp_path):
     oversized = tmp_path / "large.txt"
     oversized.write_bytes(b"x" * 32)
     binary = tmp_path / "binary.txt"
-    binary.write_bytes(b"hello\\x00world")
+    binary.write_bytes(b"hello\x00world")
     small = tmp_path / "small.txt"
     small.write_text("safe", encoding="utf-8")
     assert reader.read_text_limited(str(oversized), 16) is None
