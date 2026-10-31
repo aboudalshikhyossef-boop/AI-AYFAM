@@ -328,7 +328,10 @@ class UnifiedCockpitWindow(QMainWindow):
         for table in self.findChildren(QTableWidget):      # كل الجداول بنفس معيار القراءة
             if table.verticalHeader().defaultSectionSize() < 44:
                 prepare_table(table, 44)
-        # Low-resource mode intentionally skips hover overlays, glow effects, and sound hooks.
+        # Compatibility attributes explicitly expose that continuous visual controllers are disabled.
+        self.hover_controller = None
+        self.press_feedback = None
+        self.sound_ux = None
         self.chat_display.hover_controller = None
         if hasattr(self, "setting_dark_mode"):
             self.setting_dark_mode.toggled.connect(self._toggle_dark_mode)
