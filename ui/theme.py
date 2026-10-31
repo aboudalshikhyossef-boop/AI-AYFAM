@@ -173,9 +173,9 @@ QPushButton#navButton {{
     border: 1px solid rgba(255, 255, 255, 0.04);
     border-right: 3px solid transparent;
     border-radius: 12px;
-    padding: 8px 14px;
+    padding: 5px 10px;
     text-align: right;
-    min-height: 32px;
+    min-height: 28px;
     font-weight: 500;
 }}
 
