@@ -177,5 +177,16 @@ class TestHTTPClient(unittest.TestCase):
         mock_resp.close.assert_called_once()
 
 
+    def test_http_client_rejects_non_http_schemes(self):
+        for method in (http_client.get, http_client.post, http_client.put):
+            with self.subTest(method=method.__name__):
+                with self.assertRaises(ValueError):
+                    method("file:///etc/passwd")
+
+    def test_http_client_rejects_embedded_url_credentials(self):
+        with self.assertRaises(ValueError):
+            http_client.get("https://user:secret@example.com/")
+
+
 if __name__ == "__main__":
     unittest.main()
