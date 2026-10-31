@@ -25,31 +25,30 @@ python -m model_factory.cli profile
 ~~~
 
 The runtime planner adapts batch size, gradient accumulation, checkpoint
-frequency and CPU threads based on available memory. It never silently changes
-the model dimensions. A checkpoint carries model/tokenizer configuration and
-the corpus fingerprint, so moving between computers does not silently switch
-architecture or data.
+frequency, and CPU threads based on available memory. It never silently
+changes model dimensions. A checkpoint carries model/tokenizer configuration
+and the corpus fingerprint so a run cannot silently switch data or vocabulary.
 
-## Corpus and tokenizer workflow
+## Corpus workflow
 
-Prepare a raw UTF-8 JSONL corpus with source and license metadata, then run the
-preparation, strict audit and BPE tokenizer commands described in
-[CORPUS_AND_BPE.md](CORPUS_AND_BPE.md).
+The desktop page **تدريب نموذج AYFAM** can import a local raw JSONL file, copy
+it into a private per-user workspace, prepare and audit it, then select the
+prepared file for training. The repository includes a small project-authored
+seed corpus strictly for smoke testing; it is not sufficient for meaningful
+model training.
 
-The original deterministic UTF-8 ByteTokenizer remains the default when
---tokenizer-config is omitted. The optional ByteBPETokenizer learns its merge
-rules from the train split only. Its versioned merge table is stored in the
-checkpoint configuration; a changed tokenizer cannot silently resume an old
-checkpoint.
-The original deterministic UTF-8 ByteTokenizer remains available and is used
-when --tokenizer-config is omitted. The optional ByteBPETokenizer learns its
-merge rules from the train split only. Its versioned merge table is stored in
-the checkpoint configuration; a changed tokenizer cannot silently resume an
-old checkpoint.
+See [CORPUS_WORKSPACE.md](CORPUS_WORKSPACE.md) for the GUI workflow and the
+seed corpus manifest, and [CORPUS_AND_BPE.md](CORPUS_AND_BPE.md) for the raw
+schema, preparation checks, data splits, and BPE tokenizer workflow.
+
+The byte-level BPE tokenizer learns merge rules from the train split only.
+Validation and test text do not contribute to the tokenizer vocabulary. Keep
+the exact versioned tokenizer configuration with its checkpoint.
 
 ## Training
 
-After preparing a corpus and learning a BPE tokenizer:
+After importing and preparing a corpus through the GUI, explicitly start a
+short CPU training run. The optional command-line workflow remains available:
 
 ~~~bash
 python -m model_factory.cli train \
@@ -59,38 +58,16 @@ python -m model_factory.cli train \
   --steps 1000
 ~~~
 
-Resume using the same prepared corpus and tokenizer:
-
-~~~bash
-python -m model_factory.cli train \
-  --corpus ~/ayfam-training-data/ayfam-prepared.jsonl \
-  --tokenizer-config ~/ayfam-training-data/ayfam-bpe.json \
-  --output runs/ayfam-bpe/latest.pt \
-  --steps 2000 \
-  --resume runs/ayfam-bpe/latest.pt
-~~~
-
 Checkpoints contain model and optimizer state, global step, tokenizer and model
 configurations, corpus fingerprint, CPU/available CUDA RNG states, and software
 and device metadata. Writes are atomic. Loading uses weights_only mode and
-refuses architecture, tokenizer, data fingerprint or key optimizer-setting
+refuses architecture, tokenizer, data fingerprint, or key optimizer-setting
 mismatches. This first version resumes at an epoch boundary with a fresh
 deterministic shuffle pass; it does not save an exact mid-epoch data cursor.
 
-
-## Desktop training workspace
-
-Install the optional CPU training dependencies in the project's virtual
-environment, then open AI AYFAM and choose **تدريب نموذج AYFAM** from the
-sidebar. Select a corpus that has already passed the strict preparation audit,
-choose a short initial step count (the default is 20), and explicitly press
-**بدء التدريب المحلي**. Opening the application or this page never starts
-training automatically.
-
-The desktop runner learns Byte BPE merges from the train split only, trains
-the from-scratch Transformer on CPU, reports optimizer steps/loss/learning
+The desktop runner trains on CPU, reports optimizer steps/loss/learning
 rate/process memory, evaluates on validation data, and writes an atomic
-checkpoint. The run folder is local to the machine:
+checkpoint beneath:
 
 ~~~text
 ~/.local/share/ayfam/training/runs/run-<timestamp>/
@@ -98,37 +75,37 @@ checkpoint. The run folder is local to the machine:
   tokenizer.json
 ~~~
 
-The stop control requests a graceful stop at an optimizer-step boundary; the
-latest checkpoint is saved rather than terminating the process. Training
-artifacts and source corpora are not uploaded to GitHub or external services.
-The model remains separate from the security chat UI until a later integration
-and instruction-tuning phase.
+The stop control requests a graceful stop at an optimizer-step boundary and
+saves the latest checkpoint. Opening the application or training page never
+starts an import or training run automatically. Source corpora, prepared data,
+tokenizer files, and checkpoints remain local; they are not uploaded to GitHub
+or external services by this workflow.
 
 ## Local inference and evaluation
 
 Once a training run has produced a checkpoint, export the optimizer-free model
-artifact, then use the generation/evaluation/benchmark commands in
+artifact, then use the generation, evaluation, and benchmark commands in
 [INFERENCE_EVALUATION_BENCHMARK.md](INFERENCE_EVALUATION_BENCHMARK.md).
 
-## Current limits and next steps
+## Current limits
 
 - The BPE implementation is a transparent byte-level baseline with whitespace
-  pre-tokenization boundaries; it is not claimed to match GPT's full tokenizer
-  segmentation or optimized tokenizer throughput.
-  segmentation or throughput.
+  pre-tokenization boundaries; it is not claimed to match GPT's full
+  pre-tokenization or optimized tokenizer throughput.
 - Language labels are Unicode-script heuristics, not a full language detector.
 - Corpus preparation catches selected high-confidence credential patterns and
-  exact normalized duplicates. It does not detect every secret, PII item,
-  paraphrase, or near-duplicate; human source review remains mandatory.
-- Non-empty license/permission metadata is recorded, but software cannot prove
-  the legal validity of a supplied license or owner permission.
-- Training is causal next-token learning only. The model is not instruction-tuned,
-  not connected to the desktop chat UI, and not approved for autonomous
+  exact normalized duplicates. It does not detect every secret, personal
+  information item, paraphrase, or near-duplicate; human source review remains
+  mandatory.
+- Non-empty license metadata is recorded, but software cannot prove legal
+  permission or the validity of a supplied license label.
+- Training is causal next-token learning only. The model is not instruction-
+  tuned, not connected to the security chat UI, and not approved for autonomous
   cybersecurity decisions.
 - Text generated by a teacher model may later be considered as supervised data
-  only after independent provenance, licensing, quality and factual checks.
-  API-generated text without teacher logits is sequence-level data, not ordinary
-  logit-level distillation.
+  only after independent provenance, licensing, quality, and factual checks.
+  API-generated text without teacher logits is sequence-level data, not
+  ordinary logit-level distillation.
 
 A low training loss or a successful build is not evidence that the model is
 factual, safe, or ready for operational security decisions.

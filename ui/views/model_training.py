@@ -1,4 +1,4 @@
-"""Desktop workspace for explicit, local AI AYFAM model training."""
+"""Desktop workspace for importing, preparing, and training AI AYFAM locally."""
 
 from __future__ import annotations
 
@@ -22,11 +22,15 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from model_factory.corpus_tools import prepare_corpus
+from model_factory.corpus_workspace import default_corpus_root, import_raw_corpus
 from model_factory.hardware import HardwareProfile, build_training_plan
 from model_factory.runner import TrainingRunConfig, run_training
 
 
 _PHASE_LABELS = {
+    "importing": "نسخ الملف إلى مساحة AYFAM المحلية",
+    "preparing": "تنظيف البيانات وإزالة التكرارات وتجهيز التقسيمات",
     "validating_corpus": "التحقق من corpus ومصدر البيانات والتقسيمات",
     "preparing_tokenizer": "تجهيز tokenizer من بيانات التدريب فقط",
     "resuming_checkpoint": "تحميل checkpoint السابق",
@@ -34,6 +38,38 @@ _PHASE_LABELS = {
     "evaluating": "تقييم النموذج على مجموعة validation",
     "completed": "اكتملت العملية",
 }
+
+
+class CorpusPreparationWorker(QThread):
+    """Import and prepare a raw JSONL corpus without blocking the desktop UI."""
+
+    phase_changed = pyqtSignal(str)
+    completed = pyqtSignal(object)
+    failed = pyqtSignal(str)
+
+    def __init__(self, source_path: Path, prepared_path: Path, parent: QWidget | None = None):
+        super().__init__(parent)
+        self.source_path = source_path
+        self.prepared_path = prepared_path
+
+    def run(self) -> None:
+        try:
+            self.phase_changed.emit("importing")
+            imported_path = import_raw_corpus(self.source_path)
+            self.phase_changed.emit("preparing")
+            report = prepare_corpus(
+                imported_path,
+                self.prepared_path,
+                require_held_out=True,
+            )
+        except Exception as exc:
+            self.failed.emit(str(exc))
+        else:
+            self.completed.emit({
+                "imported_path": str(imported_path),
+                "prepared_path": str(self.prepared_path),
+                "report": report.to_dict(),
+            })
 
 
 class ModelTrainingWorker(QThread):
@@ -74,11 +110,12 @@ class ModelTrainingWorker(QThread):
 
 
 class ModelTrainingView(QWidget):
-    """A user-controlled training panel; opening the page never starts training."""
+    """A user-controlled data and training panel; opening it starts no work."""
 
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
         self.worker: ModelTrainingWorker | None = None
+        self.prepare_worker: CorpusPreparationWorker | None = None
         self.profile = HardwareProfile.detect()
         self.plan = build_training_plan(self.profile)
         self._build_ui()
@@ -98,9 +135,8 @@ class ModelTrainingView(QWidget):
         root.addWidget(title)
 
         intro = QLabel(
-            "هذه مساحة تدريب مستقلة عن المحادثة الأمنية. لا يبدأ التدريب عند فتح التطبيق؛ "
-            "لن يعمل إلا بعد اختيار ملف corpus مُجهّز والضغط على زر البدء. "
-            "التدريب هنا محلي على CPU ولا يحمّل أوزان نماذج خارجية."
+            "من هذه الصفحة تستورد ملف البيانات وتجهزه وتدققه، ثم تختاره لتدريب النموذج. "
+            "تُحفظ نسخ البيانات المستوردة محليًا في حسابك، ولا يبدأ الاستيراد أو التدريب تلقائيًا."
         )
         intro.setWordWrap(True)
         intro.setObjectName("secondaryText")
@@ -117,18 +153,39 @@ class ModelTrainingView(QWidget):
         root.addWidget(hardware_group)
         self._refresh_hardware_summary()
 
-        corpus_group = QGroupBox("بيانات التدريب")
-        corpus_layout = QVBoxLayout(corpus_group)
-        corpus_row = QHBoxLayout()
+        raw_group = QGroupBox("1. استيراد ملف البيانات الخام")
+        raw_layout = QVBoxLayout(raw_group)
+        raw_row = QHBoxLayout()
+        self.raw_corpus_input = QLineEdit()
+        self.raw_corpus_input.setReadOnly(True)
+        self.raw_corpus_input.setPlaceholderText("اختر ملف JSONL خامًا يحتوي على النص والمصدر والترخيص")
+        self.raw_corpus_input.setMinimumHeight(36)
+        self.raw_browse_button = QPushButton("اختيار ملف خام")
+        self.raw_browse_button.clicked.connect(self._browse_raw_corpus)
+        raw_row.addWidget(self.raw_corpus_input, 1)
+        raw_row.addWidget(self.raw_browse_button)
+        raw_layout.addLayout(raw_row)
+
+        self.prepare_button = QPushButton("استيراد وتجهيز البيانات")
+        self.prepare_button.clicked.connect(self.prepare_corpus)
+        raw_layout.addWidget(self.prepare_button)
+        seed_path = Path(__file__).resolve().parents[2] / "data" / "seed_corpus" / "v0.1" / "ayfam-seed-v0.1.jsonl"
+        if seed_path.is_file():
+            self.raw_corpus_input.setText(str(seed_path))
+        root.addWidget(raw_group)
+
+        prepared_group = QGroupBox("2. مجموعة البيانات الجاهزة للتدريب")
+        prepared_layout = QVBoxLayout(prepared_group)
+        prepared_row = QHBoxLayout()
         self.corpus_input = QLineEdit()
-        self.corpus_input.setPlaceholderText("اختر ملف JSONL الناتج عن prepare-corpus")
+        self.corpus_input.setPlaceholderText("سيظهر هنا ملف JSONL بعد نجاح التجهيز والتدقيق")
         self.corpus_input.setClearButtonEnabled(True)
         self.corpus_input.setMinimumHeight(36)
-        self.browse_button = QPushButton("اختيار corpus")
+        self.browse_button = QPushButton("اختيار ملف جاهز")
         self.browse_button.clicked.connect(self._browse_corpus)
-        corpus_row.addWidget(self.corpus_input, 1)
-        corpus_row.addWidget(self.browse_button)
-        corpus_layout.addLayout(corpus_row)
+        prepared_row.addWidget(self.corpus_input, 1)
+        prepared_row.addWidget(self.browse_button)
+        prepared_layout.addLayout(prepared_row)
 
         options = QFormLayout()
         self.steps_input = QSpinBox()
@@ -142,8 +199,8 @@ class ModelTrainingView(QWidget):
         self.vocab_input.setToolTip("حجم مفردات Byte BPE. يتم تعلمها من split=train فقط.")
         options.addRow("خطوات التدريب الأولية:", self.steps_input)
         options.addRow("حجم مفردات BPE:", self.vocab_input)
-        corpus_layout.addLayout(options)
-        root.addWidget(corpus_group)
+        prepared_layout.addLayout(options)
+        root.addWidget(prepared_group)
 
         actions = QHBoxLayout()
         self.start_button = QPushButton("بدء التدريب المحلي")
@@ -157,9 +214,9 @@ class ModelTrainingView(QWidget):
         actions.addStretch(1)
         root.addLayout(actions)
 
-        progress_group = QGroupBox("مراقبة التدريب")
+        progress_group = QGroupBox("مراقبة الاستيراد والتدريب")
         progress_layout = QVBoxLayout(progress_group)
-        self.status_label = QLabel("جاهز — لم يبدأ أي تدريب")
+        self.status_label = QLabel("جاهز — لم يبدأ استيراد أو تدريب")
         self.status_label.setWordWrap(True)
         progress_layout.addWidget(self.status_label)
 
@@ -178,7 +235,7 @@ class ModelTrainingView(QWidget):
             metrics.addWidget(label)
         progress_layout.addLayout(metrics)
 
-        self.output_label = QLabel("مكان الحفظ: سيُنشأ محليًا عند بدء التشغيل")
+        self.output_label = QLabel("مكان الحفظ: سيُنشأ محليًا عند بدء التدريب")
         self.output_label.setWordWrap(True)
         progress_layout.addWidget(self.output_label)
         root.addWidget(progress_group)
@@ -186,14 +243,13 @@ class ModelTrainingView(QWidget):
         self.log_output = QPlainTextEdit()
         self.log_output.setReadOnly(True)
         self.log_output.setMaximumBlockCount(250)
-        self.log_output.setPlaceholderText("تظهر مراحل التحقق والتدريب والنتائج هنا.")
+        self.log_output.setPlaceholderText("تظهر مراحل استيراد البيانات وتجهيزها والتدريب هنا.")
         self.log_output.setMinimumHeight(150)
         root.addWidget(self.log_output, 1)
 
         disclaimer = QLabel(
-            "مهم: لا يحتوي المستودع على corpus جاهز. يجب أن تكون البيانات مُجهّزة، "
-            "ومصادرها وتراخيصها معروفة، وأن تحتوي على train وvalidation وtest. "
-            "النموذج الناتج في هذه المرحلة نموذج لغوي أولي، وليس مساعدًا جاهزًا لاتخاذ قرارات أمنية."
+            "يتضمن المستودع Corpus تجريبيًا صغيرًا لاختبار مسار العمل، وليس مجموعة تدريب كافية لجودة نموذج نهائي. "
+            "استخدم فقط بيانات تملك حق تدريب نموذج عليها، وراجع المصادر والمحتوى قبل التدريب."
         )
         disclaimer.setWordWrap(True)
         disclaimer.setObjectName("secondaryText")
@@ -214,15 +270,91 @@ class ModelTrainingView(QWidget):
             "أبعاد النموذج لا تتغير تلقائيًا."
         )
 
-    def _browse_corpus(self) -> None:
+    def _browse_raw_corpus(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
             self,
-            "اختيار corpus مُجهّز",
+            "اختيار ملف corpus خام",
             str(Path.home()),
             "JSON Lines (*.jsonl);;All files (*)",
         )
         if path:
+            self.raw_corpus_input.setText(path)
+
+    def _browse_corpus(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "اختيار corpus مُجهّز",
+            str(default_corpus_root() / "prepared"),
+            "JSON Lines (*.jsonl);;All files (*)",
+        )
+        if path:
             self.corpus_input.setText(path)
+
+    def prepare_corpus(self) -> None:
+        if (self.prepare_worker is not None and self.prepare_worker.isRunning()) or (
+            self.worker is not None and self.worker.isRunning()
+        ):
+            return
+        source = Path(self.raw_corpus_input.text().strip()).expanduser()
+        if not source.is_file():
+            self.status_label.setText("اختر ملف JSONL خامًا موجودًا أولًا.")
+            return
+        prepared_dir = default_corpus_root() / "prepared"
+        prepared_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+        run_id = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+        prepared_path = prepared_dir / f"{source.stem[:48]}-{run_id}-prepared.jsonl"
+
+        self.prepare_button.setEnabled(False)
+        self.raw_browse_button.setEnabled(False)
+        self.browse_button.setEnabled(False)
+        self.start_button.setEnabled(False)
+        self.status_label.setText("بدء استيراد وتجهيز ملف البيانات…")
+        self._append_log(f"المصدر المحدد: {source}")
+        self.prepare_worker = CorpusPreparationWorker(source, prepared_path, self)
+        self.prepare_worker.phase_changed.connect(self._on_prepare_phase_changed)
+        self.prepare_worker.completed.connect(self._on_corpus_prepared)
+        self.prepare_worker.failed.connect(self._on_prepare_failed)
+        self.prepare_worker.finished.connect(self._on_prepare_finished)
+        self.prepare_worker.start()
+
+    def _on_prepare_phase_changed(self, phase: str) -> None:
+        label = _PHASE_LABELS.get(phase, phase)
+        self.status_label.setText(label)
+        self._append_log(label)
+
+    def _on_corpus_prepared(self, payload: dict) -> None:
+        report = payload.get("report") or {}
+        splits = report.get("records_by_split") or {}
+        languages = report.get("languages") or {}
+        self.corpus_input.setText(str(payload.get("prepared_path", "")))
+        self.status_label.setText("تم استيراد البيانات وتجهيزها واجتازت التدقيق.")
+        self._append_log(f"النسخة المحلية الخام: {payload.get('imported_path')}")
+        self._append_log(f"ملف التدريب الجاهز: {payload.get('prepared_path')}")
+        self._append_log(
+            "السجلات: "
+            f"train={splits.get('train', 0)}, "
+            f"validation={splits.get('validation', 0)}, "
+            f"test={splits.get('test', 0)}"
+        )
+        self._append_log(f"ملخص اللغة: {languages}")
+        self._append_log(f"المكررات المحذوفة: {report.get('duplicates_removed', 0)}")
+        self._append_log(f"SHA-256: {report.get('fingerprint', '')}")
+        self.start_button.setEnabled(True)
+
+    def _on_prepare_failed(self, message: str) -> None:
+        self.status_label.setText("تعذر استيراد أو تجهيز مجموعة البيانات.")
+        self._append_log(f"خطأ تجهيز البيانات: {message}")
+
+    def _on_prepare_finished(self) -> None:
+        worker = self.prepare_worker
+        self.prepare_worker = None
+        if worker is not None:
+            worker.deleteLater()
+        training_running = self.worker is not None and self.worker.isRunning()
+        self.prepare_button.setEnabled(not training_running)
+        self.raw_browse_button.setEnabled(not training_running)
+        self.browse_button.setEnabled(True)
+        self.start_button.setEnabled(not training_running)
 
     def _refresh_memory(self) -> None:
         try:
@@ -239,11 +371,13 @@ class ModelTrainingView(QWidget):
         self.log_output.appendPlainText(message)
 
     def start_training(self) -> None:
+        if self.prepare_worker is not None and self.prepare_worker.isRunning():
+            return
         if self.worker is not None and self.worker.isRunning():
             return
         corpus_path = Path(self.corpus_input.text().strip()).expanduser()
         if not corpus_path.is_file():
-            self.status_label.setText("اختر ملف corpus موجودًا بصيغة JSONL أولًا.")
+            self.status_label.setText("اختر ملف corpus مُجهّزًا موجودًا أولًا.")
             return
 
         run_id = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
@@ -270,6 +404,8 @@ class ModelTrainingView(QWidget):
         self.status_label.setText("يتم تجهيز جلسة التدريب والتحقق من البيانات…")
         self.start_button.setEnabled(False)
         self.browse_button.setEnabled(False)
+        self.prepare_button.setEnabled(False)
+        self.raw_browse_button.setEnabled(False)
         self.steps_input.setEnabled(False)
         self.vocab_input.setEnabled(False)
         self.stop_button.setEnabled(True)
@@ -334,7 +470,8 @@ class ModelTrainingView(QWidget):
             worker.deleteLater()
         self.start_button.setEnabled(True)
         self.browse_button.setEnabled(True)
+        self.prepare_button.setEnabled(True)
+        self.raw_browse_button.setEnabled(True)
         self.steps_input.setEnabled(True)
         self.vocab_input.setEnabled(True)
         self.stop_button.setEnabled(False)
-
