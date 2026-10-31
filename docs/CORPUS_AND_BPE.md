@@ -23,6 +23,8 @@ Recommended metadata:
 - group_id: stable ID for the original document/source group. If omitted, the
   source value is used as the group key. Give each independent source document
   its own source or group_id so unrelated documents are not tied together.
+- group_id: stable ID for the original document/source group. It is strongly
+  recommended even when there are many chunks from one document.
 - split: optional. Either provide it on every input row, or omit it on every row.
 
 The split value, when supplied, must be train, validation, or test. All chunks
