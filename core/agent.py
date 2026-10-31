@@ -208,10 +208,15 @@ class AYFAMAgent(AgentV5Mixin):
 
         for provider in providers:
             try:
-                answer = provider.ask(
-                    prompt,
-                    system_context=f"{persona} Hostname: {self._hostname}; language: {self.lang}",
-                )
+                ask_options = {
+                    "system_context": f"{persona} Hostname: {self._hostname}; language: {self.lang}",
+                }
+                if provider.name == "gemini":
+                    ask_options["on_wait"] = lambda remaining: self.ui.info(self._t(
+                        f"انتظار حصة Gemini: يتبقى نحو {remaining:.0f} ثانية.",
+                        f"Gemini quota wait: approximately {remaining:.0f}s remaining.",
+                    ))
+                answer = provider.ask(prompt, **ask_options)
                 if answer:
                     try:
                         self.learning_governance.record_external_answer(
