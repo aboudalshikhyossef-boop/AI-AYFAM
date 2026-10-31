@@ -39,7 +39,7 @@ from engine.correlation import CorrelationEngine, SmartRemediationAdvisor
 from engine.pkginventory import PackageInventoryEngine
 from utils import safe_exec
 from engine.gemini_cti import GeminiCTIError, GeminiThreatClient, LocalThreatMatcher, ThreatHistory, markdown_report, resolve_api_key
-from engine.ai_assistant import AssistantConfig, AssistantError, build_provider
+from engine.ai_assistant import AssistantConfig, AssistantError, build_providers, fallback_allowed
 from engine.gemini_rate_limit import DEFAULT_GEMINI_MODEL, gemini_model_name
 from brain.conversation import ConversationEngine, ROUTE_THRESHOLD
 from brain.learning import PhraseMemory
@@ -199,13 +199,20 @@ class AYFAMAgent(AgentV5Mixin):
             gemini_model=gemini_model_name(self.settings.get("gemini_model", DEFAULT_GEMINI_MODEL)),
             timeout=25.0,
         )
+        paused_providers = {}
         try:
-            provider = build_provider(config)
-            if provider:
-                answer = provider.ask(prompt, system_context=f"{persona} Hostname: {self._hostname}; language: {self.lang}")
+            providers, paused_providers = build_providers(config)
+        except AssistantError as exc:
+            providers = []
+            self.last_provider_error = str(exc)
+
+        for provider in providers:
+            try:
+                answer = provider.ask(
+                    prompt,
+                    system_context=f"{persona} Hostname: {self._hostname}; language: {self.lang}",
+                )
                 if answer:
-                    # External output is evidence only: persist provenance and quarantine
-                    # a proposal for review; never auto-write it into local knowledge.
                     try:
                         self.learning_governance.record_external_answer(
                             provider=provider.name,
@@ -216,18 +223,42 @@ class AYFAMAgent(AgentV5Mixin):
                             answer=answer,
                             source=f"{provider.name}:{getattr(provider, 'model', '')}",
                         )
-                    except Exception as record_error:
+                    except Exception:
                         if self.verbose:
-                            self.ui.warning(f"External answer recorded with warning: {record_error}")
-                    return f"🧠 [{provider.name.title()} AI Agent]\n\n{answer}"
-        except AssistantError as exc:
-            self.last_provider_error = str(exc)
-            if self.verbose:
-                self.ui.warning(f"AI provider fallback to local brain: {exc}")
-        except Exception as exc:
-            self.last_provider_error = f"Provider request failed ({type(exc).__name__})."
-            if self.verbose:
-                self.ui.warning(f"AI provider fallback to local brain: {self.last_provider_error}")
+                            self.ui.warning(self._t(
+                                "تعذّر حفظ سجل التفاعل الخارجي؛ لم يُعرض أي تفصيل حساس.",
+                                "The external interaction audit could not be saved; sensitive details were suppressed.",
+                            ))
+                    return f"🧠 [{provider.name.title()} API]\n\n{answer}"
+            except AssistantError as exc:
+                self.last_provider_error = str(exc)
+                if self.verbose:
+                    self.ui.warning(self._t(
+                        f"تعذّر مزوّد {provider.name}: {exc}",
+                        f"Provider {provider.name} failed: {exc}",
+                    ))
+                if not fallback_allowed(exc):
+                    break
+            except Exception:
+                self.last_provider_error = self._t(
+                    "حدث خطأ غير مصنّف في مزوّد خارجي.",
+                    "An unclassified provider error occurred.",
+                )
+                if self.verbose:
+                    self.ui.warning(self.last_provider_error)
+                break
+
+        circuit_notice = ""
+        if paused_providers:
+            names = ", ".join(sorted(paused_providers))
+            remaining = max(paused_providers.values())
+            circuit_notice = self._t(
+                f"\n\n[تنبيه اتصال] أُوقف مؤقتاً المزوّد: {names} بعد إخفاقات متكررة. "
+                f"الانتظار المتبقي نحو {remaining:.0f} ثانية؛ يعمل المسار المحلي الآن.",
+                f"\n\n[Provider notice] {names} is paused after repeated failures. "
+                f"About {remaining:.0f}s of cooldown remains; the local path is active.",
+            )
+            self.last_provider_error = circuit_notice.strip()
 
         # Local Offline Brain Fallback
         try:
@@ -236,7 +267,7 @@ class AYFAMAgent(AgentV5Mixin):
                 pass  # يُسجَّل كفجوة فقط إن لم يتوفر دليل محلي أدناه
             elif explanation and len(explanation.strip()) > 30:
                 self.learning_governance.last_report = self.learning_governance.local_learning_report(prompt)
-                return f"🛡️ [المحرك المحلي - بدون إنترنت]\n\n{explanation}"
+                return f"🛡️ [المحرك المحلي - بدون إنترنت]\n\n{explanation}{circuit_notice}"
         except Exception:
             pass
 
@@ -274,6 +305,7 @@ class AYFAMAgent(AgentV5Mixin):
             "🛡️ [الوكيل المحلي]: لا أملك معلومات كافية عن هذا الموضوع بعد. "
             "يمكنني البحث عنه الآن في الإنترنت (Google وويكيبيديا) ثم تقرر أنت هل أحفظه، "
             "أو أضف مفتاح Gemini في الإعدادات للحصول على إجابة مباشرة."
+            + circuit_notice
         )
 
     # ─────────────────────────────────────────────────────────────────────────
