@@ -540,36 +540,24 @@ class AmbientSurface(QWidget):
 
 
 class AccentLine(QWidget):
-    """خط أفق نيون متدرج."""
-
-    COLORS = ("#0d9488", "#2dd4bf", "#5eead4", "#2dd4bf", "#0d9488", "#2dd4bf", "#0d9488")
+    """خط تمييز ثابت يرسم مرة عند الإنشاء أو تغيير لون الصفحة."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setFixedHeight(2)
-        self.phase = 0.0
         self.accent = QColor(ACCENT)
-        self._timer = QTimer(self)
-        self._timer.timeout.connect(self._tick)
-        self._timer.start(80)
 
     def set_accent(self, color: str) -> None:
         self.accent = QColor(color)
         self.update()
 
-    def _tick(self):
-        if self.isVisible():
-            self.phase = (self.phase + 0.004) % 1.0
-            self.update()
-
     def paintEvent(self, event):
         p = QPainter(self)
         width = max(1, self.width())
-        gradient = QLinearGradient(-self.phase * width * 2, 0, (1 - self.phase) * width * 2, 0)
-        gradient.setSpread(QLinearGradient.Spread.RepeatSpread)
-        colors = (self.accent.darker(145), self.accent, self.accent.lighter(145), self.accent)
+        gradient = QLinearGradient(0, 0, width, 0)
+        colors = (self.accent.darker(135), self.accent, self.accent.lighter(115))
         for index, color in enumerate(colors):
-            color.setAlpha(190 if index in (1, 2) else 105)
+            color.setAlpha(150 if index == 1 else 85)
             gradient.setColorAt(index / (len(colors) - 1), color)
         p.fillRect(self.rect(), gradient)
 
@@ -643,6 +631,38 @@ class NavIndicator(QWidget):
         p.setBrush(gradient)
         p.drawRoundedRect(QRectF(self.rect()), 2.0, 2.0)
 
+
+class StaticNavigationMenu(QWidget):
+    """Low-overhead navigation menu built from native buttons (no animation timers)."""
+
+    page_selected = pyqtSignal(str)
+
+    def __init__(self, items: list[tuple[str, str, object, str]], parent=None):
+        super().__init__(parent)
+        self.buttons: dict[str, QPushButton] = {}
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
+        self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+
+        for key, label, icon, accent in items:
+            button = QPushButton(label, self)
+            button.setObjectName("navButton")
+            button.setCheckable(True)
+            button.setIcon(icon)
+            button.setIconSize(QSize(18, 18))
+            button.setProperty("pageAccent", accent)
+            button.clicked.connect(
+                lambda _checked=False, page_key=key: self.page_selected.emit(page_key)
+            )
+            self.buttons[key] = button
+            layout.addWidget(button)
+
+        layout.addStretch(1)
+
+    def set_current(self, key: str) -> None:
+        for page_key, button in self.buttons.items():
+            button.setChecked(page_key == key)
 
 class NavigationWheel(Glass):
     """قائمة تنقل دائرية تعرض الأيقونات على قوس بمنظور وحركة ثلاثية الأبعاد."""
