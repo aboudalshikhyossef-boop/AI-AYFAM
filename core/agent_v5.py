@@ -215,7 +215,7 @@ class AgentV5Mixin:
         os.makedirs(os.path.dirname(out_path), exist_ok=True)
         with open(out_path, "w", encoding="utf-8") as f:
             f.write(script)
-        os.chmod(out_path, 0o755)
+        os.chmod(out_path, 0o700)
         self.ui.success(self._t(f"تم حفظ السكريبت في: {out_path}", f"Script saved to: {out_path}"))
 
     def _export_html_report(self):
