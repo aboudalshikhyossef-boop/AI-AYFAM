@@ -14,7 +14,7 @@ import re
 import time
 import urllib.parse
 import html
-import xml.etree.ElementTree as ET
+from defusedxml import ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
