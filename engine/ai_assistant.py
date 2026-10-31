@@ -282,9 +282,15 @@ def classify_exception(exc: BaseException, *, latency_ms: float | None = None) -
     elif isinstance(exc, (ConnectionError, OSError)):
         category = "network/dns"
     else:
-        # Do not expose exception text: wrappers and third-party exceptions may
-        # contain request metadata or credentials.
-        category = "network/dns"
+        # Wrappers may convert timeouts/DNS failures to RuntimeError. Inspect
+        # known markers only; never echo provider exception text.
+        marker = str(exc).lower()
+        if any(token in marker for token in ("timed out", "timeout", "deadline exceeded")):
+            category = "timeout"
+        elif any(token in marker for token in ("name resolution", "temporary failure in name", "getaddrinfo", "dns")):
+            category = "network/dns"
+        else:
+            category = "network/dns"
     return _diagnostic(category, latency_ms=latency_ms)
 
 
@@ -315,6 +321,7 @@ def _request_with_retry(
         if remaining <= 0:
             raise AssistantError(_diagnostic("timeout"), provider)
         request_timeout = max(0.1, min(remaining, budget))
+        response = None
         try:
             if method == "get":
                 response = http_client.get(
@@ -556,6 +563,14 @@ def clear_provider_circuits() -> None:
         _CIRCUITS.clear()
 
 
+def fallback_allowed(error: AssistantError) -> bool:
+    """Permanent key, access, quota, and selected-model errors do not cascade."""
+    return error.category not in {
+        "invalid_key", "forbidden", "restricted_key", "model_not_found",
+        "quota_exhausted", "missing_key", "circuit_open",
+    }
+
+
 def _circuit_diagnostic(name: str, remaining: float) -> AssistantError:
     base = _diagnostic("circuit_open")
     ar = base.message_ar + f" المدة المتبقية: {remaining:.0f} ثانية."
@@ -580,6 +595,18 @@ class OpenAIAssistant:
         return validate_model_access(self.name, self.api_key, self.model, timeout=self.timeout, force=force)
 
     def ask(self, prompt: str, *, system_context: str = "") -> str:
+        try:
+            answer = self._ask(prompt, system_context=system_context)
+        except AssistantError:
+            _record_provider_failure(self.name)
+            raise
+        except Exception as exc:
+            _record_provider_failure(self.name)
+            raise AssistantError(classify_exception(exc), self.name) from exc
+        _record_provider_success(self.name)
+        return answer
+
+    def _ask(self, prompt: str, *, system_context: str = "") -> str:
         if not _text(prompt):
             raise AssistantError(_diagnostic("invalid_response"), self.name)
         self.validate()
