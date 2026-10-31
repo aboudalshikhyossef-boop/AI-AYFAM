@@ -214,6 +214,24 @@ class AYFAMAgent(AgentV5Mixin):
             if self.verbose:
                 self.ui.warning(self.last_provider_error)
 
+        def current_circuit_notice() -> str:
+            for candidate in providers:
+                remaining = provider_circuit_remaining(candidate.name)
+                if remaining > 0:
+                    paused_providers[candidate.name] = remaining
+            if not paused_providers:
+                return ""
+            names = ", ".join(sorted(paused_providers))
+            remaining = max(paused_providers.values())
+            notice = self._t(
+                f"\n\n[تنبيه اتصال] أُوقف مؤقتاً المزوّد: {names} بعد إخفاقات متكررة. "
+                f"الانتظار المتبقي نحو {remaining:.0f} ثانية؛ يعمل المسار المحلي الآن.",
+                f"\n\n[Provider notice] {names} is paused after repeated failures. "
+                f"About {remaining:.0f}s of cooldown remains; the local path is active.",
+            )
+            self.last_provider_error = notice.strip()
+            return notice
+
         for provider in providers:
             try:
                 ask_options: dict[str, Any] = {
@@ -242,7 +260,7 @@ class AYFAMAgent(AgentV5Mixin):
                                 "تعذّر حفظ سجل التفاعل الخارجي؛ لم يُعرض أي تفصيل حساس.",
                                 "The external interaction audit could not be saved; sensitive details were suppressed.",
                             ))
-                    return f"🧠 [{provider.name.title()} API]\n\n{answer}"
+                    return f"🧠 [{provider.name.title()} API]\n\n{answer}{current_circuit_notice()}"
             except AssistantError as exc:
                 self.last_provider_error = str(exc)
                 if self.verbose:
@@ -264,17 +282,7 @@ class AYFAMAgent(AgentV5Mixin):
                     self.ui.warning(self.last_provider_error)
                 break
 
-        circuit_notice = ""
-        if paused_providers:
-            names = ", ".join(sorted(paused_providers))
-            remaining = max(paused_providers.values())
-            circuit_notice = self._t(
-                f"\n\n[تنبيه اتصال] أُوقف مؤقتاً المزوّد: {names} بعد إخفاقات متكررة. "
-                f"الانتظار المتبقي نحو {remaining:.0f} ثانية؛ يعمل المسار المحلي الآن.",
-                f"\n\n[Provider notice] {names} is paused after repeated failures. "
-                f"About {remaining:.0f}s of cooldown remains; the local path is active.",
-            )
-            self.last_provider_error = circuit_notice.strip()
+        circuit_notice = current_circuit_notice()
 
         # Local Offline Brain Fallback
         try:
