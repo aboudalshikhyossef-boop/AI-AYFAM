@@ -143,7 +143,7 @@ def post(url: str, headers: dict | None = None, json_data: Any = None, data: Any
     payload, hdrs = _request_body(target_json, data, headers)
     req = urllib.request.Request(url, data=payload, headers=hdrs, method="POST")
     try:
-        with urllib.request.urlopen(req, timeout=_urllib_timeout(timeout)) as resp:  # nosec B310 - URL validated as HTTP(S) above
+        with urllib.request.urlopen(req, timeout=_urllib_timeout(timeout)) as resp:  # nosec B310 - URL validated as HTTP(S) above  # nosec B310 - URL validated as HTTP(S) above
             return ResponseWrapper(resp.status, resp.read(), dict(resp.headers.items()), url)
     except urllib.error.HTTPError as exc:
         return ResponseWrapper(exc.code, exc.read(), dict(exc.headers.items()), url)
