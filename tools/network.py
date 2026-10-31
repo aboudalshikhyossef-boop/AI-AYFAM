@@ -7,6 +7,7 @@ import subprocess
 import socket
 import json
 import re
+import ipaddress
 from datetime import datetime
 from typing import Optional
 
@@ -82,22 +83,23 @@ SUSPICIOUS_PORTS = {
     9200, 9300,  # Elasticsearch exposed
 }
 
-TRUSTED_LOCAL_RANGES = [
-    "127.", "::1",        # loopback
-    "192.168.",           # private class C
-    "10.",                # private class A
-    "172.16.", "172.17.", "172.18.", "172.19.",
-    "172.20.", "172.21.", "172.22.", "172.23.",
-    "172.24.", "172.25.", "172.26.", "172.27.",
-    "172.28.", "172.29.", "172.30.", "172.31.",  # private class B
-    "fe80:",              # link-local IPv6
-    "fc00:", "fd",        # ULA IPv6
-]
-
-
 def _is_local_ip(ip: str) -> bool:
-    ip = ip.strip("[]")
-    return any(ip.startswith(r) for r in TRUSTED_LOCAL_RANGES) or ip in ("", "*", "0.0.0.0", "::")
+    """Return whether an endpoint is loopback, private, link-local, or unspecified."""
+    candidate = (ip or "").strip().strip("[]").split("%", 1)[0]
+    if not candidate or candidate == "*":
+        return False
+    try:
+        address = ipaddress.ip_address(candidate)
+    except ValueError:
+        return False
+    if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped:
+        address = address.ipv4_mapped
+    return bool(
+        address.is_private
+        or address.is_loopback
+        or address.is_link_local
+        or address.is_unspecified
+    )
 
 
 def _extract_process_name(process_str: str) -> str:
@@ -117,9 +119,11 @@ def _classify_connection(proto, local, remote, state, process_str) -> dict:
     proc_name = _extract_process_name(process_str)
     remote_clean = remote.strip() if remote else ""
 
-    # No remote = listening, check if internal only
+    # Wildcard peers are listeners, not proof of a trusted/local service.
     if not remote_clean or remote_clean in ("*:*", "0.0.0.0:*", ":::*", "[::]:*"):
-        return {"trust": "trusted", "risk": "info", "reason": "جهة استماع محلية / Local listener"}
+        return {"trust": "unknown", "risk": "info", "reason": "مقبس استماع؛ يجب تقييم عنوان الربط في فحص الخدمات"}
+
+    proc_name = proc_name.lower()
 
     # Extract remote IP and port
     remote_ip = ""
@@ -145,12 +149,12 @@ def _classify_connection(proto, local, remote, state, process_str) -> dict:
                 "risk": "low",
                 "reason": f"برنامج موثوق ({proc_name}) على منفذ قياسي ({remote_port})"
             }
-        # Trusted process but unusual port — just info
+        # A familiar process name is not sufficient to trust an unusual port.
         if remote_port not in SUSPICIOUS_PORTS:
             return {
-                "trust": "trusted",
-                "risk": "low",
-                "reason": f"برنامج موثوق ({proc_name}) — منفذ {remote_port}"
+                "trust": "unknown",
+                "risk": "medium",
+                "reason": f"عملية معروفة الاسم ({proc_name}) تستخدم منفذاً غير معتاد ({remote_port})؛ يلزم التحقق"
             }
 
     # Suspicious port — regardless of process
@@ -300,17 +304,17 @@ def check_data_leaks():
                         port = int(addr.rsplit(":", 1)[-1])
                         process = parts[-1] if len(parts) > 4 else ""
                         proc = _extract_process_name(process)
-                        # Only flag if it's a non-standard port and non-trusted process
-                        if port not in TRUSTED_PORTS_OUTBOUND and port not in (22, 80, 443, 53) and proc not in TRUSTED_PROCESSES:
-                            findings.append(create_finding(
-                                "NET-PORT-001",
-                                severity="medium",
-                                title_ar=f"خدمة مكشوفة على جميع الواجهات: منفذ {port} ({proc})",
-                                detail="الخدمة تقبل الاتصالات من أي مصدر خارجي.",
-                                fix="قيّد الاستماع على localhost إن أمكن، أو أضف قاعدة UFW.",
-                                evidence={"port": port, "process": proc},
-                                stable_key=str(port),
-                            ))
+                        # A wildcard bind is an exposure regardless of process name or port.
+                        severity = "critical" if port in SUSPICIOUS_PORTS else "medium"
+                        findings.append(create_finding(
+                            "NET-PORT-001",
+                            severity=severity,
+                            title_ar=f"خدمة تستمع على جميع واجهات الشبكة: منفذ {port} ({proc or 'عملية غير معروفة'})",
+                            detail="الخدمة مرتبطة بعنوان wildcard ويمكن الوصول إليها عبر واجهات الشبكة؛ اسم العملية أو شيوع المنفذ لا يثبتان أنها آمنة.",
+                            fix="تحقق من ضرورة التعريض الخارجي، وقيّد عنوان الاستماع إلى localhost أو استخدم قواعد جدار حماية مناسبة.",
+                            evidence={"port": port, "process": proc, "bind": addr},
+                            stable_key=f"wildcard:{port}:{proc}",
+                        ))
                     except Exception:
                         pass
 
