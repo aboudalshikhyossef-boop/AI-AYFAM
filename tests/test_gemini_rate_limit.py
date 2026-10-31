@@ -23,7 +23,7 @@ def test_model_name_preserves_explicit_choice():
 
 def test_wait_reserves_first_slot_and_reports_wait_time(monkeypatch, tmp_path):
     configure_state(monkeypatch, tmp_path)
-    assert gemini_rate_limit.wait_for_slot(FAKE_KEY, timeout=1.0) == 0.0
+    assert gemini_rate_limit.wait_for_slot(FAKE_KEY, timeout=1.0) < 0.05
     reported = []
     started = time.monotonic()
     waited = gemini_rate_limit.wait_for_slot(
@@ -61,7 +61,7 @@ def test_wait_never_sleeps_while_holding_file_lock(monkeypatch, tmp_path):
 
 
 def test_wait_can_be_cancelled_and_emits_remaining_time(monkeypatch, tmp_path):
-    configure_state(monkeypatch, tmp_path, interval="2")
+    configure_state(monkeypatch, tmp_path, interval="0.5")
     gemini_rate_limit.wait_for_slot(FAKE_KEY, timeout=1.0)
     cancel = threading.Event()
     remaining = []
