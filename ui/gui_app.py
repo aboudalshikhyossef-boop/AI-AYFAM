@@ -1944,7 +1944,15 @@ class UnifiedCockpitWindow(QMainWindow):
                         if provider_name == "gemini"
                         else OpenAIAssistant(effective_key, model, timeout=12.0)
                     )
-                    generated = provider.ask("Reply with: OK")
+                    if provider_name == "gemini":
+                        generated = provider.ask(
+                            "Reply with: OK",
+                            on_wait=lambda remaining: self.agent.ui.info(
+                                f"Gemini quota wait / انتظار حصة Gemini: {remaining:.0f}s"
+                            ),
+                        )
+                    else:
+                        generated = provider.ask("Reply with: OK")
                     return {
                         "answer": generated,
                         "latency_ms": round((time.monotonic() - started) * 1000, 1),
