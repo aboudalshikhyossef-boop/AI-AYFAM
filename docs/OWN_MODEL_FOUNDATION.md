@@ -36,6 +36,11 @@ Prepare a raw UTF-8 JSONL corpus with source and license metadata, then run the
 preparation, strict audit and BPE tokenizer commands described in
 [CORPUS_AND_BPE.md](CORPUS_AND_BPE.md).
 
+The original deterministic UTF-8 ByteTokenizer remains the default when
+--tokenizer-config is omitted. The optional ByteBPETokenizer learns its merge
+rules from the train split only. Its versioned merge table is stored in the
+checkpoint configuration; a changed tokenizer cannot silently resume an old
+checkpoint.
 The original deterministic UTF-8 ByteTokenizer remains available and is used
 when --tokenizer-config is omitted. The optional ByteBPETokenizer learns its
 merge rules from the train split only. Its versioned merge table is stored in
@@ -76,6 +81,7 @@ deterministic shuffle pass; it does not save an exact mid-epoch data cursor.
 
 - The BPE implementation is a transparent byte-level baseline with whitespace
   pre-tokenization boundaries; it is not claimed to match GPT's full tokenizer
+  segmentation or optimized tokenizer throughput.
   segmentation or throughput.
 - Language labels are Unicode-script heuristics, not a full language detector.
 - Corpus preparation catches selected high-confidence credential patterns and
