@@ -658,10 +658,26 @@ class GeminiAssistant:
     def validate(self, *, force: bool = False) -> dict[str, Any]:
         return validate_model_access(self.name, self.api_key, self.model, timeout=self.timeout, force=force)
 
-    def ask(self, prompt: str, *, system_context: str = "") -> str:
+    def ask(self, prompt: str, *, system_context: str = "", on_wait=None) -> str:
+        try:
+            answer = self._ask(prompt, system_context=system_context, on_wait=on_wait)
+        except AssistantError:
+            _record_provider_failure(self.name)
+            raise
+        except Exception as exc:
+            _record_provider_failure(self.name)
+            raise AssistantError(classify_exception(exc), self.name) from exc
+        _record_provider_success(self.name)
+        return answer
+
+    def _ask(self, prompt: str, *, system_context: str = "", on_wait=None) -> str:
         if not _text(prompt):
             raise AssistantError(_diagnostic("invalid_response"), self.name)
-        check = self.validate()
+        started = time.monotonic()
+        check = validate_model_access(
+            self.name, self.api_key, self.model,
+            timeout=self.timeout, force=False,
+        )
         prompt, context = _privacy_safe_inputs(prompt, system_context)
         instruction = (
             "You are AI AYFAM, a cybersecurity assistant for Linux Mint and Ubuntu. "
@@ -673,8 +689,18 @@ class GeminiAssistant:
         limit = check.get("output_limit") or GEMINI_MAX_OUTPUT_TOKENS
         limit = min(GEMINI_MAX_OUTPUT_TOKENS, int(limit))
         try:
-            wait_for_slot(self.api_key, timeout=self.timeout)
+            remaining_before_wait = self.timeout - (time.monotonic() - started)
+            if remaining_before_wait <= 0:
+                raise TimeoutError("Model validation exceeded request timeout")
+            waited = wait_for_slot(
+                self.api_key,
+                timeout=remaining_before_wait,
+                on_wait=on_wait,
+            )
         except TimeoutError:
+            raise AssistantError(_diagnostic("timeout"), self.name)
+        remaining_timeout = self.timeout - (time.monotonic() - started)
+        if remaining_timeout <= 0:
             raise AssistantError(_diagnostic("timeout"), self.name)
         response = _request_with_retry(
             "post",
@@ -687,7 +713,7 @@ class GeminiAssistant:
                 # uniformly accept sampling controls.
                 "generationConfig": {"maxOutputTokens": limit},
             },
-            timeout=self.timeout, provider=self.name,
+            timeout=remaining_timeout, provider=self.name,
         )
         try:
             answer = _extract_gemini_text(_response_payload(response))
