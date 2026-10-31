@@ -7,11 +7,11 @@ import json
 from pathlib import Path
 import sys
 
-from model_factory.config import ModelConfig, TrainingConfig
 from model_factory.corpus_tools import prepare_corpus, validate_prepared_corpus
-from model_factory.data import iter_batches, iter_records, validate_corpus
+from model_factory.data import iter_records, validate_corpus
 from model_factory.hardware import HardwareProfile, build_training_plan
-from model_factory.tokenizer import ByteBPETokenizer, ByteTokenizer, load_tokenizer
+from model_factory.tokenizer import ByteBPETokenizer
+from model_factory.runner import TrainingRunConfig, run_training
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -150,90 +150,27 @@ def main(argv: list[str] | None = None) -> int:
             return 0
 
         if args.command == "train":
-            try:
-                import torch
-                from model_factory.architecture import AYFAMTransformer
-                from model_factory.checkpoint import load_checkpoint
-                from model_factory.training import Trainer
-            except (ImportError, RuntimeError) as exc:
-                print(str(exc), file=sys.stderr)
-                return 2
             if args.steps <= 0:
                 print("--steps must be positive", file=sys.stderr)
                 return 2
-
-            report = validate_prepared_corpus(args.corpus, require_held_out=True)
-            profile = HardwareProfile.detect()
-            plan = build_training_plan(profile)
-            tokenizer = (
-                load_tokenizer(args.tokenizer_config)
-                if args.tokenizer_config else ByteTokenizer()
-            )
-            model_config = ModelConfig(vocab_size=tokenizer.vocab_size)
-            training_config = TrainingConfig(
-                max_steps=args.steps,
-                batch_size=plan.micro_batch_size,
-                gradient_accumulation_steps=plan.gradient_accumulation_steps,
-                checkpoint_interval_steps=plan.checkpoint_interval_steps,
-                num_threads=plan.num_threads,
-            )
-            torch.manual_seed(training_config.seed)
-            model = AYFAMTransformer(model_config)
-            trainer = Trainer(
-                model,
-                training_config,
-                device=args.device,
-                data_fingerprint=report.fingerprint,
-                hardware_profile=profile,
-                plan=plan,
-            )
-            if args.resume:
-                resumed = load_checkpoint(
-                    args.resume,
-                    trainer,
-                    tokenizer,
-                    expected_data_fingerprint=report.fingerprint,
-                )
-                print(f"Resumed from step {resumed['global_step']}")
-            print(f"Initialized {model.parameter_count():,} random parameters; no pretrained weights loaded.")
-            print(f"Tokenizer vocabulary: {tokenizer.vocab_size}")
-            print(f"Training plan: {json.dumps(plan.to_dict(), ensure_ascii=False)}")
-
-            def batch_factory():
-                epoch_seed = training_config.seed + trainer.global_step
-                return iter_batches(
-                    args.corpus,
-                    tokenizer,
-                    split="train",
-                    block_size=model_config.block_size,
-                    batch_size=plan.micro_batch_size,
-                    shuffle=True,
-                    seed=epoch_seed,
-                )
 
             def report_step(result):
                 print(f"step={result.step} loss={result.loss:.4f} lr={result.learning_rate:.6g}")
                 return True
 
-            trainer.fit(
-                batch_factory,
-                max_steps=args.steps,
-                checkpoint_path=str(args.output),
-                checkpoint_interval_steps=training_config.checkpoint_interval_steps,
-                tokenizer=tokenizer,
+            result = run_training(
+                TrainingRunConfig(
+                    corpus_path=args.corpus,
+                    checkpoint_path=args.output,
+                    max_steps=args.steps,
+                    device=args.device,
+                    tokenizer_config_path=args.tokenizer_config,
+                    resume_checkpoint=args.resume,
+                ),
                 on_step=report_step,
             )
-            print(f"Training complete: {trainer.global_step} optimizer steps; checkpoint: {args.output}")
-            validation_factory = lambda: iter_batches(
-                args.corpus,
-                tokenizer,
-                split="validation",
-                block_size=model_config.block_size,
-                batch_size=plan.micro_batch_size,
-            )
-            metrics = Trainer.evaluate(model, validation_factory, device=trainer.device)
-            print(f"Validation: {json.dumps(metrics)}")
-            return 0 if trainer.global_step >= args.steps else 1
+            print(json.dumps(result.to_dict(), ensure_ascii=False, indent=2))
+            return 0 if result.completed_steps >= args.steps else 1
 
         if args.command == "export-model":
             from model_factory.inference import export_inference_artifact

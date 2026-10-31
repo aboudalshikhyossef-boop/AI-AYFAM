@@ -92,7 +92,7 @@ jobs:
           python -m pip install --index-url https://download.pytorch.org/whl/cpu -r requirements-training.txt
       - name: Lint model factory
         run: |
-          ruff check --select F811,F821,F601,E722 model_factory/ tests/test_model_factory_core.py tests/test_model_factory_torch.py tests/test_model_factory_bpe.py tests/test_model_factory_corpus_tools.py tests/test_model_factory_inference.py
+          ruff check --select F811,F821,F601,E722 model_factory/ tests/test_model_factory_core.py tests/test_model_factory_torch.py tests/test_model_factory_bpe.py tests/test_model_factory_corpus_tools.py tests/test_model_factory_inference.py tests/test_model_factory_runner.py
       - name: Audit optional training dependencies
         run: |
           pip-audit -r requirements-training.txt
@@ -102,4 +102,4 @@ jobs:
           MKL_NUM_THREADS: "2"
           PYTHONPATH: .
         run: |
-          python -m pytest -q tests/test_model_factory_core.py tests/test_model_factory_torch.py tests/test_model_factory_bpe.py tests/test_model_factory_corpus_tools.py tests/test_model_factory_inference.py
+          python -m pytest -q tests/test_model_factory_core.py tests/test_model_factory_torch.py tests/test_model_factory_bpe.py tests/test_model_factory_corpus_tools.py tests/test_model_factory_inference.py tests/test_model_factory_runner.py

@@ -48,6 +48,7 @@ from ui.views.findings import FindingsView
 from ui.views.timeline import TimelineView
 from ui.views.sentinel import SentinelView
 from ui.views.attack_graph import AttackChainGraphView
+from ui.views.model_training import ModelTrainingView
 from ui.theme import (
     QSS, get_qss, ACCENT, ACCENT_SECONDARY, ACCENT_SOFT, ACCENT_HUES, BG_BASE, BG_SURFACE, BG_ELEVATED, BG_HOVER,
     BORDER, BORDER_FOCUS, TEXT_PRIMARY, TEXT_SECONDARY, TEXT_MUTED,
@@ -75,6 +76,7 @@ NAV_ITEMS = [
     ("tools",     "ترسانة الأدوات"),
     ("chat",      "المحادثة الأمنية"),
     ("library",   "المكتبة المحلية"),
+    ("model_training", "تدريب نموذج AYFAM"),
     ("playbooks", "خطط العمل"),
     ("reports",   "التقارير"),
     ("settings",  "إعدادات النظام"),
@@ -517,6 +519,7 @@ class UnifiedCockpitWindow(QMainWindow):
         self.page_playbooks = QWidget()
         self.page_reports = QWidget()
         self.page_settings = QWidget()
+        self.page_model_training = ModelTrainingView()
 
         self.setup_dashboard_page()
         self.setup_scans_page()
@@ -535,6 +538,7 @@ class UnifiedCockpitWindow(QMainWindow):
             "usb": self.page_usb, "tools": self.page_tools, "chat": self.page_chat,
             "library": self.page_library, "playbooks": self.page_playbooks,
             "reports": self.page_reports, "settings": self.page_settings,
+            "model_training": self.page_model_training,
         }
         for key, page in self.page_widgets_by_key.items():
             page.setProperty("pageKey", key)
@@ -563,6 +567,7 @@ class UnifiedCockpitWindow(QMainWindow):
         self.stack.addWidget(self.page_playbooks)
         self.stack.addWidget(self.page_reports)
         self.stack.addWidget(self.page_settings)
+        self.stack.addWidget(self.page_model_training)
 
         # Wrap stack in scroll area for responsiveness
         scroll = QScrollArea()
@@ -636,8 +641,17 @@ class UnifiedCockpitWindow(QMainWindow):
         for timer in self.findChildren(QTimer):
             timer.stop()
 
-        running_workers = [worker for worker in (getattr(self, "worker", None), getattr(self, "telemetry_worker", None))
-                           if worker is not None and worker.isRunning()]
+        training_page = getattr(self, "page_model_training", None)
+        if training_page is not None:
+            training_page.request_stop()
+        running_workers = [
+            worker for worker in (
+                getattr(self, "worker", None),
+                getattr(self, "telemetry_worker", None),
+                getattr(training_page, "worker", None),
+            )
+            if worker is not None and worker.isRunning()
+        ]
         if running_workers:
             if not self._closing_after_workers:
                 self._closing_after_workers = True
@@ -658,7 +672,11 @@ class UnifiedCockpitWindow(QMainWindow):
         if not getattr(self, "_closing_after_workers", False):
             return
         running_workers = [
-            worker for worker in (getattr(self, "worker", None), getattr(self, "telemetry_worker", None))
+            worker for worker in (
+                getattr(self, "worker", None),
+                getattr(self, "telemetry_worker", None),
+                getattr(getattr(self, "page_model_training", None), "worker", None),
+            )
             if worker is not None and worker.isRunning()
         ]
         if running_workers:
@@ -675,6 +693,7 @@ class UnifiedCockpitWindow(QMainWindow):
             "chat": self.page_chat, "library": self.page_library,
             "playbooks": self.page_playbooks, "reports": self.page_reports,
             "settings": self.page_settings,
+            "model_training": self.page_model_training,
         }
         title_map = {
             "dashboard": "غرفة العمليات", "scans": "الفحوصات الأمنية",
@@ -684,6 +703,7 @@ class UnifiedCockpitWindow(QMainWindow):
             "chat": "المحادثة الذكية", "library": "مكتبة المعرفة",
             "playbooks": "خطط العمل الأمنية", "reports": "التقارير",
             "settings": "إعدادات النظام والمفاتيح",
+            "model_training": "تدريب نموذج AYFAM المحلي",
         }
         widget = page_map.get(key)
         if widget:
