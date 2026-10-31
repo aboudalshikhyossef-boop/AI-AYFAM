@@ -12,6 +12,7 @@ import stat
 import tempfile
 from pathlib import Path
 from config.version import APP_VERSION
+from config.model_defaults import OPENAI_DEFAULT_MODEL
 from engine.gemini_rate_limit import DEFAULT_GEMINI_MODEL
 
 try:
@@ -51,7 +52,7 @@ DEFAULT_SETTINGS = {
     "google_cse_key": "",  # Google Programmable Search (اختياري): نتائج Google مباشرة بدل التأسيس عبر Gemini
     "google_cse_cx": "f5fbcd40fda484bc7",   # معرّف محرك البحث المخصص (cx)
     "ai_provider": "auto",  # auto | openai | gemini | local
-    "openai_model": "gpt-4o-mini",
+    "openai_model": OPENAI_DEFAULT_MODEL,
     "gemini_model": DEFAULT_GEMINI_MODEL,
     "auto_fix": False,
     "sound_ux": False,

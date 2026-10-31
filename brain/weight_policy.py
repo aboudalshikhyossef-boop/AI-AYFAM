@@ -16,31 +16,18 @@ from typing import Mapping
 DEFAULT_WEIGHTS = {
     "question_alignment": 1.00,
     "evidence_first": 0.90,
-    "uncertainty_disclosure": 0.85,
     "source_attribution": 0.80,
     "stepwise_reasoning": 0.55,
     "structured_response": 0.60,
-    "direct_answer": 0.85,
-    "relevance_threshold": 0.72,
     "brevity": 0.45,
     "examples": 0.35,
     "limitations": 0.80,
-    "verification": 0.82,
-    "safe_next_step": 0.78,
-    "concept_linking": 0.58,
-    "analogy": 0.20,
-    "confidence_calibration": 0.88,
-    "counterexample_check": 0.52,
-    "clarifying_question": 0.50,
-    "avoid_repetition": 0.75,
-    "actionability": 0.65,
+    "retrieval_score_display": 0.88,
 }
 
-# External answers expose only a subset of these dimensions. The rest remain
-# anchored to the parent profile instead of being invented from text.
+# Only dimensions consumed by the current local explanation path are retained.
 OBSERVED_TO_WEIGHT = {
     "evidence": "evidence_first",
-    "caution": "uncertainty_disclosure",
     "steps": "stepwise_reasoning",
     "structured": "structured_response",
 }
@@ -111,7 +98,7 @@ class WeightPolicy:
         ).fetchone()
         if not row:
             return {"id": 0, "name": "balanced-v1", "weights": dict(DEFAULT_WEIGHTS)}
-        return {"id": row["id"], "name": row["name"], "weights": json.loads(row["weights"]),
+        return {"id": row["id"], "name": row["name"], "weights": self._clean(json.loads(row["weights"])),
                 "parent_id": row["parent_id"], "source_interaction_id": row["source_interaction_id"],
                 "created_at": row["created_at"]}
 
@@ -128,13 +115,6 @@ class WeightPolicy:
                     candidate[target] = candidate[target] * (1.0 - rate) + signal * rate
                 except (TypeError, ValueError):
                     pass
-        # Alignment, verification and calibrated confidence are coupled to the
-        # evidence/caution signals, not copied from any provider response.
-        evidence = float(features.get("evidence", 0.0) or 0.0)
-        caution = float(features.get("caution", 0.0) or 0.0)
-        candidate["question_alignment"] = candidate["question_alignment"] * (1-rate) + max(evidence, caution) * rate
-        candidate["verification"] = candidate["verification"] * (1-rate) + evidence * rate
-        candidate["confidence_calibration"] = candidate["confidence_calibration"] * (1-rate) + caution * rate
         candidate = self._clean(candidate)
         name = f"policy-v{parent['id'] + 1}-from-interaction-{interaction_id or 'manual'}"
         cur = self._conn().execute(
@@ -153,7 +133,7 @@ class WeightPolicy:
         query += " ORDER BY id DESC"
         rows = self._conn().execute(query, params).fetchall()
         return [{"id": row["id"], "parent_id": row["parent_id"], "name": row["name"],
-                 "weights": json.loads(row["weights"]), "source_interaction_id": row["source_interaction_id"],
+                 "weights": self._clean(json.loads(row["weights"])), "source_interaction_id": row["source_interaction_id"],
                  "status": row["status"], "review_note": row["review_note"],
                  "tests": json.loads(row["tests"]), "created_at": row["created_at"]} for row in rows]
 

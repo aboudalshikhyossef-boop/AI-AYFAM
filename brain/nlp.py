@@ -8,6 +8,7 @@ AI AYFAM — NLP Engine (بدون API خارجي)
 substring matching، تعمل بالكامل دون اتصال بالإنترنت أو أي خدمة خارجية.
 """
 
+import math
 import re
 from difflib import SequenceMatcher
 from typing import Optional
@@ -100,6 +101,64 @@ def _fuzzy_contains(haystack_tokens: list, needle: str, threshold: float = 0.82)
         if _fuzzy_ratio(tok, needle) >= threshold:
             return True
     return False
+
+
+def _extract_source_steps(text: str) -> tuple[str, ...]:
+    """Return only explicitly numbered/bulleted lines found in source text."""
+    found = []
+    for line in str(text or "").splitlines():
+        match = re.match(r"^\s*(?:\d+[.)]|[-*•])\s+(.+?)\s*$", line)
+        if match:
+            value = match.group(1).strip()
+            if value:
+                found.append(value)
+    return tuple(found[:5])
+
+
+def _extract_source_examples(text: str) -> tuple[str, ...]:
+    """Return only sentences explicitly marked as examples in the source."""
+    sentences = re.split(r"(?<=[.!؟?])\s+|\n+", str(text or ""))
+    markers = re.compile(r"\b(?:example|for example|e\.g\.)\b|مثال|مثلاً|على سبيل المثال", re.IGNORECASE)
+    return tuple(sentence.strip() for sentence in sentences if markers.search(sentence) and sentence.strip())[:3]
+
+
+def _annotate_retrieval_scores(rows: list[dict]) -> list[dict]:
+    """Attach a 0..1 relative BM25 rank or measured TF-IDF similarity only."""
+    items = [dict(row) for row in rows]
+    bm25 = []
+    for item in items:
+        item.pop("retrieval_score", None)
+        item.pop("retrieval_method", None)
+        relevance = item.get("relevance")
+        if isinstance(relevance, (int, float)) and not isinstance(relevance, bool):
+            score = float(relevance)
+            if 0.0 <= score <= 1.0:
+                item["retrieval_score"] = round(score, 4)
+                item["retrieval_method"] = "TF-IDF"
+                continue
+        raw = item.get("bm25_score")
+        if isinstance(raw, (int, float)) and not isinstance(raw, bool):
+            value = float(raw)
+            if math.isfinite(value):
+                bm25.append((item, value))
+    if bm25:
+        values = [value for _, value in bm25]
+        low, high = min(values), max(values)
+        # A single/equal BM25 value has no comparative signal and stays unscored.
+        if high - low > 1e-12:
+            for item, value in bm25:
+                item["retrieval_score"] = round((high - value) / (high - low), 4)
+                item["retrieval_method"] = "BM25"
+    return items
+
+
+def _knowledge_source_label(source: str) -> str:
+    labels = {
+        "seed": "المعرفة المضمّنة / Built-in knowledge",
+        "user": "معلومة قدّمها المستخدم / User-provided fact",
+        "self_learned": "معرفة محلية غير مراجعة / Unreviewed local entry",
+    }
+    return labels.get(str(source or ""), "مصدر معرفة محلي / Local knowledge source")
 
 
 class ParsedCommand:
@@ -373,135 +432,162 @@ class NLPEngine:
     # ─── Explanation ─────────────────────────────────────────────────────────
     def explain(self, target: str) -> str:
         if not self.kb:
-            return f"لا تتوفر قاعدة معرفة لشرح: {target}"
+            return f"لا تتوفر قاعدة معرفة لشرح: {target} / No knowledge base is available for: {target}"
 
-        sections = []
-        learned_style = None
-        external_count = 0
-        try:
-            from brain.weight_policy import WeightPolicy
-            external_count = self.kb._connect().execute(
-                "SELECT COUNT(*) FROM external_interactions"
-            ).fetchone()[0]
-            if external_count:
-                active_policy = WeightPolicy(self.kb).active()
-                weights = active_policy.get("weights", {})
-                learned_style = {
-                    "evidence": weights.get("evidence_first", 0.0),
-                    "caution": weights.get("uncertainty_disclosure", 0.0),
-                    "steps": weights.get("stepwise_reasoning", 0.0),
-                    "structured": weights.get("structured_response", 0.0),
-                }
-        except Exception:
-            pass
+        evidence_items: list[dict] = []
+        supplementary_notes: list[str] = []
 
-        # 0) هل هذا سؤال عن أداة معروفة (nmap, ping, curl...)؟ إن كان كذلك،
-        #    أعطِ أولوية قصوى للمعرفة المُهيكَلة (structured) المستخرجة من
-        #    كتبك عن هذه الأداة تحديداً — أدق بكثير من بحث نصي عام.
+        # Built-in glossary rows are references, not measured retrieval scores.
         from brain.tech_extractor import KNOWN_TOOLS, detect_tool_in_text
         tool_hit = detect_tool_in_text(target)
+        commands: list[dict] = []
         if tool_hit:
             tool_knowledge = self.kb.get_tool_knowledge(tool_hit, limit=6)
             base_desc = KNOWN_TOOLS.get(tool_hit, "")
-            lines = [f"🔧 الأداة: {tool_hit}" + (f" — {base_desc} (من قاموسي الأساسي)" if base_desc else "")]
-            commands = [r for r in tool_knowledge if r.get("command_text")]
-            contexts = [r for r in tool_knowledge if not r.get("command_text")]
+            if base_desc:
+                evidence_items.append({
+                    "text": f"الأداة: {tool_hit} — {base_desc} / Tool: {tool_hit} — {base_desc}",
+                    "source": "قاموس الأدوات المضمّن / Built-in tool glossary",
+                    "kind": "reference",
+                })
+            commands = [row for row in tool_knowledge if row.get("command_text")]
+            contexts = [row for row in tool_knowledge if not row.get("command_text")]
             if commands:
-                lines.append(f"\n📖 أوامر فعلية من كتبك لهذه الأداة تحديداً:")
-                for r in commands[:5]:
-                    loc = f" ({r['page_hint']})" if r.get("page_hint") else ""
-                    lines.append(f"  $ {r['command_text']}\n    — من: «{r['doc_title']}»{loc}")
+                for row in commands[:5]:
+                    loc = f" ({row.get('page_hint')})" if row.get("page_hint") else ""
+                    title = str(row.get("doc_title") or "غير محدد")
+                    source = f"كتاب: {title}{loc} / Book: {title}{loc}"
+                    context = str(row.get("context_snippet") or "").strip()
+                    command = str(row.get("command_text") or "").strip()
+                    evidence_items.append({
+                        "text": f"الأمر كما ورد في المصدر: {command}\nالسياق: {context} / Command as stated in source: {command}\nContext: {context}",
+                        "source": source,
+                        "steps": _extract_source_steps(context),
+                        "examples": (command,) if command else (),
+                        "kind": "source_command",
+                    })
             elif contexts:
-                r = contexts[0]
-                loc = f" ({r['page_hint']})" if r.get("page_hint") else ""
-                lines.append(f"\n📖 من كتابك «{r['doc_title']}»{loc}:\n  {r['context_snippet']}")
+                for row in contexts[:3]:
+                    loc = f" ({row.get('page_hint')})" if row.get("page_hint") else ""
+                    title = str(row.get("doc_title") or "غير محدد")
+                    context = str(row.get("context_snippet") or "").strip()
+                    evidence_items.append({
+                        "text": context,
+                        "source": f"كتاب: {title}{loc} / Book: {title}{loc}",
+                        "steps": _extract_source_steps(context),
+                        "examples": _extract_source_examples(context),
+                        "kind": "library_context",
+                    })
             else:
-                lines.append(
-                    "\nلم أجد بعد أي شرح لهذه الأداة في كتبك — علّمني كتاباً "
-                    "يذكرها (بقول 'تعلم من ملف <المسار>') لأتعلم استخداماتها الفعلية."
+                supplementary_notes.append(
+                    f"لم أجد شرحاً لهذه الأداة في كتبك / No explanation for this tool was found in your library: {tool_hit}"
                 )
-            sections.append("\n".join(lines))
 
-        # 1) قاعدة المعرفة المدمجة + ما علّمك إياه المستخدم سابقاً (نفس الجدول،
-        #    لكن نميّز المصدر عند العرض حتى يعرف المستخدم من أين أتت الإجابة).
-        results = self.kb.search_knowledge(target, limit=3)
-        if results:
-            lines = [f"🔍 وجدت في معرفتي عن '{target}':\n"]
-            for r in results:
-                if r.get("source") == "user":
-                    origin = "💬 مما علّمتني إياه سابقاً"
-                elif r.get("source") == "self_learned":
-                    origin = "🧠 تعلّمتها ذاتياً من تكرار سابق"
-                else:
-                    origin = f"📚 [{r['category'].upper()}]"
-                lines.append(f"  {origin} — {r['key']}\n  {r['content']}\n")
-            sections.append("\n".join(lines))
+        # Knowledge-base search retains its actual BM25 score and provenance.
+        knowledge_results = _annotate_retrieval_scores(self.kb.search_knowledge(target, limit=3))
+        for row in knowledge_results:
+            content = str(row.get("content") or "").strip()
+            key = str(row.get("key") or "").strip()
+            text = f"{key}: {content}" if key else content
+            item = {
+                "text": text,
+                "source": _knowledge_source_label(str(row.get("source") or "")),
+                "steps": _extract_source_steps(content),
+                "examples": _extract_source_examples(content),
+                "kind": "knowledge",
+            }
+            if row.get("retrieval_score") is not None:
+                item["retrieval_score"] = row["retrieval_score"]
+                item["retrieval_method"] = row.get("retrieval_method", "BM25")
+            evidence_items.append(item)
 
-        # 2) المكتبة الشخصية (كتب/ملفات علّمتها للأداة عبر 'تعلم من ملف')
-        #    — نتخطّى هذا إن كان القسم (0) أعلاه قد استخرج أوامر فعلية
-        #    بالفعل لنفس الأداة، تفادياً لعرض نفس المقطع مرتين بلا فائدة.
+        # Library matches retain the actual document title, page, and retrieval signal.
         skip_generic_library = bool(tool_hit and commands)
-        lib_results = [] if skip_generic_library else self.kb.search_library(target, limit=3)
-        if lib_results:
-            lines = [f"📖 وجدت في الكتب/الملفات التي علّمتني إياها:\n"]
-            for r in lib_results:
-                loc = f" ({r['page_hint']})" if r.get("page_hint") else ""
-                excerpt = r["content"][:400].strip()
-                if len(r["content"]) > 400:
+        library_results = [] if skip_generic_library else self.kb.search_library(target, limit=3)
+        library_results = _annotate_retrieval_scores(library_results)
+        if library_results:
+            for row in library_results:
+                content = str(row.get("content") or "").strip()
+                if not content:
+                    continue
+                excerpt = content[:800].strip()
+                if len(content) > 800:
                     excerpt += "…"
-                lines.append(f"  📄 من: «{r['title']}»{loc}\n  {excerpt}\n")
-            sections.append("\n".join(lines))
+                title = str(row.get("title") or "مستند غير محدد")
+                page = str(row.get("page_hint") or "").strip()
+                loc = f" ({page})" if page else ""
+                evidence = {
+                    "text": excerpt,
+                    "source": f"كتاب: {title}{loc} / Book: {title}{loc}",
+                    "steps": _extract_source_steps(content),
+                    "examples": _extract_source_examples(content),
+                    "kind": "library_chunk",
+                }
+                if row.get("retrieval_score") is not None:
+                    evidence["retrieval_score"] = row["retrieval_score"]
+                    evidence["retrieval_method"] = row.get("retrieval_method", "BM25")
+                evidence_items.append(evidence)
         elif not skip_generic_library:
-            # لا نتائج من البحث الحرفي (FTS5) — هذا بالضبط ما تفشل فيه
-            # المطابقة الحرفية مع الأسئلة المفاهيمية (صياغة مختلفة قليلاً
-            # عن النص الأصلي). نجرّب الترتيب الإحصائي (TF-IDF) عبر كل
-            # المكتبة دفعة واحدة كخط دفاع ثانٍ قبل الاستسلام تماماً.
+            # TF-IDF is the fallback retrieval path; cosine relevance is already measured.
             try:
                 from brain import relevance_engine
                 if relevance_engine.is_index_current(self.kb):
                     ranked = relevance_engine.search(target, self.kb, top_k=3)
-                    ranked = [r for r in ranked if "error" not in r]
-                    if ranked:
-                        lines = [f"📖 وجدت مقاطع ذات صلة إحصائية (ترتيب أدق من المطابقة الحرفية):\n"]
-                        for r in ranked:
-                            loc = f" ({r['page_hint']})" if r.get("page_hint") else ""
-                            excerpt = r["content"][:400].strip()
-                            if len(r["content"]) > 400:
-                                excerpt += "…"
-                            lines.append(f"  📄 من: «{r['title']}»{loc} (صلة: {r['relevance']})\n  {excerpt}\n")
-                        sections.append("\n".join(lines))
+                    for row in _annotate_retrieval_scores([item for item in ranked if "error" not in item]):
+                        content = str(row.get("content") or "").strip()
+                        if not content:
+                            continue
+                        title = str(row.get("title") or "مستند غير محدد")
+                        page = str(row.get("page_hint") or "").strip()
+                        loc = f" ({page})" if page else ""
+                        evidence = {
+                            "text": content[:800],
+                            "source": f"كتاب: {title}{loc} / Book: {title}{loc}",
+                            "steps": _extract_source_steps(content),
+                            "examples": _extract_source_examples(content),
+                            "kind": "library_chunk",
+                        }
+                        if row.get("retrieval_score") is not None:
+                            evidence["retrieval_score"] = row["retrieval_score"]
+                            evidence["retrieval_method"] = row.get("retrieval_method", "TF-IDF")
+                        evidence_items.append(evidence)
             except Exception:
+                # A missing/stale index is not evidence and must not create a score.
                 pass
 
-        if sections:
+        if evidence_items:
             from brain.composer import compose
             from brain.weight_policy import WeightPolicy
             active = WeightPolicy(self.kb).active()
-            evidence = [{"text": section, "source": "قاعدة المعرفة المحلية", "confidence": 0.75}
-                        for section in sections]
-            answer = compose(active["weights"], evidence, "explain", profile_name=active["name"])
-            return answer.text
+            answer = compose(active["weights"], evidence_items, "explain", profile_name=active["name"])
+            rendered = answer.text
+            if supplementary_notes:
+                rendered += "\n\n" + "\n".join(supplementary_notes)
+            return rendered
 
-        # 3) احتياطي: منفذ شبكي معروف
+        # A gap notice is never labelled as evidence or included in a score.
+        if supplementary_notes:
+            return "\n".join(supplementary_notes) + (
+                "\nلم يتوفر مرجع محلي آخر لهذا السؤال / No other local reference is available for this query."
+            )
+
+        # Exact built-in lookups have no retrieval-score number.
         port_m = re.search(r'\b(\d{2,5})\b', target)
         if port_m:
             info = self.kb.lookup("port", port_m.group(1))
             if info:
-                return f"📡 المنفذ {port_m.group(1)}: {info}"
+                return f"المنفذ {port_m.group(1)}: {info} / Port {port_m.group(1)}: {info}"
 
-        # 4) احتياطي: نوع هجوم معروف
-        for attack in ["brute_force","sql","xss","mitm","ddos","ransomware","phishing","rootkit"]:
-            if attack.replace("_"," ") in target or attack in target:
+        for attack in ("brute_force", "sql", "xss", "mitm", "ddos", "ransomware", "phishing", "rootkit"):
+            if attack.replace("_", " ") in target or attack in target:
                 info = self.kb.lookup("attack", attack)
                 if info:
-                    return f"⚠️  {info}"
+                    return f"{info} / {info}"
 
         return (
-            f"لم أجد شرحاً محدداً لـ '{target}' — لا في معرفتي المدمجة ولا في "
-            f"الكتب/الملفات التي علّمتني إياها حتى الآن.\n"
-            f"يمكنك: البحث عن هذا في الإنترنت، أو تعليمي منه مباشرة "
-            f"بقول 'تعلم أن {target} هو...'، أو تحميل مرجع عنه بقول "
-            f"'تعلم من ملف <المسار>'."
+            f"لم أجد شرحاً محدداً لـ '{target}' في المعرفة أو المكتبة المحلية. / "
+            f"No matching explanation was found for '{target}' in the local knowledge base or library. "
+            "يمكنك إضافة مرجع محلي ثم إعادة السؤال. / Add a local reference and ask again."
         )
 
     # ─── Intent → Arabic Description ─────────────────────────────────────────

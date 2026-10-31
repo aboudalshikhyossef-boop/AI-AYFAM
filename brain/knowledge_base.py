@@ -103,8 +103,6 @@ def _relevance_filter(rows: list[dict], query: str, *, limit: int) -> list[dict]
         item["query_overlap"] = round(len(overlap) / len(query_terms), 3)
         ranked.append(item)
     ranked.sort(key=lambda item: item["query_overlap"], reverse=True)
-    for item in ranked:
-        item.pop("query_overlap", None)
     return ranked[:limit]
 
 SEED_KNOWLEDGE = [
@@ -484,14 +482,14 @@ class KnowledgeBase:
             if tokens:
                 fts_query = " OR ".join(f"{t}*" for t in tokens)
                 rows = conn.execute(
-                    "SELECT k.category, k.key, k.content, k.source "
+                    "SELECT k.category, k.key, k.content, k.source, bm25(knowledge_fts) AS bm25_score "
                     "FROM knowledge k JOIN knowledge_fts f ON k.id = f.rowid "
                     "WHERE knowledge_fts MATCH ? ORDER BY rank LIMIT ?",
                     (fts_query, max(limit * 4, 12))
                 ).fetchall()
                 if rows:
                     candidates = [{"category": r["category"], "key": r["key"], "content": r["content"],
-                                  "source": r["source"]} for r in rows]
+                                  "source": r["source"], "bm25_score": r["bm25_score"]} for r in rows]
                     filtered = _relevance_filter(candidates, query, limit=limit)
                     if filtered:
                         return filtered
@@ -741,7 +739,8 @@ class KnowledgeBase:
         try:
             fts_query = " OR ".join(f"{t}*" for t in tokens)
             rows = conn.execute(
-                "SELECT c.content, c.chunk_index, c.page_hint, d.title, d.id as doc_id "
+                "SELECT c.content, c.chunk_index, c.page_hint, d.title, d.id as doc_id, "
+                "bm25(library_fts) AS bm25_score "
                 "FROM library_chunks c "
                 "JOIN library_fts f ON c.id = f.rowid "
                 "JOIN library_documents d ON d.id = c.doc_id "
@@ -749,7 +748,7 @@ class KnowledgeBase:
                 (fts_query, max(limit * 4, 12))
             ).fetchall()
             candidates = [{"content": r["content"], "chunk_index": r["chunk_index"],
-                           "page_hint": r["page_hint"], "title": r["title"], "doc_id": r["doc_id"]} for r in rows]
+                           "page_hint": r["page_hint"], "title": r["title"], "doc_id": r["doc_id"], "bm25_score": r["bm25_score"]} for r in rows]
             return _relevance_filter(candidates, query, limit=limit)
         except sqlite3.OperationalError:
             return []

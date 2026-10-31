@@ -16,10 +16,10 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Mapping, Protocol
 
 from utils import http_client
+from config.model_defaults import OPENAI_DEFAULT_MODEL
 from engine.gemini_rate_limit import DEFAULT_GEMINI_MODEL, compact_text, gemini_model_name, wait_for_slot
 from brain.context_engine import ContextEngine
 
-OPENAI_DEFAULT_MODEL = "gpt-4o-mini"
 OPENAI_MODELS_URL = "https://api.openai.com/v1/models"
 GEMINI_MODELS_URL = "https://generativelanguage.googleapis.com/v1beta/models"
 OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses"
