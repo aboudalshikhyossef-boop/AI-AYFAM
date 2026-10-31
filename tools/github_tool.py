@@ -13,7 +13,7 @@ from datetime import datetime, timedelta, timezone
 class GitHubTool:
     API = "https://api.github.com"
 
-    def __init__(self, token: str = ""):
+    def __init__(self, token: str = ""):  # nosec B107 - empty means unauthenticated public API mode
         self.token = token
         self.headers = {
             "Authorization": f"token {token}" if token else "",
