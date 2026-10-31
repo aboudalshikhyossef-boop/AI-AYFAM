@@ -2,9 +2,16 @@
 Unit tests for Privacy Sanitize Data Layer in ContextEngine and Gemini integration
 """
 
+import json
+import os
+import pwd
+import socket
+
 import pytest
 from brain.context_engine import ContextEngine
 from engine.ai_assistant import GeminiAssistant
+from brain.knowledge_base import KnowledgeBase
+from brain.learning_governance import LearningGovernance
 from unittest.mock import patch, MagicMock
 
 def test_context_engine_privacy_sanitization():
@@ -53,3 +60,49 @@ def test_gemini_assistant_scrubs_prompt_before_sending():
         assert "developer" not in sys_inst
         assert "linux-mint-dev" not in user_prompt
         assert "developer" not in user_prompt
+
+
+def test_external_answer_and_context_are_scrubbed_before_storage(tmp_path, monkeypatch):
+    hostname = "private-ayfam-host"
+    username = "private-ayfam-user"
+    openai_secret = "sk-FAKE-KEY-ONLY-0123456789"
+    google_secret = "AIzaSyFAKEGoogleKeyFake0000000000000"
+    bearer_secret = "Bearer fake-bearer-secret-123456789"
+
+    monkeypatch.setattr(socket, "gethostname", lambda: hostname)
+    monkeypatch.setattr(os, "getuid", lambda: 1000)
+    monkeypatch.setattr(pwd, "getpwuid", lambda _uid: type("User", (), {"pw_name": username})())
+
+    kb = KnowledgeBase(tmp_path / "privacy.db")
+    governance = LearningGovernance(kb)
+    answer = (
+        f"Host {hostname}, user {username}, path /home/{username}/.ssh/id_rsa. "
+        f"Keys: {openai_secret}, {google_secret}, {bearer_secret}."
+    )
+    context = {
+        "nested": [f"Host {hostname}; path /home/{username}/Documents/notes.txt"],
+        "credentials": f"OPENAI_API_KEY={openai_secret}",
+    }
+    interaction_id = governance.record_external_answer(
+        provider="openai",
+        model="gpt-test",
+        prompt=f"Review host {hostname} for {username}",
+        context=context,
+        answer=answer,
+        source=f"openai:{openai_secret}:{hostname}",
+    )
+
+    row = kb._connect().execute(
+        "SELECT prompt, context, answer, source, evaluation FROM external_interactions WHERE id=?",
+        (interaction_id,),
+    ).fetchone()
+    proposal = governance.list_proposals()[0]
+    stored = "\n".join((
+        row["prompt"], row["context"], row["answer"], row["source"],
+        row["evaluation"], json.dumps(proposal["payload"], ensure_ascii=False),
+        str(governance.last_report),
+    ))
+    for secret in (hostname, username, openai_secret, google_secret, bearer_secret, "/home/private-ayfam-user"):
+        assert secret not in stored
+    assert "[API_KEY]" in stored
+    assert "[LOCAL_PATH]" in stored
