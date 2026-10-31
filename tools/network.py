@@ -51,6 +51,9 @@ TRUSTED_PROCESSES = {
     # Replit / Dev env
     "node", "tsx", "ts-node",
 }
+# Process names parsed from ss are normalized to lowercase.
+TRUSTED_PROCESSES = {name.lower() for name in TRUSTED_PROCESSES}
+
 
 TRUSTED_PORTS_OUTBOUND = {
     80,    # HTTP
