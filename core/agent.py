@@ -39,7 +39,7 @@ from engine.correlation import CorrelationEngine, SmartRemediationAdvisor
 from engine.pkginventory import PackageInventoryEngine
 from utils import safe_exec
 from engine.gemini_cti import GeminiCTIError, GeminiThreatClient, LocalThreatMatcher, ThreatHistory, markdown_report, resolve_api_key
-from engine.ai_assistant import AssistantConfig, AssistantError, build_providers, fallback_allowed
+from engine.ai_assistant import AssistantConfig, AssistantError, build_providers, fallback_allowed, provider_circuit_remaining
 from engine.gemini_rate_limit import DEFAULT_GEMINI_MODEL, gemini_model_name
 from brain.conversation import ConversationEngine, ROUTE_THRESHOLD
 from brain.learning import PhraseMemory
@@ -211,6 +211,8 @@ class AYFAMAgent(AgentV5Mixin):
         except AssistantError as exc:
             providers = []
             self.last_provider_error = str(exc)
+            if self.verbose:
+                self.ui.warning(self.last_provider_error)
 
         for provider in providers:
             try:
@@ -248,6 +250,9 @@ class AYFAMAgent(AgentV5Mixin):
                         f"تعذّر مزوّد {provider.name}: {exc}",
                         f"Provider {provider.name} failed: {exc}",
                     ))
+                remaining = provider_circuit_remaining(provider.name)
+                if remaining > 0:
+                    paused_providers[provider.name] = remaining
                 if not fallback_allowed(exc):
                     break
             except Exception:
