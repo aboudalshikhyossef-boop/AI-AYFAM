@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 try:
     from PyQt6.QtCore import QEventLoop, QTimer
-    from PyQt6.QtGui import QCloseEvent
+    from PyQt6.QtGui import QCloseEvent, QIcon
     from PyQt6.QtWidgets import QApplication, QMainWindow
     from ui.gui_app import GuiTerminalUI, UnifiedCockpitWindow, WorkerThread
 except (ImportError, OSError) as exc:
@@ -74,13 +74,21 @@ check("accent color defined", ACCENT.startswith("#"))
 check("severity color mapping works", severity_color("critical") == SEV_CRITICAL)
 check("unknown severity falls back to info", severity_color("unknown") != SEV_CRITICAL)
 
-print("\n[5] Navigation structure")
+print("\n[5] Low-resource static navigation")
 from ui.gui_app import NAV_ITEMS
+from ui.widgets import StaticNavigationMenu
+from PyQt6.QtWidgets import QPushButton
 check("navigation has 13 items", len(NAV_ITEMS) == 13)
-from ui.widgets import NavigationWheel
-check("navigation uses the 3D icon wheel", hasattr(NavigationWheel, "wheelEvent"))
+check("static navigation exposes button selection", hasattr(StaticNavigationMenu, "page_selected"))
+check("static navigation exposes current-page selection", hasattr(StaticNavigationMenu, "set_current"))
+nav = StaticNavigationMenu([("dashboard", "Dashboard", QIcon(), "#2dd4bf"), ("chat", "Chat", QIcon(), "#a78bfa")])
+nav.set_current("chat")
+check("static navigation selects the current page", nav.buttons["chat"].isChecked() and not nav.buttons["dashboard"].isChecked())
+check("navigation uses native push buttons", isinstance(nav.buttons["dashboard"], QPushButton))
+check("static navigation creates no timers", not nav.findChildren(QTimer))
 check("dashboard is first nav item", NAV_ITEMS[0][0] == "dashboard")
 check("settings is last nav item", NAV_ITEMS[-1][0] == "settings")
+nav.deleteLater()
 
 print("\n[6] Intro splash and system overview")
 from ui.intro_splash import AyfamIntroSplash, SystemOverviewDialog

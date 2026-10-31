@@ -91,17 +91,15 @@ def test_self_painting_glass_widgets_are_not_overpainted():
         root.close()
 
 
-def test_ambient_widget_timers_use_lower_refresh_rates():
-    clock = widgets.GlassAnalogClock()
+def test_low_resource_widgets_have_no_repeating_paint_timers():
     accent_line = widgets.AccentLine()
+    static_nav = widgets.StaticNavigationMenu([])
     try:
-        assert clock.timer.interval() == 1000
-        assert accent_line._timer.interval() == 80
+        assert not accent_line.findChildren(widgets.QTimer)
+        assert not static_nav.findChildren(widgets.QTimer)
     finally:
-        clock.timer.stop()
-        accent_line._timer.stop()
-        clock.close()
         accent_line.close()
+        static_nav.close()
 
 
 def test_flow_controller_skips_inactive_windows():

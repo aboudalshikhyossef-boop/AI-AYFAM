@@ -136,7 +136,7 @@ def run_gui(no_splash: bool = False) -> int:
     try:
         from PyQt6.QtWidgets import QApplication
         from ui.gui_app import UnifiedCockpitWindow
-        from ui.intro_splash import AyfamIntroSplash
+        from ui.performance import LOW_RESOURCE_UI
     except ImportError as exc:
         print(f"[!] PyQt6 غير مثبت أو مكتبات الواجهة ناقصة: {exc}", file=sys.stderr)
         print("[*] ثبّت التطبيق عبر setup.sh أو: python3 -m pip install PyQt6", file=sys.stderr)
@@ -152,7 +152,8 @@ def run_gui(no_splash: bool = False) -> int:
 
         window = UnifiedCockpitWindow()
 
-        if not no_splash:
+        if not no_splash and not LOW_RESOURCE_UI:
+            from ui.intro_splash import AyfamIntroSplash
             splash = AyfamIntroSplash(auto_close=True)
             splash.ready_to_launch.connect(window.show)
             splash.show()

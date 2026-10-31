@@ -63,8 +63,10 @@ class TestModernUiSpecs(unittest.TestCase):
         # primary action lives in the mission banner and tools remain in nav.
         self.assertNotIn("ترسانة العمليات التكتيكية السريعة", code)
         self.assertIn("مؤشرات الحالة الأمنية", code)
-        self.assertIn("GlassAnalogClock(size=96)", code)
-        self.assertIn('self.analog_clock.setObjectName("headerAnalogClock")', code)
+        self.assertIn('self.analog_clock = QLabel("AI AYFAM")', code)
+        self.assertIn('self.analog_clock.setObjectName("headerBrand")', code)
+        self.assertNotIn("GlassAnalogClock(size=96)", code)
+        self.assertNotIn("self.clock_timer.start(", code)
         self.assertNotIn("clockGlassPill", code)
 
     def test_score_is_pending_until_a_scan_completes(self):
