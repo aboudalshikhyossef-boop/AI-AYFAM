@@ -73,6 +73,37 @@ class LearningGovernance:
         return str(value or "").strip()[:limit]
 
     @staticmethod
+    def _sanitize_external_text(value: Any, limit: int = 12000) -> str:
+        """Remove local identifiers, filesystem paths, and recognizable API secrets."""
+        text = ContextEngine.sanitize_privacy_data(str(value or ""))
+        text = re.sub(r"(?i)\\bBearer\\s+[A-Za-z0-9._~+/-]{8,}={0,2}", "Bearer [REDACTED]", text)
+        text = re.sub(r"\\bsk-[A-Za-z0-9_-]{12,}\\b", "[API_KEY]", text)
+        text = re.sub(r"\\bAIza[0-9A-Za-z_-]{20,}\\b", "[API_KEY]", text)
+        text = re.sub(
+            r"(?i)\\b(?:OPENAI_API_KEY|GEMINI_API_KEY|GOOGLE_API_KEY)\\s*[:=]\\s*[^\\s,;]+",
+            "[API_KEY_ASSIGNMENT]",
+            text,
+        )
+        text = re.sub(r"(?<![A-Za-z0-9])/(?:home|root)/[^\\s,;)]*", "[LOCAL_PATH]", text)
+        return text.strip()[:limit]
+
+    @classmethod
+    def _sanitize_context(cls, value: Any) -> Any:
+        """Recursively scrub strings in audit context without changing scalar types."""
+        if isinstance(value, str):
+            return cls._sanitize_external_text(value, 2000)
+        if isinstance(value, Mapping):
+            return {
+                cls._sanitize_external_text(key, 160): cls._sanitize_context(item)
+                for key, item in value.items()
+            }
+        if isinstance(value, (list, tuple)):
+            return [cls._sanitize_context(item) for item in value]
+        if value is None or isinstance(value, (bool, int, float)):
+            return value
+        return cls._sanitize_external_text(value, 2000)
+
+    @staticmethod
     def evaluate_answer(prompt: str, answer: str) -> dict:
         """Conservative, explainable screening; it does not establish truth."""
         text = LearningGovernance._safe_text(answer)
@@ -135,10 +166,11 @@ class LearningGovernance:
                                context: Mapping[str, Any] | None, answer: str,
                                source: str | None = None) -> int:
         """Store a provider answer and its provenance without trusting it."""
-        prompt = self._safe_text(ContextEngine.sanitize_privacy_data(prompt))
-        answer = self._safe_text(answer)
-        source = self._safe_text(source or f"provider:{provider}", 300)
-        context_json = json.dumps(dict(context or {}), ensure_ascii=False, sort_keys=True)
+        prompt = self._sanitize_external_text(prompt)
+        answer = self._sanitize_external_text(answer)
+        source = self._sanitize_external_text(source or f"provider:{provider}", 300)
+        safe_context = self._sanitize_context(dict(context or {}))
+        context_json = json.dumps(safe_context, ensure_ascii=False, sort_keys=True)
         evaluation = self.evaluate_answer(prompt, answer)
         cur = self._conn().execute(
             "INSERT INTO external_interactions(provider, model, prompt, context, answer, source, evaluation) "
