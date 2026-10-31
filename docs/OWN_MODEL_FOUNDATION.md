@@ -1,112 +1,95 @@
 # AI AYFAM — from-scratch model foundation
 
-## What this milestone creates
+## Model baseline
 
-This is the first real neural-model foundation in AI AYFAM. It does **not** load
-Llama, Qwen, Ollama models, third-party checkpoints, or pretrained embeddings.
-\`AYFAMTransformer\` initializes every parameter randomly and learns only from
-the explicitly supplied local corpus.
+AI AYFAM uses its own decoder-only Transformer initialized from random weights.
+It does not load Llama, Qwen, Ollama models, third-party checkpoints, or
+pretrained embeddings.
 
-The first proof-of-concept configuration is a decoder-only Transformer with
-UTF-8 byte tokens, 8 layers, 6 attention heads, width 192, context length 128,
-and tied token/output embeddings. Its expected parameter count is **3,042,432**
-(about 12.2 MB for float32 weights, excluding optimizer state and activations).
-This size validates the end-to-end pipeline; it is not expected to behave like
+The initial proof-of-concept configuration has 3,042,432 parameters, 8 layers,
+6 attention heads, width 192, context length 128, and tied token/output embeddings.
+It validates the code and training pipeline; it is not expected to behave like
 a mature general-purpose assistant.
 
-## Keep the desktop install lightweight
+## Runtime dependencies
 
-PyTorch is intentionally **not** in \`requirements.txt\`. The normal GUI install
-therefore does not download a large machine-learning runtime.
+PyTorch stays out of the desktop application's base requirements. The regular
+AI AYFAM GUI installation therefore remains lightweight.
 
-For CPU-only training on Linux Mint, activate the project's \`.venv\`, then run:
+For CPU-only training on Linux Mint, activate the project's .venv and install
+the optional training dependencies:
 
-\`\`\`bash
+~~~bash
 python -m pip install --index-url https://download.pytorch.org/whl/cpu -r requirements-training.txt
 python -m model_factory.cli profile
-\`\`\`
+~~~
 
-No CUDA toolkit or discrete GPU is needed for the first CPU proof-of-concept.
-The runtime profiler limits threads and micro-batches conservatively based on
-available memory and CPU count. It adapts execution settings, **not** model
-dimensions, so a checkpoint can move between computers without silently
-changing its architecture.
+The runtime planner adapts batch size, gradient accumulation, checkpoint
+frequency and CPU threads based on available memory. It never silently changes
+the model dimensions. A checkpoint carries model/tokenizer configuration and
+the corpus fingerprint, so moving between computers does not silently switch
+architecture or data.
 
-## Corpus format and provenance
+## Corpus and tokenizer workflow
 
-Training data is newline-delimited JSON (UTF-8), one object per line:
+Prepare a raw UTF-8 JSONL corpus with source and license metadata, then run the
+preparation, strict audit and BPE tokenizer commands described in
+[CORPUS_AND_BPE.md](CORPUS_AND_BPE.md).
 
-\`\`\`json
-{"id":"ar-001","text":"نص عربي كتبه مالك المشروع.","source":"project-authored","license":"owner-authorized","split":"train"}
-{"id":"ar-002","text":"نص مستقل للتقييم.","source":"project-authored","license":"owner-authorized","split":"validation"}
-\`\`\`
+The original deterministic UTF-8 ByteTokenizer remains the default when
+--tokenizer-config is omitted. The optional ByteBPETokenizer learns its merge
+rules from the train split only. Its versioned merge table is stored in the
+checkpoint configuration; a changed tokenizer cannot silently resume an old
+checkpoint.
 
-Every record must include:
-- \`text\`: non-empty training text.
-- \`source\`: where the text came from (for example, a document identifier).
-- \`license\`: an SPDX license identifier or a documented owner-permission label.
-- \`split\`: exactly \`train\`, \`validation\`, or \`test\`.
+## Training
 
-Do not put secrets, private user data, live credentials, or security-sensitive
-machine inventories into the corpus. Do not scrape or ingest third-party text
-without confirming its license and redistribution/training permissions. For
-project-owned text that is not released under an open license, use a clear
-owner-permission label and keep that permission record with the source metadata.
-Keep validation/test records separate from training examples. The loader streams
-records with a bounded line read, rejects malformed JSON, invalid UTF-8, missing
-provenance, unknown splits, and oversized lines. Training uses a deterministic
-bounded shuffle buffer (seeded per pass), so it never needs to hold the corpus
-in RAM. The corpus is fingerprinted so resume refuses a different data file by default.
+After preparing a corpus and learning a BPE tokenizer:
 
-Validate a dataset before training:
-
-\`\`\`bash
-python -m model_factory.cli validate-corpus ~/ayfam-training-data/ayfam.jsonl
-\`\`\`
-
-## First training run
-
-\`\`\`bash
-python -m model_factory.cli train \\
-  --corpus ~/ayfam-training-data/ayfam.jsonl \\
-  --output runs/ayfam-3m/latest.pt \\
+~~~bash
+python -m model_factory.cli train \
+  --corpus ~/ayfam-training-data/ayfam-prepared.jsonl \
+  --tokenizer-config ~/ayfam-training-data/ayfam-bpe.json \
+  --output runs/ayfam-bpe/latest.pt \
   --steps 1000
-\`\`\`
+~~~
 
-Resume with the same corpus and checkpoint:
+Resume using the same prepared corpus and tokenizer:
 
-\`\`\`bash
-python -m model_factory.cli train \\
-  --corpus ~/ayfam-training-data/ayfam.jsonl \\
-  --output runs/ayfam-3m/latest.pt \\
-  --steps 2000 \\
-  --resume runs/ayfam-3m/latest.pt
-\`\`\`
+~~~bash
+python -m model_factory.cli train \
+  --corpus ~/ayfam-training-data/ayfam-prepared.jsonl \
+  --tokenizer-config ~/ayfam-training-data/ayfam-bpe.json \
+  --output runs/ayfam-bpe/latest.pt \
+  --steps 2000 \
+  --resume runs/ayfam-bpe/latest.pt
+~~~
 
-The checkpoint stores model and optimizer state, step count, architecture and
-tokenizer configurations, corpus fingerprint, CPU and available CUDA RNG states,
-and software/device metadata. Writes are atomic. Loading uses PyTorch's
-\`weights_only=True\` mode and rejects schema, architecture, tokenizer, data, and
-key optimizer-setting mismatches. Treat checkpoints as valuable project artifacts
-and keep backups before moving or replacing them. A resumed run restores
-model/optimizer/RNG/step state and starts a fresh bounded shuffle pass over the
-same fingerprinted corpus; this first version does not serialize an exact
-mid-epoch data-loader cursor.
+Checkpoints contain model and optimizer state, global step, tokenizer and model
+configurations, corpus fingerprint, CPU/available CUDA RNG states, and software
+and device metadata. Writes are atomic. Loading uses weights_only mode and
+refuses architecture, tokenizer, data fingerprint or key optimizer-setting
+mismatches. This first version resumes at an epoch boundary with a fresh
+deterministic shuffle pass; it does not save an exact mid-epoch data cursor.
 
-## Current boundaries and next milestones
+## Current limits and next steps
 
-- The byte tokenizer is deterministic and dependency-free. A learned
-  Arabic/English BPE tokenizer is a later, versioned migration; tokenizer
-  changes must never be silently applied to an existing checkpoint.
-- The initial CLI performs causal next-token training on local text. It is not
-  yet instruction-tuned, tool-enabled, or connected to the desktop chat UI.
-- Text produced by a teacher model can later be used as supervised examples
-  only after provenance, licensing, quality, and factual checks. This is
-  sequence-level data distillation, not logit distillation.
-- Next stages: curate a balanced Arabic/English cybersecurity corpus, add
-  held-out quality and memorization checks, improve tokenizer efficiency,
-  benchmark CPU memory/time on the actual Linux Mint laptop, and only then
-  consider instruction tuning and desktop inference integration.
+- The BPE implementation is a transparent byte-level baseline with whitespace
+  pre-tokenization boundaries; it is not claimed to match GPT's full tokenizer
+  segmentation or optimized tokenizer throughput.
+- Language labels are Unicode-script heuristics, not a full language detector.
+- Corpus preparation catches selected high-confidence credential patterns and
+  exact normalized duplicates. It does not detect every secret, PII item,
+  paraphrase, or near-duplicate; human source review remains mandatory.
+- Non-empty license/permission metadata is recorded, but software cannot prove
+  the legal validity of a supplied license or owner permission.
+- Training is causal next-token learning only. The model is not instruction-tuned,
+  not connected to the desktop chat UI, and not approved for autonomous
+  cybersecurity decisions.
+- Text generated by a teacher model may later be considered as supervised data
+  only after independent provenance, licensing, quality and factual checks.
+  API-generated text without teacher logits is sequence-level data, not ordinary
+  logit-level distillation.
 
-Never treat a small training loss or a successful build as evidence that the
-model is secure, factual, or ready for operational cybersecurity decisions.
+A low training loss or a successful build is not evidence that the model is
+factual, safe, or ready for operational security decisions.
