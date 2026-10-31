@@ -32,6 +32,12 @@ class ResponseWrapper:
     def json(self) -> Any:
         return _json.loads(self.text)
 
+    def iter_content(self, chunk_size: int = 65536):
+        """Yield response bytes in chunks, matching requests.Response's API."""
+        size = max(1, int(chunk_size))
+        for offset in range(0, len(self.content), size):
+            yield self.content[offset:offset + size]
+
 
 def _urllib_timeout(timeout: Any) -> float:
     """urllib accepts one float; requests may receive (connect, read)."""

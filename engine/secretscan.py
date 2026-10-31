@@ -12,6 +12,9 @@ from engine.finding import Finding
 from engine.sysreader import SystemReader
 
 class SecretScanner:
+    # Bound memory and CPU use when scanning files from untrusted locations.
+    MAX_FILE_BYTES = 5 * 1024 * 1024
+
     def __init__(self, sys_reader: Optional[SystemReader] = None):
         self.sys = sys_reader or SystemReader()
 
@@ -71,8 +74,17 @@ class SecretScanner:
                     break
 
         for fpath in files_to_check:
-            content = self.sys.read_text(fpath)
-            if not content:
+            reader = getattr(self.sys, "read_text_limited", None)
+            if callable(reader):
+                content = reader(fpath, self.MAX_FILE_BYTES)
+            else:
+                # Compatibility for injected readers: require a successful size
+                # check before using their unbounded read_text implementation.
+                stat_result = self.sys.stat(fpath) if hasattr(self.sys, "stat") else None
+                if stat_result is None or getattr(stat_result, "st_size", self.MAX_FILE_BYTES + 1) > self.MAX_FILE_BYTES:
+                    continue
+                content = self.sys.read_text(fpath)
+            if not content or "\x00" in content:
                 continue
 
             for idx, line in enumerate(content.splitlines(), 1):
