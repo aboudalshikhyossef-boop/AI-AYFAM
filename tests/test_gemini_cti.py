@@ -74,7 +74,10 @@ class GeminiCTITests(unittest.TestCase):
         self.assertTrue(post.call_args.args[0].startswith("https://generativelanguage.googleapis.com/v1"))
         self.assertEqual(post.call_args.kwargs["headers"]["x-goog-api-key"], "test-key")
         self.assertEqual(post.call_args.kwargs["timeout"], (10, 45.0))
-        self.assertIn("google_search_retrieval", post.call_args.kwargs["json_data"]["tools"][0])
+        payload = post.call_args.kwargs["json_data"]
+        self.assertIn("google_search_retrieval", payload["tools"][0])
+        self.assertEqual(payload["generationConfig"]["maxOutputTokens"], 900)
+        self.assertNotIn("temperature", payload["generationConfig"])
 
     def test_legacy_rest_text_is_still_accepted(self):
         class Response:
