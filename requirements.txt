@@ -9,3 +9,4 @@ inotify_simple==2.0.1
 scikit-learn==1.7.2
 cryptography==50.0.2
 keyring==25.6.0
+defusedxml>=0.7.1,<1
