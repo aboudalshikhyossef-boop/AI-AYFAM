@@ -1986,12 +1986,12 @@ class UnifiedCockpitWindow(QMainWindow):
                     )
 
             self.run_background_task(
-                run_generation, f"{display_name} generation test",
+                run_generation, self.tr(f"اختبار توليد {display_name} / {display_name} generation test"),
                 preserve_findings=True, result_handler=handle_generation_result,
             )
 
         self.run_background_task(
-            run_catalog_check, f"{display_name} model-list test",
+            run_catalog_check, self.tr(f"فحص قائمة نماذج {display_name} / {display_name} model-list test"),
             preserve_findings=True, result_handler=handle_catalog_result,
         )
 
