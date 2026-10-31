@@ -12,6 +12,7 @@ import stat
 import tempfile
 from pathlib import Path
 from config.version import APP_VERSION
+from engine.gemini_rate_limit import DEFAULT_GEMINI_MODEL
 
 try:
     from dotenv import load_dotenv
@@ -51,7 +52,7 @@ DEFAULT_SETTINGS = {
     "google_cse_cx": "f5fbcd40fda484bc7",   # معرّف محرك البحث المخصص (cx)
     "ai_provider": "auto",  # auto | openai | gemini | local
     "openai_model": "gpt-4o-mini",
-    "gemini_model": "gemini-3.8-flash",
+    "gemini_model": DEFAULT_GEMINI_MODEL,
     "auto_fix": False,
     "sound_ux": False,
     "sound_profile": "soft",

@@ -4,6 +4,7 @@ from __future__ import annotations
 import html
 import math
 import re
+import weakref
 from datetime import datetime
 from pathlib import Path
 
@@ -906,6 +907,17 @@ class NavigationWheel(Glass):
             super().keyPressEvent(event)
 
 
+
+
+def _cleanup_controller_ref(controller_ref, widget) -> None:
+    """Safely notify a QObject controller without keeping it alive in a signal closure."""
+    controller = controller_ref()
+    if controller is None:
+        return
+    cleanup = getattr(controller, "_forget", None)
+    if callable(cleanup):
+        cleanup(widget)
+
 class PressFeedbackController(QObject):
     """استجابة لمسية وحركية سريعة للأزرار."""
 
@@ -929,14 +941,17 @@ class PressFeedbackController(QObject):
         reflection.setGeometry(8, max(0, button.height() - 2), max(4, button.width() - 16), 9)
         reflection.show()
         self.reflections[button] = reflection
-        button.destroyed.connect(lambda _=None, key=button: self._forget(key))
+        controller_ref = weakref.ref(self)
+        button.destroyed.connect(
+            lambda _=None, key=button, ref=controller_ref: _cleanup_controller_ref(ref, key)
+        )
 
     def _forget(self, button):
-        self.effects.pop(button, None)
-        reflection = self.reflections.pop(button, None)
+        getattr(self, "effects", {}).pop(button, None)
+        reflection = getattr(self, "reflections", {}).pop(button, None)
         if reflection is not None:
             reflection.deleteLater()
-        animation = self.animations.pop(button, None)
+        animation = getattr(self, "animations", {}).pop(button, None)
         if animation is not None:
             animation.stop()
 
@@ -962,7 +977,12 @@ class PressFeedbackController(QObject):
         animation.start()
 
     def eventFilter(self, watched, event):
-        if watched not in self.effects:
+        effects = getattr(self, "effects", None)
+        if effects is None:
+            # Qt can dispatch one final event while the QObject parent tree is
+            # being torn down. Do not access partially-cleared Python fields.
+            return False
+        if watched not in effects:
             return super().eventFilter(watched, event)
         if event.type() in (QEvent.Type.Resize, QEvent.Type.Show):
             reflection = self.reflections.get(watched)
@@ -1306,7 +1326,13 @@ class FlowController(QObject):
         self._count += 1
         border = FlowBorder(widget, radius, self.flow_for(widget), phase=self._count * 67, speed=34 + (self._count % 5) * 5)
         self.borders[widget] = border
-        widget.destroyed.connect(lambda _=None, key=widget: self.borders.pop(key, None))
+        controller_ref = weakref.ref(self)
+        widget.destroyed.connect(
+            lambda _=None, key=widget, ref=controller_ref: _cleanup_controller_ref(ref, key)
+        )
+
+    def _forget(self, widget):
+        getattr(self, "borders", {}).pop(widget, None)
 
     def _tick(self):
         window = self.root.window()
@@ -1361,7 +1387,10 @@ class HoverController(QObject):
             framed = isinstance(widget, (QTableWidget, QLineEdit, QComboBox, QTextEdit, QPlainTextEdit))
             if framed and not isinstance(widget.parentWidget(), (QComboBox, QAbstractSpinBox)):
                 self.flow.add(widget, 14 if isinstance(widget, QTableWidget) else 13)
-            widget.destroyed.connect(lambda _=None, key=widget: self._forget(key))
+            controller_ref = weakref.ref(self)
+            widget.destroyed.connect(
+                lambda _=None, key=widget, ref=controller_ref: _cleanup_controller_ref(ref, key)
+            )
 
     def _forget(self, key):
         getattr(self, "overlays", {}).pop(key, None)

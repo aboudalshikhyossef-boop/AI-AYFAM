@@ -8,6 +8,7 @@ import sys
 import ipaddress
 import json
 import math
+import time
 from pathlib import Path
 from typing import Callable, Any
 
@@ -1786,10 +1787,6 @@ class UnifiedCockpitWindow(QMainWindow):
         layout.addWidget(self.settings_log, 1)
 
     def save_settings(self) -> None:
-        self.settings.set("gemini_api_key", self.setting_gemini_key.text().strip())
-        self.settings.set("gemini_model", self.setting_gemini_model.text().strip() or DEFAULT_GEMINI_MODEL)
-        self.settings.set("openai_api_key", self.setting_openai_key.text().strip())
-        self.settings.set("openai_model", self.setting_openai_model.text().strip() or "gpt-4o-mini")
         self.settings.set("ai_provider", str(self.setting_ai_provider.currentData() or "auto"))
         self.settings.set("abuseipdb_key", self.setting_abuseipdb_key.text().strip())
         self.settings.set("nvd_api_key", self.setting_nvd_key.text().strip())
@@ -1807,8 +1804,12 @@ class UnifiedCockpitWindow(QMainWindow):
             self.sound_ux.set_enabled(self.setting_sound_ux.isChecked())
             self.sound_ux.set_profile(str(self.setting_sound_profile.currentData() or "soft"))
             self.sound_ux.play("success")
-        self.settings_log.setPlainText("[نجاح] تم حفظ الإعدادات بنجاح!")
-        QMessageBox.information(self, "حفظ الإعدادات", "تم حفظ جميع الإعدادات والمفاتيح آمنة محلياً.")
+        self.settings_log.setPlainText("[نجاح] تم حفظ الإعدادات غير الحساسة. تُحفظ مفاتيح ونماذج AI بعد نجاح فحصها / Non-AI settings saved. AI keys and models are saved only after validation.")
+        QMessageBox.information(
+            self, "حفظ الإعدادات",
+            "تم حفظ الإعدادات. تُحفظ مفاتيح ونماذج AI فقط بعد نجاح اختبار اتصالها.\n"
+            "Settings saved. AI keys and models are stored only after a successful provider check.",
+        )
 
     def test_search_settings(self) -> None:
         self.save_settings()
@@ -1824,113 +1825,181 @@ class UnifiedCockpitWindow(QMainWindow):
 
         self.run_background_task(lambda: self.agent.smart_search("Kali Linux"), "اختبار البحث", preserve_findings=True, result_handler=show)
 
-    def test_gemini_settings(self) -> None:
-        configured_key = self.setting_gemini_key.text().strip() or self.settings.get("gemini_api_key", "")
-        environment_key = os.environ.get("GOOGLE_API_KEY", "").strip() or os.environ.get("GEMINI_API_KEY", "").strip()
+    def _test_ai_provider_settings(self, provider_name: str) -> None:
+        """Validate a provider key/model from its model catalogue before saving it."""
+        from engine.ai_assistant import (
+            GeminiAssistant, OpenAIAssistant, validate_model_access,
+        )
+
+        if provider_name == "gemini":
+            key_field = self.setting_gemini_key
+            model_field = self.setting_gemini_model
+            setting_key = "gemini_api_key"
+            model_setting = "gemini_model"
+            default_model = DEFAULT_GEMINI_MODEL
+            environment_names = ("GOOGLE_API_KEY", "GEMINI_API_KEY")
+            env_label = "GOOGLE_API_KEY / GEMINI_API_KEY"
+            display_name = "Gemini"
+        else:
+            key_field = self.setting_openai_key
+            model_field = self.setting_openai_model
+            setting_key = "openai_api_key"
+            model_setting = "openai_model"
+            default_model = "gpt-4o-mini"
+            environment_names = ("OPENAI_API_KEY",)
+            env_label = "OPENAI_API_KEY"
+            display_name = "OpenAI"
+
+        configured_key = key_field.text().strip() or self.settings.get(setting_key, "")
+        environment_key = next(
+            (os.environ.get(name, "").strip() for name in environment_names
+             if os.environ.get(name, "").strip()),
+            "",
+        )
         effective_key = environment_key or configured_key
         if not effective_key:
-            self.settings_log.setPlainText("[خطأ] لم يتم إدخال مفتاح Gemini. يرجى إدخال مفتاحك أولاً.")
+            self.settings_log.setPlainText(
+                f"[missing_key] {display_name}: API key is not configured.\n"
+                f"{display_name}: لم يتم إعداد مفتاح API."
+            )
             return
-        model = self.setting_gemini_model.text().strip() or DEFAULT_GEMINI_MODEL
-        key_source = "متغيرات البيئة" if environment_key else "إعدادات التطبيق"
-        if self.setting_gemini_key.text().strip():
-            self.settings.set("gemini_api_key", self.setting_gemini_key.text().strip())
-        self.settings.set("gemini_model", model)
+
+        model = model_field.text().strip() or self.settings.get(model_setting, default_model) or default_model
+        key_source = env_label if environment_key else "app settings / إعدادات التطبيق"
         self.settings_log.setPlainText(
-            f"[فحص] يجري إرسال طلب توليد فعلي إلى Gemini.\nالنموذج: {model}\nمصدر المفتاح: {key_source}\n"
+            f"[check] {display_name}: listing models first; no generation tokens are used.\n"
+            f"[فحص] {display_name}: يجري التحقق من قائمة النماذج أولاً دون توليد."
+            f"\nModel / النموذج: {model}\nKey source / مصدر المفتاح: {key_source}"
         )
 
-        def run_test():
-            from engine.ai_assistant import AssistantConfig, build_provider
-            provider = build_provider(AssistantConfig(
-                provider="gemini",
-                gemini_api_key=configured_key,
-                gemini_model=model,
-                timeout=25.0,
-            ))
-            if provider is None:
-                raise RuntimeError("Gemini provider is not configured")
-            answer = provider.ask("Reply with exactly: AI AYFAM Gemini API test succeeded.")
-            return getattr(provider, "model", model), answer
+        def run_catalog_check():
+            started = time.monotonic()
+            try:
+                result = validate_model_access(
+                    provider_name, effective_key, model, timeout=12.0, force=True,
+                )
+                result["latency_ms"] = round((time.monotonic() - started) * 1000, 1)
+                return {"ok": True, **result}
+            except Exception as exc:
+                category = getattr(exc, "category", "invalid_response")
+                message = str(exc) if hasattr(exc, "diagnostic") else (
+                    "Provider model check failed. فشل التحقق من قائمة نماذج المزوّد."
+                )
+                return {
+                    "ok": False, "category": category, "message": message,
+                    "latency_ms": round((time.monotonic() - started) * 1000, 1),
+                }
 
-        def handle_gemini_result(result: Any):
-            if isinstance(result, Exception):
+        def handle_catalog_result(result: Any) -> None:
+            if not isinstance(result, dict) or not result.get("ok"):
+                category = result.get("category", "invalid_response") if isinstance(result, dict) else "invalid_response"
+                diagnostic = result.get("message", "Invalid diagnostic result.") if isinstance(result, dict) else "Invalid diagnostic result."
+                latency = result.get("latency_ms", 0.0) if isinstance(result, dict) else 0.0
                 self.settings_log.setPlainText(
-                    f"[خطأ] فشل طلب generateContent إلى Gemini.\n\n{result}\n\n"
-                    f"• النموذج: {model}\n• مصدر المفتاح: {key_source}\n"
-                    "• راجع نص الخطأ وحالة المفتاح/قيوده والحصة في Google AI Studio. لا تشارك المفتاح."
+                    f"[{category}] {display_name}: model/key check failed.\n"
+                    f"{diagnostic}\n"
+                    f"Model / النموذج: {model}\nKey source / مصدر المفتاح: {key_source}"
+                    f"\nLatency / زمن الاستجابة: {latency:.1f} ms"
                 )
-            elif isinstance(result, tuple):
-                tested_model, answer = result
+                return
+            if not isinstance(result, dict) or result.get("category") != "ok" or not result.get("exists"):
                 self.settings_log.setPlainText(
-                    "[نجاح] نجح طلب التوليد الفعلي إلى Google Gemini API.\n\n"
-                    f"• النموذج المختبَر: {tested_model}\n• مصدر المفتاح: {key_source}\n"
-                    f"• رد الاختبار: {answer[:240]}\n\n"
-                    "إذا أردت استخدام Gemini في المحادثة، اختر Google Gemini في «مزود المحادثة» ثم احفظ الإعدادات."
+                    f"[invalid_response] {display_name}: invalid model-check result.\n"
+                    "تعذّر التحقق من بنية نتيجة فحص النموذج."
                 )
-            else:
-                self.settings_log.setPlainText("[تنبيه] لم يُرجع اختبار Gemini نتيجة قابلة للعرض.")
+                return
+
+            # Persist only after the provider confirms the key and explicit model.
+            # Environment credentials remain environment-only.
+            if not environment_key and key_field.text().strip():
+                self.settings.set(setting_key, key_field.text().strip())
+            self.settings.set(model_setting, model)
+            status = (
+                f"[ok] {display_name}: key accepted; model is listed.\n"
+                f"[نجاح] {display_name}: المفتاح مقبول والنموذج موجود بالقائمة."
+                f"\nModel / النموذج: {model}"
+                f"\nKey source / مصدر المفتاح: {key_source}"
+                f"\nModels listed / النماذج المدرجة: {result.get('models_count', 0)}"
+                f"\nLatency / زمن الاستجابة: {result.get('latency_ms', 0):.1f} ms"
+                "\nCategory / فئة التشخيص: ok"
+            )
+            self.settings_log.setPlainText(status)
+
+            answer = QMessageBox.question(
+                self,
+                f"{display_name} generation test / اختبار التوليد",
+                "Model listing succeeded. Run one optional short generation test?\n"
+                "نجح فحص قائمة النماذج. هل تريد تنفيذ اختبار توليد قصير اختياري؟",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                return
+
+            def run_generation():
+                started = time.monotonic()
+                try:
+                    provider = (
+                        GeminiAssistant(effective_key, model, timeout=12.0)
+                        if provider_name == "gemini"
+                        else OpenAIAssistant(effective_key, model, timeout=12.0)
+                    )
+                    if provider_name == "gemini":
+                        generated = provider.ask(
+                            "Reply with: OK",
+                            on_wait=lambda remaining: self.agent.ui.info(
+                                f"Gemini quota wait / انتظار حصة Gemini: {remaining:.0f}s"
+                            ),
+                        )
+                    else:
+                        generated = provider.ask("Reply with: OK")
+                    return {
+                        "answer": generated,
+                        "latency_ms": round((time.monotonic() - started) * 1000, 1),
+                        "category": "ok",
+                    }
+                except Exception as exc:
+                    return {
+                        "category": getattr(exc, "category", "invalid_response"),
+                        "message": str(exc) if hasattr(exc, "diagnostic") else (
+                            "Provider generation failed. فشل توليد المزوّد."
+                        ),
+                        "latency_ms": round((time.monotonic() - started) * 1000, 1),
+                    }
+
+            def handle_generation_result(generation: Any) -> None:
+                if isinstance(generation, dict) and generation.get("category") != "ok":
+                    self.settings_log.setPlainText(
+                        status + f"\n[{generation['category']}] Optional generation failed.\n"
+                        f"فشل اختبار التوليد الاختياري: {generation.get('message', '')}"
+                        f"\nGeneration latency / زمن التوليد: {generation.get('latency_ms', 0):.1f} ms"
+                    )
+                elif isinstance(generation, dict) and generation.get("category") == "ok":
+                    self.settings_log.setPlainText(
+                        status
+                        + f"\nGeneration latency / زمن التوليد: {generation.get('latency_ms', 0):.1f} ms"
+                        + "\nGeneration structure / بنية الاستجابة: valid"
+                    )
+                else:
+                    self.settings_log.setPlainText(
+                        status + "\n[invalid_response] Invalid generation result.\nنتيجة اختبار التوليد غير صالحة."
+                    )
+
+            self.run_background_task(
+                run_generation, self.tr(f"اختبار توليد {display_name} / {display_name} generation test"),
+                preserve_findings=True, result_handler=handle_generation_result,
+            )
 
         self.run_background_task(
-            run_test,
-            "اختبار Gemini",
-            preserve_findings=True,
-            result_handler=handle_gemini_result,
+            run_catalog_check, self.tr(f"فحص قائمة نماذج {display_name} / {display_name} model-list test"),
+            preserve_findings=True, result_handler=handle_catalog_result,
         )
+
+    def test_gemini_settings(self) -> None:
+        self._test_ai_provider_settings("gemini")
 
     def test_openai_settings(self) -> None:
-        configured_key = self.setting_openai_key.text().strip() or self.settings.get("openai_api_key", "")
-        environment_key = os.environ.get("OPENAI_API_KEY", "").strip()
-        effective_key = environment_key or configured_key
-        if not effective_key:
-            self.settings_log.setPlainText("[خطأ] لم يتم إدخال مفتاح OpenAI. يرجى إدخاله أولاً.")
-            return
-        model = self.setting_openai_model.text().strip() or "gpt-4o-mini"
-        key_source = "متغير البيئة OPENAI_API_KEY" if environment_key else "إعدادات التطبيق"
-        if self.setting_openai_key.text().strip():
-            self.settings.set("openai_api_key", self.setting_openai_key.text().strip())
-        self.settings.set("openai_model", model)
-        self.settings_log.setPlainText(
-            f"[فحص] يجري إرسال طلب فعلي إلى OpenAI API.\nالنموذج: {model}\nمصدر المفتاح: {key_source}\n"
-        )
-
-        def run_test():
-            from engine.ai_assistant import AssistantConfig, build_provider
-            provider = build_provider(AssistantConfig(
-                provider="openai",
-                openai_api_key=configured_key,
-                openai_model=model,
-                timeout=25.0,
-            ))
-            if provider is None:
-                raise RuntimeError("OpenAI provider is not configured")
-            answer = provider.ask("Reply with exactly: AI AYFAM OpenAI API test succeeded.")
-            return getattr(provider, "model", model), answer
-
-        def handle_openai_result(result: Any):
-            if isinstance(result, Exception):
-                self.settings_log.setPlainText(
-                    f"[خطأ] فشل طلب Chat Completions إلى OpenAI.\n\n{result}\n\n"
-                    f"• النموذج: {model}\n• مصدر المفتاح: {key_source}\n"
-                    "• راجع صحة المفتاح والحصة والاتصال. لا تشارك المفتاح."
-                )
-            elif isinstance(result, tuple):
-                tested_model, answer = result
-                self.settings_log.setPlainText(
-                    "[نجاح] نجح طلب التوليد الفعلي إلى OpenAI API.\n\n"
-                    f"• النموذج المختبَر: {tested_model}\n• مصدر المفتاح: {key_source}\n"
-                    f"• رد الاختبار: {answer[:240]}\n\n"
-                    "إذا أردت استخدام OpenAI في المحادثة، اختر OpenAI أو تلقائي ثم احفظ الإعدادات."
-                )
-            else:
-                self.settings_log.setPlainText("[تنبيه] لم يُرجع اختبار OpenAI نتيجة قابلة للعرض.")
-
-        self.run_background_task(
-            run_test,
-            "اختبار OpenAI",
-            preserve_findings=True,
-            result_handler=handle_openai_result,
-        )
+        self._test_ai_provider_settings("openai")
 
     def clear_history_settings(self) -> None:
         answer = QMessageBox.question(

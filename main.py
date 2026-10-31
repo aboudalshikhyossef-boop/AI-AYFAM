@@ -20,7 +20,7 @@ from utils.preflight import check_requirements
 from config.version import APP_VERSION_LABEL
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="ayfam",
         description="AI AYFAM — تطبيق سطح مكتب للأمن السيبراني على Linux Mint",
@@ -28,9 +28,52 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--gui", action="store_true", help="تشغيل تطبيق سطح المكتب (الوضع الوحيد)")
     parser.add_argument("--check", action="store_true", help="فحص المتطلبات قبل تشغيل التطبيق")
+    parser.add_argument("--check-ai", action="store_true", help="فحص مفاتيح ونماذج OpenAI وGemini دون توليد / Check provider keys and models without generation")
     parser.add_argument("--no-splash", action="store_true", help="تخطي شاشة الترحيب والمقدمة والدخول المباشر")
     parser.add_argument("--version", action="version", version=f"{APP_VERSION_LABEL} (Linux Mint Desktop)")
-    return parser.parse_args()
+    return parser.parse_args(argv)
+
+
+def run_ai_diagnostics() -> int:
+    """List provider key/model readiness without printing credentials or generating tokens."""
+    from config.settings import Settings
+    from engine.ai_assistant import check_ai_providers
+
+    try:
+        rows = check_ai_providers(Settings(), timeout=8.0)
+    except Exception:
+        print("AI diagnostics failed. تحقق من إعدادات التطبيق والاتصال.")
+        return 1
+
+    headers = (
+        "Provider / المزوّد", "Key source / مصدر المفتاح",
+        "Model / النموذج", "Listed / موجود",
+        "Category / الفئة", "Latency / الزمن",
+    )
+    rendered = []
+    for row in rows:
+        rendered.append((
+            str(row.get("provider", "")),
+            str(row.get("key_source", "")),
+            str(row.get("model", "")),
+            "yes / نعم" if row.get("model_available") else "no / لا",
+            str(row.get("category", "unknown")),
+            f"{float(row.get('latency_ms', 0.0)):.1f} ms",
+        ))
+    widths = [
+        min(42, max(len(headers[index]), *(len(item[index]) for item in rendered)))
+        for index in range(len(headers))
+    ]
+    print(" | ".join(headers[index].ljust(widths[index]) for index in range(len(headers))))
+    print("-+-".join("-" * width for width in widths))
+    for row in rendered:
+        print(" | ".join(row[index][:widths[index]].ljust(widths[index]) for index in range(len(row))))
+    print("Keys are never displayed. لا تُعرض مفاتيح API.")
+    configured_failures = [
+        row for row in rows
+        if row.get("key_source") != "missing" and row.get("category") != "ok"
+    ]
+    return 1 if configured_failures else 0
 
 
 def prepare_gui_environment() -> None:
@@ -125,6 +168,8 @@ def run_gui(no_splash: bool = False) -> int:
 
 def main() -> int:
     args = parse_args()
+    if args.check_ai:
+        return run_ai_diagnostics()
     if args.check:
         results = check_requirements()
         print("AI AYFAM Preflight Diagnostics:")
