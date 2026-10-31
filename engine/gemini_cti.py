@@ -21,7 +21,8 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping
 
 from utils import http_client as requests
-from engine.gemini_rate_limit import DEFAULT_GEMINI_MODEL, LEGACY_GEMINI_MODELS, compact_text, gemini_model_name, wait_for_slot
+from engine.gemini_rate_limit import DEFAULT_GEMINI_MODEL, compact_text, gemini_model_name, wait_for_slot
+from engine.ai_assistant import AssistantError, validate_model_access
 from brain.context_engine import ContextEngine
 
 THREAT_SCHEMA: dict[str, Any] = {
@@ -57,7 +58,7 @@ THREAT_SCHEMA: dict[str, Any] = {
 # grounding is not available on the Free tier. Keep CTI on a separate model so
 # normal chat can continue using the configured Gemini 3.x model.
 CTI_SEARCH_MODEL = "gemini-2.5-flash-lite"
-FREE_TIER_SEARCH_MODELS = ("gemini-3.8-flash",)
+FREE_TIER_SEARCH_MODELS = (DEFAULT_GEMINI_MODEL,)
 
 SYSTEM_PROMPT = """You are a cyber threat-intelligence research assistant.
 Search authoritative public sources only: CISA, MITRE, NVD, CERT advisories,
@@ -273,10 +274,14 @@ class GeminiThreatClient:
         if context:
             sys_instruction += f"\nContext: {context}"
         model = gemini_model_name(os.getenv("GEMINI_MODEL", DEFAULT_GEMINI_MODEL))
+        try:
+            validate_model_access("gemini", self.api_key, model, timeout=self.timeout)
+        except AssistantError as exc:
+            raise GeminiCTIError(str(exc)) from exc
         payload = {"contents": [{"parts": [{"text": compact_text(prompt, 3600)}]}],
                    "systemInstruction": {"parts": [{"text": sys_instruction}]},
                    "generationConfig": {"temperature": 0.1, "maxOutputTokens": 2048}}
-        wait_for_slot(self.api_key)
+        wait_for_slot(self.api_key, timeout=self.timeout)
         try:
             response = requests.post(f"{self.base_url}/models/{model}:generateContent",
                 headers={"x-goog-api-key": self.api_key, "Content-Type": "application/json"},
@@ -317,7 +322,6 @@ class GeminiThreatClient:
         if self._models and not force:
             return list(self._models)
         try:
-            wait_for_slot(self.api_key)
             response = requests.get(
                 f"{self.base_url}/models",
                 headers={"x-goog-api-key": self.api_key},
@@ -337,8 +341,6 @@ class GeminiThreatClient:
             if not name or not _supports_generate(raw):
                 continue
             short = name.rsplit("/", 1)[-1].lower()
-            if short in LEGACY_GEMINI_MODELS:
-                continue
             if not _is_text_research_model(short):
                 continue
             models.append(ModelInfo(
@@ -392,7 +394,7 @@ class GeminiThreatClient:
                                  "responseSchema": THREAT_SCHEMA,
                                  "temperature": 0.1, "maxOutputTokens": 900},
         }
-        wait_for_slot(self.api_key)
+        wait_for_slot(self.api_key, timeout=self.timeout)
         response = requests.post(
             f"{self.base_url}/models/{model.short_name}:generateContent",
             headers={"x-goog-api-key": self.api_key, "Content-Type": "application/json"},
@@ -416,9 +418,17 @@ one recommendation, and at most 2 authoritative source URLs. Return [] when evid
         # explicit settings/diagnostic action, not part of threat collection.
         # Do not inherit the normal chat model here: Gemini 3.x Search
         # grounding is unavailable on the Free tier and returns HTTP 429.
-        configured_model = os.getenv("AYFAM_GEMINI_CTI_MODEL", CTI_SEARCH_MODEL).strip()
-        model = ModelInfo(f"models/{configured_model or CTI_SEARCH_MODEL}")
+        configured_model = os.getenv("AYFAM_GEMINI_CTI_MODEL", CTI_SEARCH_MODEL).strip() or CTI_SEARCH_MODEL
         try:
+            available = {item.short_name for item in self.discover_models()}
+            if configured_model not in available:
+                suggestion = next(iter(sorted(available)), DEFAULT_GEMINI_MODEL)
+                raise GeminiCTIError(
+                    f"Selected Gemini CTI model '{configured_model}' is unavailable. "
+                    f"Choose an available model explicitly; suggestion: {suggestion}. "
+                    "النموذج المحدد غير متاح؛ اختر نموذجاً من القائمة يدوياً."
+                )
+            model = ModelInfo(f"models/{configured_model}")
             raw = self._request_with_interactions(model, query)
             return validate_threat_feed(json.loads(raw), window_hours=window_hours)
         except GeminiHTTPError as exc:
