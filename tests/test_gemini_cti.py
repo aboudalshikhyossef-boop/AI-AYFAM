@@ -11,7 +11,7 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from engine.ai_assistant import clear_model_cache
-from engine.gemini_cti import CTI_SEARCH_MODEL, LocalSnapshot, ThreatHistory, GeminiCTIError, GeminiThreatClient, ModelInfo, _is_text_research_model, markdown_report, resolve_api_key, validate_threat_feed
+from engine.gemini_cti import CTI_SEARCH_MODEL, LocalSnapshot, ThreatHistory, GeminiCTIError, GeminiThreatClient, ModelInfo, _is_text_research_model, markdown_report, resolve_api_key, validate_threat_feed, GeminiHTTPError
 
 
 class GeminiCTITests(unittest.TestCase):
@@ -154,6 +154,42 @@ class GeminiCTITests(unittest.TestCase):
 
     def test_cti_search_uses_free_tier_search_model(self):
         self.assertEqual(CTI_SEARCH_MODEL, "gemini-2.5-flash-lite")
+
+    def test_cti_http_error_uses_shared_diagnostic_without_echoing_secret(self):
+        fake_secret = "AIzaSyFAKE-CTI-SECRET-123456789012345678"
+        class Response:
+            status_code = 429
+            def json(self):
+                return {"error": {
+                    "code": 429,
+                    "status": "RESOURCE_EXHAUSTED",
+                    "message": f"private quota text {fake_secret}",
+                    "details": [{"violations": [{
+                        "quotaId": "ProjectSpendPerTenMinutes",
+                    }]}],
+                }}
+        error = GeminiHTTPError(Response())
+        self.assertEqual(error.category, "quota_exhausted")
+        self.assertFalse(error.transient)
+        self.assertEqual(error.status_code, 429)
+        self.assertNotIn(fake_secret, str(error))
+
+    def test_unavailable_cti_model_has_model_not_found_category(self):
+        class Response:
+            status_code = 200
+            def json(self):
+                return {"models": [{
+                    "name": "models/gemini-2.5-flash-lite",
+                    "supportedGenerationMethods": ["generateContent"],
+                }]}
+        client = GeminiThreatClient("test-key")
+        with patch.dict(os.environ, {"AYFAM_GEMINI_CTI_MODEL": "custom-unlisted"}), patch(
+            "engine.gemini_cti.requests.get", return_value=Response()
+        ), patch("engine.gemini_cti.requests.post") as post:
+            with self.assertRaises(GeminiCTIError) as caught:
+                client.fetch_threats()
+        self.assertEqual(caught.exception.category, "model_not_found")
+        post.assert_not_called()
 
     def test_cti_model_discovery_reuses_shared_catalog_cache(self):
         class Response:
