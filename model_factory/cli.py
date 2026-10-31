@@ -1,4 +1,4 @@
-"""Command-line entry points for corpus preparation and AI AYFAM model training."""
+"""Command-line entry points for corpus, tokenizer, training and local inference tools."""
 
 from __future__ import annotations
 
@@ -49,6 +49,39 @@ def _parser() -> argparse.ArgumentParser:
     train.add_argument("--resume", type=Path)
     train.add_argument("--tokenizer-config", type=Path)
     train.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto")
+
+    export_model = commands.add_parser("export-model", help="export compact model-only weights from a training checkpoint")
+    export_model.add_argument("--checkpoint", type=Path, required=True)
+    export_model.add_argument("--output", type=Path, default=Path("runs/ayfam-3m/inference.pt"))
+
+    generate = commands.add_parser("generate", help="generate a local continuation from an exported model")
+    generate.add_argument("--model", type=Path, required=True)
+    generate.add_argument("--prompt", required=True)
+    generate.add_argument("--max-new-tokens", type=int, default=64)
+    generate.add_argument("--temperature", type=float, default=0.8)
+    generate.add_argument("--top-k", type=int, default=40, help="use 0 to disable top-k")
+    generate.add_argument("--top-p", type=float, default=0.9, help="use 1.0 to disable nucleus filtering")
+    generate.add_argument("--seed", type=int, default=42)
+    generate.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto")
+
+    evaluate = commands.add_parser("evaluate", help="evaluate an exported model on held-out validation or test data")
+    evaluate.add_argument("--model", type=Path, required=True)
+    evaluate.add_argument("--corpus", type=Path, required=True)
+    evaluate.add_argument("--split", choices=("validation", "test"), default="test")
+    evaluate.add_argument("--batch-size", type=int, default=1)
+    evaluate.add_argument("--max-batches", type=int)
+    evaluate.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto")
+
+    benchmark = commands.add_parser("benchmark", help="measure local inference speed and peak memory")
+    benchmark.add_argument("--model", type=Path, required=True)
+    benchmark.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto")
+    benchmark.add_argument("--threads", type=int)
+    benchmark.add_argument("--batch-size", type=int, default=1)
+    benchmark.add_argument("--sequence-length", type=int)
+    benchmark.add_argument("--warmup", type=int, default=2)
+    benchmark.add_argument("--iterations", type=int, default=10)
+    benchmark.add_argument("--generation-tokens", type=int, default=16)
+
     return parser
 
 
@@ -201,7 +234,67 @@ def main(argv: list[str] | None = None) -> int:
             metrics = Trainer.evaluate(model, validation_factory, device=trainer.device)
             print(f"Validation: {json.dumps(metrics)}")
             return 0 if trainer.global_step >= args.steps else 1
-    except (OSError, ValueError, RuntimeError, FloatingPointError) as exc:
+
+        if args.command == "export-model":
+            from model_factory.inference import export_inference_artifact
+            destination = export_inference_artifact(args.checkpoint, args.output)
+            print(json.dumps({"model_artifact": str(destination)}, ensure_ascii=False, indent=2))
+            return 0
+
+        if args.command == "generate":
+            from model_factory.inference import generate_text, load_inference_model
+            loaded = load_inference_model(args.model, device=args.device)
+            result = generate_text(
+                loaded,
+                args.prompt,
+                max_new_tokens=args.max_new_tokens,
+                temperature=args.temperature,
+                top_k=None if args.top_k == 0 else args.top_k,
+                top_p=None if args.top_p == 1.0 else args.top_p,
+                seed=args.seed,
+            )
+            print(json.dumps({
+                "text": result.text,
+                "prompt_tokens": result.prompt_token_count,
+                "generated_tokens": result.generated_token_count,
+                "stopped_on_eos": result.stopped_on_eos,
+                "model_parameters": loaded.model.parameter_count(),
+                "device": loaded.device,
+            }, ensure_ascii=False, indent=2))
+            return 0
+
+        if args.command == "evaluate":
+            from model_factory.evaluation import evaluate_model
+            from model_factory.inference import load_inference_model
+            loaded = load_inference_model(args.model, device=args.device)
+            metrics = evaluate_model(
+                loaded,
+                str(args.corpus),
+                split=args.split,
+                batch_size=args.batch_size,
+                max_batches=args.max_batches,
+            )
+            print(json.dumps(metrics, ensure_ascii=False, indent=2))
+            return 0
+
+        if args.command == "benchmark":
+            from model_factory.benchmark import benchmark_model
+            from model_factory.inference import load_inference_model
+            loaded = load_inference_model(args.model, device=args.device)
+            profile = HardwareProfile.detect()
+            plan = build_training_plan(profile)
+            metrics = benchmark_model(
+                loaded,
+                batch_size=args.batch_size,
+                sequence_length=args.sequence_length,
+                warmup_iterations=args.warmup,
+                iterations=args.iterations,
+                generation_tokens=args.generation_tokens,
+                threads=plan.num_threads if args.threads is None else args.threads,
+            )
+            print(json.dumps(metrics, ensure_ascii=False, indent=2))
+            return 0
+    except Exception as exc:
         print(f"Model factory operation failed safely: {exc}", file=sys.stderr)
         return 1
     return 2
