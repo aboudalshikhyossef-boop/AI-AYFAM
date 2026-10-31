@@ -60,6 +60,7 @@ PAGE_ACCENTS = {
     "tools": "#ffa86f",
     "chat": "#d09aff",
     "library": "#72d7b8",
+    "model_training": "#6bd6c5",
     "playbooks": "#f5a6d2",
     "reports": "#85aaff",
     "settings": "#b8c8df",

@@ -77,6 +77,33 @@ refuses architecture, tokenizer, data fingerprint or key optimizer-setting
 mismatches. This first version resumes at an epoch boundary with a fresh
 deterministic shuffle pass; it does not save an exact mid-epoch data cursor.
 
+
+## Desktop training workspace
+
+Install the optional CPU training dependencies in the project's virtual
+environment, then open AI AYFAM and choose **تدريب نموذج AYFAM** from the
+sidebar. Select a corpus that has already passed the strict preparation audit,
+choose a short initial step count (the default is 20), and explicitly press
+**بدء التدريب المحلي**. Opening the application or this page never starts
+training automatically.
+
+The desktop runner learns Byte BPE merges from the train split only, trains
+the from-scratch Transformer on CPU, reports optimizer steps/loss/learning
+rate/process memory, evaluates on validation data, and writes an atomic
+checkpoint. The run folder is local to the machine:
+
+~~~text
+~/.local/share/ayfam/training/runs/run-<timestamp>/
+  latest.pt
+  tokenizer.json
+~~~
+
+The stop control requests a graceful stop at an optimizer-step boundary; the
+latest checkpoint is saved rather than terminating the process. Training
+artifacts and source corpora are not uploaded to GitHub or external services.
+The model remains separate from the security chat UI until a later integration
+and instruction-tuning phase.
+
 ## Local inference and evaluation
 
 Once a training run has produced a checkpoint, export the optimizer-free model
