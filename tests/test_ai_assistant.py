@@ -278,3 +278,80 @@ def test_only_nonpermanent_failures_allow_auto_fallback():
     for category in ("invalid_key", "forbidden", "restricted_key", "model_not_found", "quota_exhausted"):
         from engine.ai_assistant import _diagnostic
         assert not fallback_allowed(AssistantError(_diagnostic(category)))
+
+
+@pytest.mark.parametrize(
+    ("status", "payload", "expected"),
+    [
+        (401, {"error": {"message": "invalid key"}}, "invalid_key"),
+        (403, {"error": {"message": "forbidden"}}, "forbidden"),
+        (403, {"error": {"message": "API key restriction"}}, "restricted_key"),
+        (404, {"error": {"message": "model not found"}}, "model_not_found"),
+        (429, {"error": {"code": "rate_limit_exceeded"}}, "rate_limited"),
+        (429, {"error": {"code": "insufficient_quota"}}, "quota_exhausted"),
+        (503, {"error": {"message": "temporary server error"}}, "server_error"),
+        (408, {"error": {"message": "timeout"}}, "timeout"),
+    ],
+)
+def test_get_transport_maps_mocked_http_status_to_category(status, payload, expected):
+    response = Response(status, payload)
+    with patch("engine.ai_assistant.http_client.get", return_value=response) as get, \
+         patch("engine.ai_assistant.time.sleep"), \
+         patch("engine.ai_assistant.random.uniform", return_value=0.0):
+        with pytest.raises(AssistantError) as caught:
+            list_available_models("openai", FAKE_KEY, force=True)
+    assert caught.value.category == expected
+    assert FAKE_KEY not in str(caught.value)
+    expected_calls = 3 if expected == "server_error" else 1
+    assert get.call_count == expected_calls
+
+
+def test_get_transport_maps_mocked_timeout_and_dns_exceptions():
+    cases = [
+        (TimeoutError(f"timeout {FAKE_KEY}"), "timeout"),
+        (socket.gaierror(f"DNS failed {FAKE_KEY}"), "network/dns"),
+    ]
+    for error, expected in cases:
+        with patch("engine.ai_assistant.http_client.get", side_effect=error), \
+             patch("engine.ai_assistant.time.sleep"), \
+             patch("engine.ai_assistant.random.uniform", return_value=0.0):
+            with pytest.raises(AssistantError) as caught:
+                list_available_models("openai", FAKE_KEY, force=True)
+        assert caught.value.category == expected
+        assert FAKE_KEY not in str(caught.value)
+
+
+def test_post_transport_maps_mocked_429_without_retrying_quota():
+    quota = Response(429, {"error": {"code": "insufficient_quota"}})
+    with patch("engine.ai_assistant.http_client.get", return_value=openai_catalog("gpt-4o-mini")), \
+         patch("engine.ai_assistant.http_client.post", return_value=quota) as post, \
+         patch("engine.ai_assistant.time.sleep") as sleep:
+        with pytest.raises(AssistantError) as caught:
+            OpenAIAssistant(FAKE_KEY).ask("hello")
+    assert caught.value.category == "quota_exhausted"
+    assert post.call_count == 1
+    sleep.assert_not_called()
+
+
+def test_gemini_post_http_failure_is_classified_and_secret_safe():
+    failure = Response(403, {"error": {"message": f"API key restriction {FAKE_KEY}"}})
+    with patch("engine.ai_assistant.http_client.get", return_value=gemini_catalog("gemini-3.8-flash")), \
+         patch("engine.ai_assistant.http_client.post", return_value=failure) as post, \
+         patch("engine.ai_assistant.wait_for_slot", return_value=0.0):
+        with pytest.raises(AssistantError) as caught:
+            GeminiAssistant(FAKE_KEY).ask("hello")
+    assert caught.value.category == "restricted_key"
+    assert FAKE_KEY not in str(caught.value)
+    assert post.call_count == 1
+
+
+def test_no_network_at_import_time(monkeypatch):
+    import importlib
+    import engine.ai_assistant as module
+
+    def forbidden(*_args, **_kwargs):
+        raise AssertionError("HTTP access during module import")
+
+    monkeypatch.setattr(module.http_client, "get", forbidden)
+    monkeypatch.setattr(module.http_client, "post", forbidden)
+    importlib.reload(module)
