@@ -1,6 +1,7 @@
 """Tests for the desktop training workspace's safe idle state."""
 
 import os
+from pathlib import Path
 
 import pytest
 
@@ -16,10 +17,20 @@ except (ImportError, OSError) as exc:
 APP = QApplication.instance() or QApplication([])
 
 
-def test_training_view_does_not_start_training_on_construction():
+def test_training_view_does_not_start_import_or_training_on_construction():
     view = ModelTrainingView()
+    seed_path = (
+        Path(__file__).resolve().parents[1]
+        / "data"
+        / "seed_corpus"
+        / "v0.1"
+        / "ayfam-seed-v0.1.jsonl"
+    )
     assert view.worker is None
+    assert view.prepare_worker is None
     assert view.start_button.isEnabled()
+    assert view.prepare_button.isEnabled()
+    assert view.raw_corpus_input.text() == str(seed_path)
     assert not view.stop_button.isEnabled()
     assert view.steps_input.value() == 20
     assert view.vocab_input.value() == 512
