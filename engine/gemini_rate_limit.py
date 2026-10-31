@@ -75,6 +75,7 @@ def wait_for_slot(
     path = _state_path(key)
     lock_path = path.with_suffix(".lock")
     interval = _interval()
+    last_reported_second = -1
     while True:
         if _cancelled(cancel_event):
             raise InterruptedError("Gemini slot wait was cancelled")
@@ -106,7 +107,10 @@ def wait_for_slot(
             if remaining_budget <= 0 or remaining > remaining_budget:
                 raise TimeoutError("Gemini slot wait exceeded total timeout")
         if on_wait:
-            on_wait(remaining)
+            remaining_second = int(remaining + 0.999)
+            if remaining_second != last_reported_second:
+                on_wait(remaining)
+                last_reported_second = remaining_second
         delay = min(max(0.01, float(poll_interval)), remaining)
         if budget is not None:
             delay = min(delay, max(0.0, budget - elapsed))
