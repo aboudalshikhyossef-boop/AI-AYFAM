@@ -27,7 +27,7 @@ class SystemReader:
         try:
             with open(path, "rb") as stream:
                 data = stream.read(max_bytes + 1)
-            if len(data) > max_bytes or b"\\x00" in data:
+            if len(data) > max_bytes or b"\x00" in data:
                 return None
             return data.decode("utf-8", errors="replace")
         except (OSError, ValueError):
@@ -86,7 +86,7 @@ class FakeSystem(SystemReader):
         if value is None:
             return None
         encoded = value.encode("utf-8", errors="replace")
-        if len(encoded) > max_bytes or b"\\x00" in encoded:
+        if len(encoded) > max_bytes or b"\x00" in encoded:
             return None
         return value
 
