@@ -208,7 +208,7 @@ class AYFAMAgent(AgentV5Mixin):
 
         for provider in providers:
             try:
-                ask_options = {
+                ask_options: dict[str, Any] = {
                     "system_context": f"{persona} Hostname: {self._hostname}; language: {self.lang}",
                 }
                 if provider.name == "gemini":
