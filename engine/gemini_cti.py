@@ -22,7 +22,7 @@ from typing import Any, Iterable, Mapping
 
 from utils import http_client as requests
 from engine.gemini_rate_limit import DEFAULT_GEMINI_MODEL, compact_text, gemini_model_name, wait_for_slot
-from engine.ai_assistant import AssistantError, classify_http_error, list_available_models, validate_model_access
+from engine.ai_assistant import AssistantDiagnostic, AssistantError, classify_exception, classify_http_error, list_available_models, validate_model_access
 from brain.context_engine import ContextEngine
 
 THREAT_SCHEMA: dict[str, Any] = {
@@ -73,7 +73,22 @@ versions, IOCs, dates, or URLs; every item must include source URLs.
 
 
 class GeminiCTIError(RuntimeError):
-    """Actionable error raised for SDK, key, model, network, or response failures."""
+    """Secret-safe CTI error carrying the shared provider diagnostic category."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        diagnostic: AssistantDiagnostic | None = None,
+        category: str = "invalid_response",
+    ):
+        self.diagnostic = diagnostic
+        self.category = diagnostic.category if diagnostic else category
+        self.transient = diagnostic.transient if diagnostic else self.category in {
+            "timeout", "network/dns", "rate_limited", "server_error", "invalid_response",
+        }
+        self.status_code = diagnostic.status_code if diagnostic else None
+        super().__init__(message)
 
 
 @dataclass(frozen=True)
@@ -138,9 +153,8 @@ class GeminiHTTPError(GeminiCTIError):
         self.model_scoped_quota = (
             self.status_code == 429 and _is_model_scoped_quota(self.details)
         )
-        # Omit provider response text: it can echo request data or credentials.
         diagnostic = classify_http_error("gemini", response)
-        super().__init__(diagnostic.render())
+        super().__init__(diagnostic.render(), diagnostic=diagnostic)
 
 
 def _interaction_output_text(body: Any) -> str:
@@ -255,7 +269,7 @@ class GeminiThreatClient:
         self._model: ModelInfo | None = None
         self._models: list[ModelInfo] = []
         if not self.api_key:
-            raise GeminiCTIError("Gemini API key is missing. مفتاح Gemini غير مُعدّ.")
+            raise GeminiCTIError("Gemini API key is missing. مفتاح Gemini غير مُعدّ.", category="missing_key")
 
     def ask_assistant(self, prompt: str, system_context: str = "") -> str:
         """Make exactly one compact Gemini request; no SDK/model fallback burst."""
@@ -274,7 +288,7 @@ class GeminiThreatClient:
         try:
             validate_model_access("gemini", self.api_key, model, timeout=self.timeout)
         except AssistantError as exc:
-            raise GeminiCTIError(str(exc)) from exc
+            raise GeminiCTIError(str(exc), diagnostic=exc.diagnostic) from exc
         payload = {"contents": [{"parts": [{"text": compact_text(prompt, 3600)}]}],
                    "systemInstruction": {"parts": [{"text": sys_instruction}]},
                    "generationConfig": {"maxOutputTokens": 2048}}
@@ -298,12 +312,13 @@ class GeminiThreatClient:
             parts = candidates[0].get("content", {}).get("parts", []) if candidates else []
             answer = "\n".join(p.get("text", "") for p in parts if isinstance(p, dict) and p.get("text")).strip()
             if not answer:
-                raise GeminiCTIError("Gemini returned an empty response. أعاد Gemini استجابة فارغة.")
+                raise GeminiCTIError("Gemini returned an empty response. أعاد Gemini استجابة فارغة.", category="invalid_response")
             return answer
         except GeminiCTIError:
             raise
         except Exception as exc:
-            raise GeminiCTIError("Gemini assistant request failed. فشل طلب مساعد Gemini؛ راجع تشخيص الاتصال دون عرض تفاصيل حساسة.") from exc
+            diagnostic = classify_exception(exc)
+            raise GeminiCTIError(diagnostic.render(), diagnostic=diagnostic) from exc
 
     @classmethod
     def from_environment(cls) -> "GeminiThreatClient":
@@ -331,7 +346,7 @@ class GeminiThreatClient:
                 "gemini", self.api_key, timeout=self.timeout, force=force,
             )
         except AssistantError as exc:
-            raise GeminiCTIError(str(exc)) from exc
+            raise GeminiCTIError(str(exc), diagnostic=exc.diagnostic) from exc
         models: list[ModelInfo] = []
         for name in catalog.models:
             short = name.rsplit("/", 1)[-1].lower()
@@ -402,7 +417,7 @@ class GeminiThreatClient:
         try:
             text = _interaction_output_text(response.json())
         except ValueError as exc:
-            raise GeminiCTIError("Gemini returned a non-JSON HTTP response. أعاد Gemini استجابة HTTP ليست JSON صالحاً.") from exc
+            raise GeminiCTIError("Gemini returned a non-JSON HTTP response. أعاد Gemini استجابة HTTP ليست JSON صالحاً.", category="invalid_response") from exc
         if not text:
             raise GeminiCTIError("Gemini returned an empty response")
         return text
@@ -423,19 +438,24 @@ one recommendation, and at most 2 authoritative source URLs. Return [] when evid
                 raise GeminiCTIError(
                     f"Selected Gemini CTI model '{configured_model}' is unavailable. "
                     f"Choose an available model explicitly; suggestion: {suggestion}. "
-                    "النموذج المحدد غير متاح؛ اختر نموذجاً من القائمة يدوياً."
+                    "النموذج المحدد غير متاح؛ اختر نموذجاً من القائمة يدوياً.",
+                    category="model_not_found",
                 )
             model = ModelInfo(f"models/{configured_model}")
             raw = self._request_with_interactions(model, query)
             return validate_threat_feed(json.loads(raw), window_hours=window_hours)
         except GeminiHTTPError as exc:
-            raise GeminiCTIError(f"Gemini threat research failed using {model.short_name}. فشل بحث التهديدات عبر Gemini.") from exc
+            raise GeminiCTIError(
+                f"Gemini threat research failed using {model.short_name}. فشل بحث التهديدات عبر Gemini.",
+                diagnostic=exc.diagnostic,
+            ) from exc
         except json.JSONDecodeError as exc:
-            raise GeminiCTIError("Gemini returned invalid JSON. أعاد Gemini استجابة JSON غير صالحة.") from exc
+            raise GeminiCTIError("Gemini returned invalid JSON. أعاد Gemini استجابة JSON غير صالحة.", category="invalid_response") from exc
         except GeminiCTIError:
             raise
         except Exception as exc:
-            raise GeminiCTIError(f"Gemini threat research failed using {model.short_name}. فشل بحث التهديدات عبر Gemini؛ راجع فئة التشخيص دون تفاصيل حساسة.") from exc
+            diagnostic = classify_exception(exc)
+            raise GeminiCTIError(diagnostic.render(), diagnostic=diagnostic) from exc
 
     def close(self) -> None:
         if self._client is not None:
