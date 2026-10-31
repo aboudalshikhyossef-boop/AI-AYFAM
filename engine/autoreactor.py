@@ -15,7 +15,7 @@ class AutoReactor:
     @staticmethod
     def get_critical_infrastructure_ips() -> Set[str]:
         """استخراج العناوين الحساسة للشبكة (البوابة الافتراضية، خوادم DNS، الواجهات المحلية)."""
-        critical_ips: Set[str] = {"127.0.0.1", "0.0.0.0", "255.255.255.255"}
+        critical_ips: Set[str] = {"127.0.0.1", "0.0.0.0", "255.255.255.255"}  # nosec B104 - sentinel only; this is not a socket bind
 
         # 1. Get default gateway IPs
         res_gw = safe_exec.run(["ip", "route", "show", "default"], check_binary=False)
