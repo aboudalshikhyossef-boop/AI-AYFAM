@@ -3,7 +3,7 @@ requests==2.34.2
 pyqt6==6.11.0
 rich==15.0.0
 python-dotenv==1.2.4
-pypdf==6.21.1
+pypdf==6.21.4
 yara-python==4.5.4
 inotify_simple==2.0.1
 scikit-learn==1.7.2
