@@ -10,11 +10,13 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from engine.ai_assistant import clear_model_cache
 from engine.gemini_cti import CTI_SEARCH_MODEL, LocalSnapshot, ThreatHistory, GeminiCTIError, GeminiThreatClient, ModelInfo, _is_text_research_model, markdown_report, resolve_api_key, validate_threat_feed
 
 
 class GeminiCTITests(unittest.TestCase):
     def setUp(self):
+        clear_model_cache()
         self.feed = validate_threat_feed({
             "generated_at": "2026-10-03T00:00:00Z",
             "threats": [{
@@ -152,6 +154,25 @@ class GeminiCTITests(unittest.TestCase):
 
     def test_cti_search_uses_free_tier_search_model(self):
         self.assertEqual(CTI_SEARCH_MODEL, "gemini-2.5-flash-lite")
+
+    def test_cti_model_discovery_reuses_shared_catalog_cache(self):
+        class Response:
+            status_code = 200
+            def json(self):
+                return {"models": [{
+                    "name": "models/gemini-3.8-flash",
+                    "supportedGenerationMethods": ["generateContent"],
+                    "outputTokenLimit": 4096,
+                }]}
+        first = GeminiThreatClient("test-key")
+        second = GeminiThreatClient("test-key")
+        with patch("engine.gemini_cti.requests.get", return_value=Response()) as get:
+            first_models = first.discover_models()
+            second_models = second.discover_models()
+        self.assertEqual(first_models[0].short_name, "gemini-3.8-flash")
+        self.assertEqual(second_models[0].short_name, "gemini-3.8-flash")
+        self.assertEqual(get.call_count, 1)
+
 
     def test_validate_threat_feed_http_source(self):
         raw_feed = {
