@@ -140,24 +140,24 @@ class PackageInventoryEngine:
                 data = resp.json()
                 results = data.get("results", [])
 
-                    for idx, res_item in enumerate(results):
-                        vulns = res_item.get("vulns", [])
-                        pkg_name = queries[idx]["package"]["name"]
-                        installed_ver = queries[idx]["version"]
+                for idx, res_item in enumerate(results):
+                    vulns = res_item.get("vulns", [])
+                    pkg_name = queries[idx]["package"]["name"]
+                    installed_ver = queries[idx]["version"]
 
-                        for v in vulns[:3]:
-                            cve_id = v.get("id", "OSV-VULN")
-                            details = v.get("details", "Vulnerability detected in package")[:200]
-                            findings.append(create_finding(
-                                rule_id="SYS-UPDATE-001",
-                                severity="high",
-                                title_ar=f"ثغرة أمنية مؤكدة في الحزمة {pkg_name} ({cve_id})",
-                                title_en=f"Vulnerability in package {pkg_name} ({cve_id})",
-                                detail=f"الحزمة المثبتة: {pkg_name} ({installed_ver})\nالثغرة: {cve_id}\nالتفاصيل: {details}",
-                                fix=f"sudo apt-get --only-upgrade install {pkg_name}",
-                                evidence={"package": pkg_name, "installed_version": installed_ver, "cve_id": cve_id},
-                                stable_key=f"{pkg_name}:{cve_id}",
-                            ))
+                    for v in vulns[:3]:
+                        cve_id = v.get("id", "OSV-VULN")
+                        details = v.get("details", "Vulnerability detected in package")[:200]
+                        findings.append(create_finding(
+                            rule_id="SYS-UPDATE-001",
+                            severity="high",
+                            title_ar=f"ثغرة أمنية مؤكدة في الحزمة {pkg_name} ({cve_id})",
+                            title_en=f"Vulnerability in package {pkg_name} ({cve_id})",
+                            detail=f"الحزمة المثبتة: {pkg_name} ({installed_ver})\nالثغرة: {cve_id}\nالتفاصيل: {details}",
+                            fix=f"sudo apt-get --only-upgrade install {pkg_name}",
+                            evidence={"package": pkg_name, "installed_version": installed_ver, "cve_id": cve_id},
+                            stable_key=f"{pkg_name}:{cve_id}",
+                        ))
             except Exception as exc:
                 network_errors += 1
                 # If network fails for all/first batch, report network error
