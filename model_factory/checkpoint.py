@@ -9,7 +9,7 @@ import platform
 import tempfile
 from typing import Any
 
-from model_factory.tokenizer import ByteTokenizer
+from model_factory.tokenizer import ByteBPETokenizer, ByteTokenizer
 
 CHECKPOINT_SCHEMA_VERSION = 1
 
@@ -24,7 +24,7 @@ def _torch():
     return torch
 
 
-def save_checkpoint(path: str | Path, trainer, tokenizer: ByteTokenizer) -> Path:
+def save_checkpoint(path: str | Path, trainer, tokenizer: ByteTokenizer | ByteBPETokenizer) -> Path:
     torch = _torch()
     destination = Path(path).expanduser()
     if destination.is_symlink():
@@ -76,7 +76,7 @@ def save_checkpoint(path: str | Path, trainer, tokenizer: ByteTokenizer) -> Path
 def load_checkpoint(
     path: str | Path,
     trainer,
-    tokenizer: ByteTokenizer,
+    tokenizer: ByteTokenizer | ByteBPETokenizer,
     *,
     expected_data_fingerprint: str | None = None,
 ) -> dict[str, Any]:

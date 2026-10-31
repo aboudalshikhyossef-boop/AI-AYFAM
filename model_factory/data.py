@@ -9,7 +9,7 @@ from pathlib import Path
 import random
 from typing import Iterator, Literal
 
-from model_factory.tokenizer import ByteTokenizer
+from model_factory.tokenizer import ByteBPETokenizer, ByteTokenizer
 
 CorpusSplit = Literal["train", "validation", "test"]
 _ALLOWED_SPLITS = {"train", "validation", "test"}
@@ -23,6 +23,8 @@ class CorpusRecord:
     license: str
     split: CorpusSplit
     record_id: str = ""
+    group_id: str = ""
+    language: str = ""
 
 
 @dataclass(frozen=True)
@@ -55,12 +57,18 @@ def _parse_record(raw: str, line_number: int) -> CorpusRecord:
         raise ValueError(f"line {line_number}: split must be train, validation, or test")
     if not isinstance(record_id, str):
         raise ValueError(f"line {line_number}: id must be a string when provided")
+    group_id = payload.get("group_id", "")
+    language = payload.get("language", "")
+    if not isinstance(group_id, str) or not isinstance(language, str):
+        raise ValueError(f"line {line_number}: group_id and language must be strings when provided")
     return CorpusRecord(
         text=text,
         source=source.strip(),
         license=license_name.strip(),
         split=split,
         record_id=record_id,
+        group_id=group_id,
+        language=language,
     )
 
 
@@ -121,7 +129,7 @@ def validate_corpus(path: str | Path) -> CorpusReport:
 
 def iter_token_blocks(
     path: str | Path,
-    tokenizer: ByteTokenizer,
+    tokenizer: ByteTokenizer | ByteBPETokenizer,
     *,
     split: CorpusSplit,
     block_size: int,
@@ -160,7 +168,7 @@ def _buffered_shuffle(items, *, buffer_size: int, seed: int):
 
 def iter_batches(
     path: str | Path,
-    tokenizer: ByteTokenizer,
+    tokenizer: ByteTokenizer | ByteBPETokenizer,
     *,
     split: CorpusSplit,
     block_size: int,
