@@ -24,4 +24,14 @@ build/
 .vscode/
 .idea/
 *.swp
-.qa/
+
+# Local model training artifacts (never commit private corpora or checkpoints)
+runs/
+data/private/
+data/local/
+data/training/
+data/corpora/
+data/ayfam*.jsonl
+*.pt
+*.pth
+*.ckpt
