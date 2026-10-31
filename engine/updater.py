@@ -7,6 +7,7 @@ import os
 import json
 import urllib.request
 import urllib.parse
+from utils.http_client import _validate_http_url
 from typing import Dict, Any, Tuple, Optional
 from cryptography.hazmat.primitives.asymmetric import ed25519
 from engine.pkginventory import EMBEDDED_PUBLIC_KEY_HEX
@@ -75,9 +76,14 @@ class UpdateManager:
         sig_path = os.path.join(dest_dir, "update.tar.gz.sig")
 
         try:
+            # Only fetch update material from explicit HTTP(S) endpoints.
+            meta_url = _validate_http_url(meta_url)
+            update_tar_url = _validate_http_url(update_tar_url)
+            signature_url = _validate_http_url(signature_url)
+
             # 1. Download Metadata
             req_meta = urllib.request.Request(meta_url, headers={"User-Agent": "AI-AYFAM-Updater"})
-            with urllib.request.urlopen(req_meta, timeout=15) as resp:
+            with urllib.request.urlopen(req_meta, timeout=15) as resp:  # nosec B310 - metadata URL validated above
                 meta_data = json.loads(resp.read().decode("utf-8"))
 
             new_seq = meta_data.get("sequence_number", 0)
