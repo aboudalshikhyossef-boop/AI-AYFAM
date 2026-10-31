@@ -31,6 +31,15 @@ def test_context_engine_privacy_sanitization():
 def test_gemini_assistant_scrubs_prompt_before_sending():
     assistant = GeminiAssistant(api_key="fake-key")
 
+    mock_get = MagicMock()
+    mock_get.return_value.status_code = 200
+    mock_get.return_value.json.return_value = {
+        "models": [{
+            "name": "models/gemini-3.8-flash",
+            "supportedGenerationMethods": ["generateContent"],
+            "outputTokenLimit": 4096,
+        }]
+    }
     mock_post = MagicMock()
     mock_post.return_value.status_code = 200
     mock_post.return_value.json.return_value = {
@@ -39,7 +48,8 @@ def test_gemini_assistant_scrubs_prompt_before_sending():
         ]
     }
 
-    with patch("utils.http_client.post", mock_post), \
+    with patch("utils.http_client.get", mock_get), \
+         patch("utils.http_client.post", mock_post), \
          patch("engine.ai_assistant.wait_for_slot"):
 
         with patch("socket.gethostname", return_value="linux-mint-dev"), \
