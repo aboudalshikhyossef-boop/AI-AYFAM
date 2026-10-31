@@ -95,8 +95,8 @@ class UpdateManager:
                 return False, err, meta_data
 
             # 3. Download Package & Signature
-            urllib.request.urlretrieve(update_tar_url, tar_path)
-            urllib.request.urlretrieve(signature_url, sig_path)
+            urllib.request.urlretrieve(update_tar_url, tar_path)  # nosec B310 - URL validated as HTTP(S) above
+            urllib.request.urlretrieve(signature_url, sig_path)  # nosec B310 - URL validated as HTTP(S) above
 
             with open(tar_path, "rb") as f:
                 tar_bytes = f.read()
