@@ -693,7 +693,7 @@ class GeminiAssistant:
             remaining_before_wait = self.timeout - (time.monotonic() - started)
             if remaining_before_wait <= 0:
                 raise TimeoutError("Model validation exceeded request timeout")
-            waited = wait_for_slot(
+            wait_for_slot(
                 self.api_key,
                 timeout=remaining_before_wait,
                 on_wait=on_wait,
