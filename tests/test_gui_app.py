@@ -74,11 +74,12 @@ check("accent color defined", ACCENT.startswith("#"))
 check("severity color mapping works", severity_color("critical") == SEV_CRITICAL)
 check("unknown severity falls back to info", severity_color("unknown") != SEV_CRITICAL)
 
-print("\n[5] Navigation structure")
+print("\n[5] Low-resource static navigation")
 from ui.gui_app import NAV_ITEMS
+from ui.widgets import StaticNavigationMenu
 check("navigation has 13 items", len(NAV_ITEMS) == 13)
-from ui.widgets import NavigationWheel
-check("navigation uses the 3D icon wheel", hasattr(NavigationWheel, "wheelEvent"))
+check("static navigation exposes button selection", hasattr(StaticNavigationMenu, "page_selected"))
+check("static navigation exposes current-page selection", hasattr(StaticNavigationMenu, "set_current"))
 check("dashboard is first nav item", NAV_ITEMS[0][0] == "dashboard")
 check("settings is last nav item", NAV_ITEMS[-1][0] == "settings")
 
