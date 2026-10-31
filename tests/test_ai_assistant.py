@@ -1,5 +1,7 @@
 import json
 import socket
+import subprocess
+import sys
 from unittest.mock import patch
 
 import pytest
@@ -345,13 +347,20 @@ def test_gemini_post_http_failure_is_classified_and_secret_safe():
     assert post.call_count == 1
 
 
-def test_no_network_at_import_time(monkeypatch):
-    import importlib
-    import engine.ai_assistant as module
-
-    def forbidden(*_args, **_kwargs):
-        raise AssertionError("HTTP access during module import")
-
-    monkeypatch.setattr(module.http_client, "get", forbidden)
-    monkeypatch.setattr(module.http_client, "post", forbidden)
-    importlib.reload(module)
+def test_no_network_at_import_time():
+    source = (
+        "from utils import http_client\\n"
+        "def forbidden(*args, **kwargs): raise AssertionError('import-time HTTP')\\n"
+        "http_client.get = forbidden\\n"
+        "http_client.post = forbidden\\n"
+        "import engine.ai_assistant\\n"
+        "import engine.gemini_cti\\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", source],
+        capture_output=True,
+        text=True,
+        timeout=10,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
