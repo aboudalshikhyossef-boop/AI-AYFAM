@@ -67,7 +67,7 @@ class GeminiCTITests(unittest.TestCase):
             def json(self):
                 return {"status": "completed", "steps": [{"type": "model_output", "content": [{"type": "text", "text": payload_text}]}]}
         client = GeminiThreatClient("test-key")
-        client.discover_models = lambda force=False: [ModelInfo("models/gemini-2.5-flash")]
+        client.discover_models = lambda force=False: [ModelInfo(f"models/{CTI_SEARCH_MODEL}")]
         with patch("engine.gemini_cti.requests.post", return_value=Response()) as post:
             result = client.fetch_threats()
         self.assertEqual(result["threats"], [])
@@ -103,20 +103,20 @@ class GeminiCTITests(unittest.TestCase):
                 client.fetch_threats()
         self.assertEqual(post.call_count, 1)
 
-    def test_project_wide_429_preserves_google_diagnostic_and_stops(self):
+    def test_project_spend_quota_uses_secret_safe_permanent_diagnostic(self):
         class Response:
             status_code = 429
-            text = "project-wide request limit"
+            text = "project-wide request limit with private provider details"
             def json(self):
                 return {"error": {"code": 429, "status": "RESOURCE_EXHAUSTED", "message": "project-wide request limit", "details": [{"@type": "type.googleapis.com/google.rpc.QuotaFailure", "violations": [{"quotaId": "ProjectSpendPerTenMinutes", "quotaDimensions": {"location": "global"}}]}]}}
         client = GeminiThreatClient("test-key")
-        client.discover_models = lambda force=False: [ModelInfo("models/gemini-2.5-flash"), ModelInfo("models/gemini-2.5-flash-lite")]
+        client.discover_models = lambda force=False: [ModelInfo(f"models/{CTI_SEARCH_MODEL}")]
         with patch("engine.gemini_cti.requests.post", return_value=Response()) as post:
             with self.assertRaises(GeminiCTIError) as caught:
                 client.fetch_threats()
         self.assertEqual(post.call_count, 1)
-        self.assertIn("project-wide request limit", str(caught.exception))
-        self.assertNotIn("free-tier quota is 0", str(caught.exception))
+        self.assertIn("quota_exhausted", str(caught.exception))
+        self.assertNotIn("project-wide request limit", str(caught.exception))
 
     def test_environment_key_precedence_matches_google_docs(self):
         self.assertEqual(resolve_api_key("saved", {"GEMINI_API_KEY": "gemini-env"}), "gemini-env")
@@ -128,7 +128,7 @@ class GeminiCTITests(unittest.TestCase):
         self.assertFalse(_is_text_research_model("gemini-2.5-flash-preview-tts"))
         self.assertTrue(_is_text_research_model("gemini-2.5-flash"))
 
-    def test_discovery_excludes_retired_models_and_selects_gemini_3(self):
+    def test_discovery_preserves_available_models_and_prioritizes_default(self):
         class Response:
             status_code = 200
             def json(self):
@@ -140,7 +140,11 @@ class GeminiCTITests(unittest.TestCase):
         client = GeminiThreatClient("test-key")
         with patch("engine.gemini_cti.requests.get", return_value=Response()):
             models = client.discover_models()
-        self.assertEqual([model.short_name for model in models], ["gemini-3.8-flash"])
+        self.assertEqual(models[0].short_name, "gemini-3.8-flash")
+        self.assertEqual(
+            {model.short_name for model in models},
+            {"gemini-3.8-flash", "gemini-2.5-flash", "gemini-2.5-flash-lite"},
+        )
         self.assertEqual(client.selected_model.short_name, "gemini-3.8-flash")
 
     def test_cti_search_uses_free_tier_search_model(self):
