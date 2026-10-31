@@ -19,6 +19,16 @@ except ImportError:
     REQUESTS_AVAILABLE = False
 
 
+def _validate_http_url(url: str) -> str:
+    """Reject non-web schemes and credential-bearing URLs before urllib access."""
+    parsed = urllib.parse.urlsplit(str(url))
+    if parsed.scheme.lower() not in {"http", "https"} or not parsed.hostname:
+        raise ValueError("Only absolute HTTP(S) URLs are allowed")
+    if parsed.username is not None or parsed.password is not None:
+        raise ValueError("URLs containing embedded credentials are not allowed")
+    return str(url)
+
+
 class ResponseWrapper:
     """محاكي لكائن requests.Response باستخدام urllib القياسي."""
     def __init__(self, status_code: int, content: bytes | None = None, headers: Mapping[str, str] | None = None, url: str = "", raw_response: Any = None):
@@ -85,6 +95,7 @@ def _urllib_timeout(timeout: Any) -> float:
 
 def get(url: str, headers: dict | None = None, params: dict | None = None, timeout: float = 15.0, stream: bool = False, **kwargs: Any) -> Any:
     """تنفيذ طلب GET مع دعم requests أو urllib التلقائي."""
+    url = _validate_http_url(url)
     if REQUESTS_AVAILABLE:
         return requests.get(url, headers=headers, params=params, timeout=timeout, stream=stream, **kwargs)
     if params:
@@ -93,7 +104,7 @@ def get(url: str, headers: dict | None = None, params: dict | None = None, timeo
         url = f"{url}{sep}{query_string}"
     req = urllib.request.Request(url, headers=headers or {}, method="GET")
     try:
-        resp = urllib.request.urlopen(req, timeout=_urllib_timeout(timeout))
+        resp = urllib.request.urlopen(req, timeout=_urllib_timeout(timeout))  # nosec B310 - validated HTTP(S) URL
         if stream:
             return ResponseWrapper(resp.status, None, dict(resp.headers.items()), url, raw_response=resp)
         try:
@@ -126,6 +137,7 @@ def _request_body(target_json: Any, data: Any, headers: dict | None) -> tuple[by
 def post(url: str, headers: dict | None = None, json_data: Any = None, data: Any = None, timeout: float = 15.0, json: Any = None, **kwargs: Any) -> Any:
     """تنفيذ طلب POST مع دعم requests أو urllib التلقائي."""
     target_json = json_data if json_data is not None else json
+    url = _validate_http_url(url)
     if REQUESTS_AVAILABLE:
         return requests.post(url, headers=headers, json=target_json, data=data, timeout=timeout, **kwargs)
     payload, hdrs = _request_body(target_json, data, headers)
@@ -142,6 +154,7 @@ def post(url: str, headers: dict | None = None, json_data: Any = None, data: Any
 def put(url: str, headers: dict | None = None, json_data: Any = None, timeout: float = 15.0, json: Any = None, data: Any = None, **kwargs: Any) -> Any:
     """تنفيذ طلب PUT مع دعم requests أو urllib التلقائي."""
     target_json = json_data if json_data is not None else json
+    url = _validate_http_url(url)
     if REQUESTS_AVAILABLE:
         return requests.put(url, headers=headers, json=target_json, data=data, timeout=timeout, **kwargs)
     payload, hdrs = _request_body(target_json, data, headers)
