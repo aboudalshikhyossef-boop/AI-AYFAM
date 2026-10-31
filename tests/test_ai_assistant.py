@@ -349,12 +349,12 @@ def test_gemini_post_http_failure_is_classified_and_secret_safe():
 
 def test_no_network_at_import_time():
     source = (
-        "from utils import http_client\\n"
-        "def forbidden(*args, **kwargs): raise AssertionError('import-time HTTP')\\n"
-        "http_client.get = forbidden\\n"
-        "http_client.post = forbidden\\n"
-        "import engine.ai_assistant\\n"
-        "import engine.gemini_cti\\n"
+        "from utils import http_client\n"
+        "def forbidden(*args, **kwargs): raise AssertionError('import-time HTTP')\n"
+        "http_client.get = forbidden\n"
+        "http_client.post = forbidden\n"
+        "import engine.ai_assistant\n"
+        "import engine.gemini_cti\n"
     )
     result = subprocess.run(
         [sys.executable, "-c", source],
