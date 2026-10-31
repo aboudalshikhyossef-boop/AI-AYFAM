@@ -643,6 +643,8 @@ class StaticNavigationMenu(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(4)
+        # Preserve the former navigation wheel footprint without animation cost.
+        self.setMinimumSize(154, 420)
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
         for key, label, icon, accent in items:
