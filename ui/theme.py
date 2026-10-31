@@ -110,17 +110,19 @@ QWidget {{
 }}
 
 QMainWindow, QDialog, QMessageBox {{
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-        stop:0 #041a3a, stop:0.5 #06224a, stop:1 #0a1646);
+    background: #071321;
 }}
 
 QMainWindow#cockpitWindow {{
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-        stop:0 #050817, stop:0.36 #0b1830, stop:0.72 #10132e, stop:1 #050817);
+    background: #071321;
 }}
 
-QWidget#appRoot, QWidget#mainArea {{
-    background: transparent;
+QWidget#appRoot {{
+    background: #071321;
+}}
+
+QWidget#mainArea {{
+    background: #091827;
 }}
 
 QLabel {{
@@ -139,8 +141,8 @@ QScrollArea > QWidget > QWidget {{
 
 /* ── الشريط الجانبي الفخم الكريستالي (RTL Right-Side Glass Bar) ── */
 QFrame#sidebar {{
-    background: transparent;
-    border: none;
+    background: #081522;
+    border-right: 1px solid #1c3448;
 }}
 
 QScrollArea#navigationScroll {{
@@ -171,9 +173,9 @@ QPushButton#navButton {{
     border: 1px solid rgba(255, 255, 255, 0.04);
     border-right: 3px solid transparent;
     border-radius: 12px;
-    padding: 8px 14px;
+    padding: 5px 10px;
     text-align: right;
-    min-height: 32px;
+    min-height: 28px;
     font-weight: 500;
 }}
 
@@ -219,7 +221,7 @@ QPushButton#assistantNavButton:hover {{
 
 /* ── الشريط العلوي والكبسولة الزجاجية الكريستالية للساعة ── */
 QFrame#headerBar {{
-    background: transparent;
+    background: #091827;
     border: none;
 }}
 
@@ -242,6 +244,14 @@ QLabel#brandMark {{
     border: 1px solid rgba(45, 212, 191, 0.35);
     border-radius: 10px;
     padding: 6px;
+}}
+
+QLabel#headerBrand {{
+    color: {ACCENT};
+    font-size: 18px;
+    font-weight: 800;
+    letter-spacing: 1px;
+    background: transparent;
 }}
 
 QLabel#clockTime {{
@@ -315,9 +325,9 @@ QLabel#missionTitle {{
 }}
 
 QFrame#pageHero, QFrame#emptyGlassCard {{
-    background: transparent;
-    border: 1px solid transparent;
-    border-radius: 20px;
+    background: #0e2131;
+    border: 1px solid #1c3448;
+    border-radius: 12px;
 }}
 
 QFrame#pageHero:hover, QFrame#emptyGlassCard:hover {{
@@ -371,9 +381,9 @@ QGraphicsView#attackGraphCanvas {{
 
 /* ── بطاقات العمليات والحاويات الكريستالية المضبضبة (Frosted Glass Cards) ── */
 QFrame#card {{
-    background: transparent;
-    border: 1px solid transparent;
-    border-radius: 20px;
+    background: #0d2030;
+    border: 1px solid #1c3448;
+    border-radius: 12px;
 }}
 
 QFrame#card:hover {{
@@ -381,9 +391,9 @@ QFrame#card:hover {{
 }}
 
 QGroupBox {{
-    background: transparent;
-    border: 1px solid transparent;
-    border-radius: 16px;
+    background: #0c1e2d;
+    border: 1px solid #1c3448;
+    border-radius: 12px;
     margin-top: 0;
     padding: 38px 16px 16px;
     font-weight: 600;

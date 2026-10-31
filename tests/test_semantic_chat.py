@@ -209,5 +209,6 @@ def test_gui_chat_flow_and_summary():
     texts = [b._text for b in window.chat_display.bubbles if getattr(b, "role", "") == "assistant"]
     assert texts[-1] == "جيد"
     window.agent.phrases.forget("تمام")
-    assert window.hover_controller.flow.borders          # إطارات متحركة مسجلة للجداول والحقول
+    assert window.hover_controller is None
+    assert window.chat_display.hover_controller is None
     window.close()
