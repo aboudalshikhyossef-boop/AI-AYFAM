@@ -27,7 +27,7 @@ MODEL_CACHE_TTL = 60.0
 MAX_RETRY_ATTEMPTS = 3
 MAX_BACKOFF_SECONDS = 3.0
 OPENAI_MAX_OUTPUT_TOKENS = 256
-GEMINI_MAX_OUTPUT_TOKENS = 256
+GEMINI_MAX_OUTPUT_TOKENS = 2048
 CIRCUIT_FAILURE_THRESHOLD = 3
 CIRCUIT_COOLDOWN_SECONDS = 60.0
 
@@ -276,7 +276,7 @@ def classify_http_error(provider: str, response: Any, *, latency_ms: float | Non
 
 
 def classify_exception(exc: BaseException, *, latency_ms: float | None = None) -> AssistantDiagnostic:
-    if isinstance(exc, (TimeoutError, socket.timeout)):
+    if isinstance(exc, (TimeoutError, socket.timeout, InterruptedError)):
         category = "timeout"
     elif isinstance(exc, socket.gaierror):
         category = "network/dns"
