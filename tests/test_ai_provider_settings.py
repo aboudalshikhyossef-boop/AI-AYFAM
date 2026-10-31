@@ -55,6 +55,7 @@ def make_window(provider):
             result_handler(result)
 
     window.run_background_task = run_background_task
+    window.tr = lambda text: text
     return window, tasks
 
 
