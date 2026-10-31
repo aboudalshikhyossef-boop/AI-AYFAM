@@ -44,7 +44,7 @@ jobs:
 
       - name: Security Static Analysis (Bandit)
         run: |
-          bandit -r engine/ tools/ core/ utils/ -s B101,B108,B110,B311,B404,B603,B607
+          bandit -ll -r engine/ tools/ core/ utils/ -s B101,B108,B110,B311,B404,B603,B607
 
       - name: Dependency Audit (pip-audit)
         run: |
