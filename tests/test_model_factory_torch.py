@@ -11,7 +11,7 @@ from model_factory.checkpoint import load_checkpoint, save_checkpoint
 from model_factory.data import iter_batches
 from model_factory.config import ModelConfig, TrainingConfig
 from model_factory.hardware import HardwareProfile, TrainingPlan
-from model_factory.tokenizer import ByteTokenizer
+from model_factory.tokenizer import ByteBPETokenizer, ByteTokenizer
 from model_factory.training import Trainer
 
 
@@ -211,3 +211,32 @@ def test_checkpoint_contains_only_safe_rng_metadata(tmp_path):
     payload = torch.load(checkpoint, map_location="cpu", weights_only=True)
     assert isinstance(payload["torch_rng_state"], torch.Tensor)
     assert isinstance(payload["torch_cuda_rng_states"], list)
+
+
+
+def test_bpe_tokenizer_configuration_is_bound_to_checkpoint(tmp_path):
+    bpe = ByteBPETokenizer.train_from_iterator(
+        ["الأمن السيبراني AI AYFAM"] * 4,
+        vocab_size=280,
+        min_frequency=2,
+    )
+    config = ModelConfig(
+        vocab_size=bpe.vocab_size,
+        block_size=16,
+        n_layer=2,
+        n_head=4,
+        n_embd=32,
+        ffn_dim=64,
+        dropout=0.0,
+    )
+    trainer = _trainer(AYFAMTransformer(config))
+    checkpoint = tmp_path / "bpe.pt"
+    save_checkpoint(checkpoint, trainer, bpe)
+
+    restored_trainer = _trainer(AYFAMTransformer(config))
+    load_checkpoint(checkpoint, restored_trainer, bpe)
+    assert restored_trainer.model.config.vocab_size == bpe.vocab_size
+
+    incompatible = ByteTokenizer()
+    with pytest.raises(ValueError, match="tokenizer"):
+        load_checkpoint(checkpoint, _trainer(AYFAMTransformer(config)), incompatible)
