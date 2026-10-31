@@ -245,9 +245,11 @@ def _score_model(model: ModelInfo) -> tuple[int, int, int, int, str]:
 
 
 class GeminiThreatClient:
-    def __init__(self, api_key: str, timeout: float = 45.0):
+    def __init__(self, api_key: str, timeout: float = 45.0, on_wait=None, cancel_event=None):
         self.api_key = api_key.strip()
         self.timeout = timeout
+        self.on_wait = on_wait
+        self.cancel_event = cancel_event
         self.base_url = "https://generativelanguage.googleapis.com/v1beta"
         self._client = None
         self._model: ModelInfo | None = None
@@ -275,12 +277,20 @@ class GeminiThreatClient:
             raise GeminiCTIError(str(exc)) from exc
         payload = {"contents": [{"parts": [{"text": compact_text(prompt, 3600)}]}],
                    "systemInstruction": {"parts": [{"text": sys_instruction}]},
-                   "generationConfig": {"temperature": 0.1, "maxOutputTokens": 2048}}
-        wait_for_slot(self.api_key, timeout=self.timeout)
+                   "generationConfig": {"maxOutputTokens": 2048}}
+        started = time.monotonic()
+        remaining = self.timeout - (time.monotonic() - started)
         try:
+            wait_for_slot(
+                self.api_key, timeout=remaining, cancel_event=self.cancel_event,
+                on_wait=self.on_wait,
+            )
+            remaining = self.timeout - (time.monotonic() - started)
+            if remaining <= 0:
+                raise TimeoutError("Gemini total request timeout exceeded")
             response = requests.post(f"{self.base_url}/models/{model}:generateContent",
                 headers={"x-goog-api-key": self.api_key, "Content-Type": "application/json"},
-                json_data=payload, timeout=self.timeout)
+                json_data=payload, timeout=remaining)
             if response.status_code != 200:
                 raise GeminiHTTPError(response)
             body = response.json()
@@ -387,13 +397,20 @@ class GeminiThreatClient:
             "tools": [{_google_search_tool_type(model): {}}],
             "generationConfig": {"responseMimeType": "application/json",
                                  "responseSchema": THREAT_SCHEMA,
-                                 "temperature": 0.1, "maxOutputTokens": 900},
+                                 "maxOutputTokens": 900},
         }
-        wait_for_slot(self.api_key, timeout=self.timeout)
+        started = time.monotonic()
+        wait_for_slot(
+            self.api_key, timeout=self.timeout, cancel_event=self.cancel_event,
+            on_wait=self.on_wait,
+        )
+        remaining = self.timeout - (time.monotonic() - started)
+        if remaining <= 0:
+            raise TimeoutError("Gemini total request timeout exceeded")
         response = requests.post(
             f"{self.base_url}/models/{model.short_name}:generateContent",
             headers={"x-goog-api-key": self.api_key, "Content-Type": "application/json"},
-            json_data=payload, timeout=(10, self.timeout))
+            json_data=payload, timeout=(min(10, remaining), remaining))
         if response.status_code >= 400:
             raise GeminiHTTPError(response)
         try:
