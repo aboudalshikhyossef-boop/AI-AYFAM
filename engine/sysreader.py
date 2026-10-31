@@ -19,6 +19,20 @@ class SystemReader:
         except Exception:
             return ""
 
+    def read_text_limited(self, path: str, max_bytes: int) -> Optional[str]:
+        """Read a UTF-8 text file only when its byte size is within the limit.
+
+        Returns None when the file is too large or cannot be read.
+        """
+        try:
+            with open(path, "rb") as stream:
+                data = stream.read(max_bytes + 1)
+            if len(data) > max_bytes or b"\\x00" in data:
+                return None
+            return data.decode("utf-8", errors="replace")
+        except (OSError, ValueError):
+            return None
+
     def exists(self, path: str) -> bool:
         return os.path.exists(path)
 
@@ -67,7 +81,25 @@ class FakeSystem(SystemReader):
     def read_text(self, path: str) -> str:
         return self.files.get(path, "")
 
-    def exists(self, path: str) -> bool:
+    def read_text_limited(self, path: str, max_bytes: int) -> Optional[str]:
+        value = self.files.get(path)
+        if value is None:
+            return None
+        encoded = value.encode("utf-8", errors="replace")
+        if len(encoded) > max_bytes or b"\\x00" in encoded:
+            return None
+        return value
+
+    def stat(self, path: str):
+        value = self.files.get(path)
+        if value is None:
+            return None
+        class FakeStat:
+            st_size = len(value.encode("utf-8", errors="replace"))
+            st_mode = 0o100600
+        return FakeStat()
+
+    def exists(self, path: str):
         return path in self.files or any(f.startswith(path.rstrip("/") + "/") for f in self.files)
 
     def is_file(self, path: str) -> bool:
