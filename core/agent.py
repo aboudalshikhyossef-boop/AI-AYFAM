@@ -138,7 +138,13 @@ class AYFAMAgent(AgentV5Mixin):
         client = None
         try:
             self.ui.info(self._t("جلب معلومات تهديدات عامة من المصادر الموثوقة...", "Fetching public threat intelligence from authoritative sources..."))
-            client = GeminiThreatClient(key)
+            client = GeminiThreatClient(
+                key,
+                on_wait=lambda remaining: self.ui.info(self._t(
+                    f"انتظار حصة Gemini: يتبقى نحو {remaining:.0f} ثانية.",
+                    f"Gemini quota wait: approximately {remaining:.0f}s remaining.",
+                )),
+            )
             feed = client.fetch_threats(window_hours=window_hours)
             model = gemini_model_name(os.getenv("GEMINI_MODEL", DEFAULT_GEMINI_MODEL))
             self.ui.info(self._t("مطابقة النتائج مع الجهاز محلياً فقط...", "Matching results against this host locally only..."))
