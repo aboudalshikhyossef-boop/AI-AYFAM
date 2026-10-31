@@ -139,13 +139,14 @@ class TestHTTPClient(unittest.TestCase):
     def test_get_fallback_response_supports_iter_content(self, mock_urlopen):
         mock_resp = MagicMock()
         mock_resp.status = 200
-        mock_resp.read.return_value = b"abcdef"
+        mock_resp.read.side_effect = [b"abcdef", b""]
         mock_resp.headers.items.return_value = []
-        mock_resp.__enter__.return_value = mock_resp
         mock_urlopen.return_value = mock_resp
 
         response = http_client.get(self.url, stream=True)
-        self.assertEqual(list(response.iter_content(chunk_size=2)), [b"ab", b"cd", b"ef"])
+        self.assertIsNone(response._content)
+        self.assertEqual(list(response.iter_content(chunk_size=2)), [b"abcdef"])
+        mock_resp.close.assert_called_once()
 
     @patch("utils.http_client.REQUESTS_AVAILABLE", True)
     @patch("utils.http_client.requests")
@@ -163,3 +164,18 @@ class TestHTTPClient(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+    @patch("utils.http_client.REQUESTS_AVAILABLE", False)
+    @patch("urllib.request.urlopen")
+    def test_get_fallback_stream_is_lazy_and_reads_chunks(self, mock_urlopen):
+        mock_resp = MagicMock()
+        mock_resp.status = 200
+        mock_resp.read.side_effect = [b"ab", b"cd", b""]
+        mock_resp.headers.items.return_value = []
+        mock_urlopen.return_value = mock_resp
+
+        response = http_client.get(self.url, stream=True)
+        mock_resp.read.assert_not_called()
+        self.assertEqual(list(response.iter_content(chunk_size=2)), [b"ab", b"cd"])
+        self.assertEqual(mock_resp.read.call_count, 3)
+        mock_resp.close.assert_called_once()
