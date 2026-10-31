@@ -176,7 +176,7 @@ def test_gemini_response_is_parsed_and_uses_bounded_generation():
     assert post.call_args.args[0].endswith("/models/gemini-3.8-flash:generateContent")
     assert post.call_args.kwargs["headers"]["x-goog-api-key"] == "gemini-fake"
     payload = post.call_args.kwargs["json_data"]
-    assert payload["generationConfig"]["maxOutputTokens"] == 256
+    assert payload["generationConfig"]["maxOutputTokens"] == 2048
     assert "temperature" not in payload["generationConfig"]
 
 
