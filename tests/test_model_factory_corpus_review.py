@@ -222,6 +222,32 @@ def test_single_book_uses_contiguous_chunk_splits_and_boundary_guards(tmp_path: 
     assert len({record.document_id for record in records}) == 1
 
 
+def test_full_corpus_mode_trains_every_approved_chunk_without_held_out_pages(tmp_path: Path):
+    source = tmp_path / "single-book-raw.jsonl"
+    document_ids = _write_raw(source, 1)
+    output = tmp_path / "full-book-prepared.jsonl"
+
+    report = prepare_reviewed_corpus(
+        source,
+        output,
+        full_corpus_training=True,
+    )
+    records = list(iter_records(output))
+    manifest = json.loads(Path(report["manifest_path"]).read_text(encoding="utf-8"))
+
+    assert len(records) == 2
+    assert all(record.split == "train" for record in records)
+    assert {record.document_id for record in records} == {document_ids[0]}
+    assert report["split_strategy"] == "full_corpus"
+    assert report["full_corpus_training"] is True
+    assert report["records_by_split"] == {"train": 2, "validation": 0, "test": 0}
+    assert report["train_ratio"] == 1.0
+    assert report["validation_ratio"] == 0.0
+    assert report["test_ratio"] == 0.0
+    assert manifest["full_corpus_training"] is True
+    assert manifest["split_ratios"] == {"train": 1.0, "validation": 0.0, "test": 0.0}
+
+
 def test_raw_corpus_can_be_reviewed_before_license_is_provided(tmp_path: Path):
     source = tmp_path / "staged-without-license.jsonl"
     document_ids = _write_raw(source, 3)

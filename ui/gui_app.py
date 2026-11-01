@@ -2256,7 +2256,17 @@ class UnifiedCockpitWindow(QMainWindow):
         elif turn.action == "learn_online":
             self._run_learning(turn.query)
         elif turn.action == "route":
-            self._route_command(turn.cmd, turn.text)
+            intent = getattr(turn.cmd, "intent", None)
+            local_knowledge_intents = {
+                "explain", "concept_explore", "concept_link", "summarize_doc"
+            }
+            if (
+                intent in local_knowledge_intents
+                and self.agent.has_trained_local_model()
+            ):
+                self._ask_assistant(turn.text)
+            else:
+                self._route_command(turn.cmd, turn.text)
         else:
             self._ask_assistant(turn.text)
 
@@ -2269,12 +2279,23 @@ class UnifiedCockpitWindow(QMainWindow):
                 self.agent.last_answer_was_gap,
                 self.agent.last_provider_error,
                 self.agent.learning_governance.last_report,
+                self.agent.last_local_model_error,
             ),
             "المساعد الذكي", preserve_findings=True,
-            result_handler=lambda out: self._deliver_answer(out[0], text, out[1], out[2], out[3]),
+            result_handler=lambda out: self._deliver_answer(
+                out[0], text, out[1], out[2], out[3], out[4]
+            ),
         )
 
-    def _deliver_answer(self, answer: str, topic: str, gap: bool, provider_error: str = "", learning_report=None) -> None:
+    def _deliver_answer(
+        self,
+        answer: str,
+        topic: str,
+        gap: bool,
+        provider_error: str = "",
+        learning_report=None,
+        local_model_error: str = "",
+    ) -> None:
         self._say(answer)
         if learning_report:
             self._show_learning_report(learning_report)
@@ -2282,6 +2303,11 @@ class UnifiedCockpitWindow(QMainWindow):
             self.chat_display.append(
                 f"\n[تشخيص الاتصال الخارجي] {provider_error}\n"
                 "استخدمت الإجابة المحلية بدلاً من Gemini لهذه الرسالة."
+            )
+        if local_model_error:
+            self.chat_display.append(
+                "\n[تشخيص AYFAM المحلي] تعذّر تحميل النموذج المدرّب أو تشغيله: "
+                f"{local_model_error}"
             )
         if gap:
             self.chat_display.append_actions(

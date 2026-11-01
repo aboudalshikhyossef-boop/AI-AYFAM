@@ -9,6 +9,7 @@ import threading
 from PyQt6.QtCore import QThread, QTimer, Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QFileDialog,
+    QCheckBox,
     QFormLayout,
     QGroupBox,
     QScrollArea,
@@ -23,7 +24,9 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from model_factory.active_model import ACTIVE_MODEL_MANIFEST, read_active_model_manifest
 from model_factory.corpus_review import inspect_raw_corpus, prepare_reviewed_corpus
+from model_factory.data import fingerprint_file
 from model_factory.corpus_workspace import default_corpus_root, import_raw_corpus
 from model_factory.document_ingestion import DocumentInput, ingest_documents
 from ui.views.corpus_review_dialog import CorpusReviewDialog
@@ -39,9 +42,11 @@ _PHASE_LABELS = {
     "validating_corpus": "التحقق من corpus ومصدر البيانات والتقسيمات",
     "preparing_tokenizer": "تجهيز tokenizer من بيانات التدريب فقط",
     "resuming_checkpoint": "تحميل checkpoint السابق",
-    "training": "تدريب Transformer محليًا على المعالج",
-    "evaluating": "تقييم النموذج على مجموعة validation",
-    "completed": "اكتملت العملية",
+    "evaluating_before": "قياس خط الأساس قبل تحديث الأوزان",
+    "training": "تدريب Transformer محليًا على كامل مجموعة Train",
+    "evaluating_after": "قياس التحسن بعد التدريب على Validation وTest",
+    "exporting_model": "حفظ نسخة المحادثة وتفعيل النموذج المحلي",
+    "completed": "اكتملت العملية وأصبح النموذج متاحًا في المحادثة",
 }
 
 
@@ -136,6 +141,7 @@ class CorpusReviewPreparationWorker(QThread):
                 train_ratio=float(self.selection["train_ratio"]),
                 validation_ratio=float(self.selection["validation_ratio"]),
                 test_ratio=float(self.selection["test_ratio"]),
+                full_corpus_training=bool(self.selection.get("full_corpus_training", False)),
             )
         except Exception as exc:
             self.failed.emit(str(exc))
@@ -150,6 +156,7 @@ class ModelTrainingWorker(QThread):
     """Run model training away from the GUI thread and expose safe progress signals."""
 
     phase_changed = pyqtSignal(str)
+    plan_ready = pyqtSignal(object)
     progress_changed = pyqtSignal(object)
     completed = pyqtSignal(object)
     failed = pyqtSignal(str)
@@ -158,15 +165,21 @@ class ModelTrainingWorker(QThread):
         super().__init__(parent)
         self.config = config
         self._stop_event = threading.Event()
+        self._plan: dict[str, object] = {}
 
     def request_stop(self) -> None:
         self._stop_event.set()
+
+    def _report_plan(self, payload: dict[str, object]) -> None:
+        self._plan = dict(payload)
+        self.plan_ready.emit(self._plan)
 
     def run(self) -> None:
         try:
             result = run_training(
                 self.config,
                 on_phase=self.phase_changed.emit,
+                on_plan=self._report_plan,
                 on_step=self._report_step,
                 should_stop=self._stop_event.is_set,
             )
@@ -176,8 +189,37 @@ class ModelTrainingWorker(QThread):
             self.completed.emit(result.to_dict())
 
     def _report_step(self, step_result) -> None:
+        starting_step = int(self._plan.get("starting_step", 0))
+        run_step = max(0, step_result.step - starting_step)
+        steps_per_epoch = max(1, int(self._plan.get("optimizer_steps_per_epoch", 1)))
+        batches_per_epoch = max(1, int(self._plan.get("batches_per_epoch", 1)))
+        gradient_accumulation = max(1, int(self._plan.get("gradient_accumulation_steps", 1)))
+        micro_batch = max(1, int(self._plan.get("micro_batch_size", 1)))
+        blocks_per_epoch = max(1, int(self._plan.get("train_blocks_per_epoch", 1)))
+        total_tokens = max(0, int(self._plan.get("train_tokens", 0)))
+        block_size = max(1, int(self._plan.get("block_size", 1)))
+        epoch = min(
+            max(1, int(self._plan.get("epochs", 1))),
+            max(1, (run_step + steps_per_epoch - 1) // steps_per_epoch),
+        )
+        steps_in_epoch = ((run_step - 1) % steps_per_epoch) + 1 if run_step else 0
+        batches_seen = min(batches_per_epoch, steps_in_epoch * gradient_accumulation)
+        blocks_seen = min(blocks_per_epoch, batches_seen * micro_batch)
+        tokens_seen = min(
+            total_tokens,
+            int(round(total_tokens * blocks_seen / blocks_per_epoch)),
+        )
         self.progress_changed.emit({
-            "step": step_result.step,
+            "step": run_step,
+            "global_step": step_result.step,
+            "epoch": epoch,
+            "epochs": int(self._plan.get("epochs", 1)),
+            "steps_in_epoch": steps_in_epoch,
+            "steps_per_epoch": steps_per_epoch,
+            "blocks_seen": blocks_seen,
+            "blocks_total": blocks_per_epoch,
+            "tokens_seen": tokens_seen,
+            "tokens_total": total_tokens,
             "loss": step_result.loss,
             "learning_rate": step_result.learning_rate,
         })
@@ -241,6 +283,15 @@ class ModelTrainingView(QWidget):
         root.addWidget(hardware_group)
         self._refresh_hardware_summary()
 
+        active_group = QGroupBox("حالة النموذج المحلي المستخدم في المحادثة")
+        active_layout = QVBoxLayout(active_group)
+        self.active_model_label = QLabel()
+        self.active_model_label.setWordWrap(True)
+        self.active_model_label.setObjectName("secondaryText")
+        active_layout.addWidget(self.active_model_label)
+        root.addWidget(active_group)
+        self._refresh_active_model_status()
+
         raw_group = QGroupBox("1. استيراد ملف البيانات الخام")
         raw_layout = QVBoxLayout(raw_group)
         raw_row = QHBoxLayout()
@@ -285,18 +336,33 @@ class ModelTrainingView(QWidget):
         prepared_layout.addLayout(prepared_row)
 
         options = QFormLayout()
-        self.steps_input = QSpinBox()
-        self.steps_input.setRange(1, 100_000)
-        self.steps_input.setValue(20)
-        self.steps_input.setToolTip("عدد خطوات optimizer الإجمالي المستهدف. ابدأ بتجربة قصيرة.")
-        self.vocab_input = QSpinBox()
-        self.vocab_input.setRange(260, 2_048)
-        self.vocab_input.setSingleStep(64)
-        self.vocab_input.setValue(512)
-        self.vocab_input.setToolTip("حجم مفردات Byte BPE. يتم تعلمها من split=train فقط.")
-        options.addRow("خطوات التدريب الأولية:", self.steps_input)
-        options.addRow("حجم مفردات BPE:", self.vocab_input)
+        self.epochs_input = QSpinBox()
+        self.epochs_input.setRange(1, 100)
+        self.epochs_input.setValue(3)
+        self.epochs_input.setToolTip(
+            "عدد مرات المرور الكاملة على كل مقاطع Train. تُحسب خطوات optimizer تلقائيًا من حجم البيانات."
+        )
+        self.vocab_auto_label = QLabel(
+            "تلقائي — يختار AYFAM حجم BPE بعد قياس UTF-8 bytes والذاكرة المتاحة. "
+            "512 ليس عدد كلمات؛ إنه هدف لحجم قاموس الرموز."
+        )
+        self.vocab_auto_label.setWordWrap(True)
+        self.vocab_auto_label.setObjectName("secondaryText")
+        self.resume_checkbox = QCheckBox("استكمال آخر checkpoint إذا كان من مجموعة البيانات نفسها")
+        self.resume_checkbox.setChecked(True)
+        self.resume_checkbox.setToolTip(
+            "يُستكمل النموذج السابق فقط عند تطابق بصمة corpus وملف tokenizer؛ وإلا يبدأ نموذج جديد."
+        )
+        options.addRow("مرات المرور الكاملة (Epochs):", self.epochs_input)
+        options.addRow("حجم قاموس الرموز:", self.vocab_auto_label)
+        options.addRow(self.resume_checkbox)
         prepared_layout.addLayout(options)
+        self.workload_label = QLabel(
+            "بعد اختيار Corpus سيحسب AYFAM عدد السجلات والـTokens والكتل وخطوات كل Epoch تلقائيًا."
+        )
+        self.workload_label.setWordWrap(True)
+        self.workload_label.setObjectName("secondaryText")
+        prepared_layout.addWidget(self.workload_label)
         root.addWidget(prepared_group)
 
         actions = QHBoxLayout()
@@ -319,12 +385,12 @@ class ModelTrainingView(QWidget):
         progress_layout.addWidget(self.status_label)
 
         self.progress_bar = QProgressBar()
-        self.progress_bar.setRange(0, 20)
+        self.progress_bar.setRange(0, 1)
         self.progress_bar.setValue(0)
         progress_layout.addWidget(self.progress_bar)
 
         metrics = QHBoxLayout()
-        self.step_label = QLabel("الخطوة: 0 / 20")
+        self.step_label = QLabel("الخطوة: لم يبدأ الحساب بعد")
         self.loss_label = QLabel("Loss: —")
         self.learning_rate_label = QLabel("Learning rate: —")
         self.memory_label = QLabel("ذاكرة العملية: —")
@@ -333,7 +399,7 @@ class ModelTrainingView(QWidget):
             metrics.addWidget(label)
         progress_layout.addLayout(metrics)
 
-        self.output_label = QLabel("مكان الحفظ: سيُنشأ محليًا عند بدء التدريب")
+        self.output_label = QLabel("مكان الحفظ: checkpoint + inference artifact محليان")
         self.output_label.setWordWrap(True)
         progress_layout.addWidget(self.output_label)
         root.addWidget(progress_group)
@@ -356,6 +422,22 @@ class ModelTrainingView(QWidget):
         self.scroll_area.setWidget(content)
         outer.addWidget(self.scroll_area, 1)
 
+    def _refresh_active_model_status(self) -> None:
+        manifest = read_active_model_manifest()
+        if manifest is None:
+            self.active_model_label.setText(
+                "لا يوجد نموذج عصبي مدرّب ومفعّل للمحادثة بعد. "
+                "بعد أول تدريب ناجح سيظهر هنا checkpoint الفعّال."
+            )
+            return
+        self.active_model_label.setText(
+            f"النموذج فعّال في المحادثة المحلية | "
+            f"Global step: {int(manifest.get('global_step', 0)):,} | "
+            f"Epochs تراكمية: {int(manifest.get('epochs_completed', 0))} | "
+            f"Parameters: {int(manifest.get('model_parameters', 0)):,} | "
+            f"Corpus: {manifest.get('data_fingerprint', '')[:16]}…"
+        )
+
     def _refresh_hardware_summary(self) -> None:
         self.hardware_label.setText(
             f"RAM الكلية: {self.profile.total_ram_mb:,} MB | "
@@ -364,11 +446,12 @@ class ModelTrainingView(QWidget):
             f"CUDA: {'مكتشف' if self.profile.cuda_device_detected else 'غير مكتشف'}"
         )
         self.plan_label.setText(
-            f"الخطة المحافظة: micro-batch={self.plan.micro_batch_size}، "
-            f"gradient accumulation={self.plan.gradient_accumulation_steps}، "
+            f"خطة الذاكرة: micro-batch={self.plan.micro_batch_size}، "
+            f"تجميع التدرج={self.plan.gradient_accumulation_steps}، "
             f"CPU threads={self.plan.num_threads}، "
-            f"checkpoint كل {self.plan.checkpoint_interval_steps} خطوة. "
-            "أبعاد النموذج لا تتغير تلقائيًا."
+            f"حفظ checkpoint كل {self.plan.checkpoint_interval_steps} خطوة. "
+            "كل كتل Train تمر كاملة في كل Epoch. وضع تدريب كامل الكتاب يستخدم 100% من المقاطع؛ "
+            "وضع التقييم المستقل يحجز Validation وTest ولا يدرّب عليهما."
         )
 
     def _browse_raw_corpus(self) -> None:
@@ -635,34 +718,65 @@ class ModelTrainingView(QWidget):
         output_dir = (
             Path.home() / ".local" / "share" / "ayfam" / "training" / "runs" / f"run-{run_id}"
         )
+        try:
+            current_fingerprint = fingerprint_file(corpus_path)
+        except OSError as exc:
+            self.status_label.setText(f"تعذّر قراءة بصمة Corpus: {exc}")
+            return
+
+        resume_checkpoint = None
+        tokenizer_config_path = None
+        previous_epochs_completed = 0
+        previous = read_active_model_manifest() if self.resume_checkbox.isChecked() else None
+        if previous and previous.get("data_fingerprint") == current_fingerprint:
+            previous_checkpoint = Path(previous["checkpoint_path"]).expanduser()
+            previous_tokenizer = Path(str(previous.get("tokenizer_path") or "")).expanduser()
+            if previous_checkpoint.is_file() and previous_tokenizer.is_file():
+                resume_checkpoint = previous_checkpoint
+                tokenizer_config_path = previous_tokenizer
+                previous_epochs_completed = int(previous.get("epochs_completed", 0))
+
         config = TrainingRunConfig(
             corpus_path=corpus_path,
             checkpoint_path=output_dir / "latest.pt",
-            max_steps=self.steps_input.value(),
+            max_steps=None,
+            epochs=self.epochs_input.value(),
             device="cpu",
             tokenizer_mode="bpe",
-            tokenizer_vocab_size=self.vocab_input.value(),
+            tokenizer_vocab_size=None,
+            tokenizer_config_path=tokenizer_config_path,
             tokenizer_output_path=output_dir / "tokenizer.json",
+            resume_checkpoint=resume_checkpoint,
+            previous_epochs_completed=previous_epochs_completed,
+            inference_artifact_path=output_dir / "inference.pt",
+            active_model_manifest_path=ACTIVE_MODEL_MANIFEST,
         )
 
         self.log_output.clear()
-        self.progress_bar.setRange(0, config.max_steps)
+        self.progress_bar.setRange(0, 1)
         self.progress_bar.setValue(0)
-        self.step_label.setText(f"الخطوة: 0 / {config.max_steps}")
+        self.step_label.setText("حساب حجم مجموعة Train والـTokens...")
         self.loss_label.setText("Loss: —")
         self.learning_rate_label.setText("Learning rate: —")
-        self.output_label.setText(f"مكان الحفظ: {output_dir}")
-        self.status_label.setText("يتم تجهيز جلسة التدريب والتحقق من البيانات…")
+        self.output_label.setText(f"حفظ الجلسة: {output_dir}")
+        self.workload_label.setText("يجري قياس النص الفعلي لاختيار قاموس الرموز وعدد الخطوات...")
+        self.status_label.setText(
+            "سيُستخدم النموذج السابق بعد التحقق من تطابق corpus."
+            if resume_checkpoint else "يتم تجهيز خطة تدريب كاملة من أوزان جديدة..."
+        )
+        if resume_checkpoint is not None:
+            self._append_log(f"استكمال checkpoint: {resume_checkpoint}")
         self.start_button.setEnabled(False)
         self.browse_button.setEnabled(False)
         self.prepare_button.setEnabled(False)
         self.raw_browse_button.setEnabled(False)
-        self.steps_input.setEnabled(False)
-        self.vocab_input.setEnabled(False)
+        self.epochs_input.setEnabled(False)
+        self.resume_checkbox.setEnabled(False)
         self.stop_button.setEnabled(True)
 
         self.worker = ModelTrainingWorker(config, self)
         self.worker.phase_changed.connect(self._on_phase_changed)
+        self.worker.plan_ready.connect(self._on_training_plan)
         self.worker.progress_changed.connect(self._on_progress)
         self.worker.completed.connect(self._on_completed)
         self.worker.failed.connect(self._on_failed)
@@ -684,29 +798,131 @@ class ModelTrainingView(QWidget):
         self.status_label.setText(label)
         self._append_log(label)
 
+    def _on_training_plan(self, payload: dict) -> None:
+        total_steps = int(payload.get("additional_steps", 1))
+        self.progress_bar.setRange(0, max(1, total_steps))
+        self.progress_bar.setValue(0)
+        self._training_plan = payload
+        train_records = int(payload.get("train_records", 0))
+        train_tokens = int(payload.get("train_tokens", 0))
+        blocks = int(payload.get("train_blocks_per_epoch", 0))
+        steps_per_epoch = int(payload.get("optimizer_steps_per_epoch", 0))
+        epochs = int(payload.get("epochs", 0))
+        vocab_target = int(payload.get("tokenizer_vocab_target", 0))
+        vocab_actual = int(payload.get("tokenizer_vocab_actual", 0))
+        summary = (
+            f"Train: {train_records:,} مقطع | {train_tokens:,} Token هدف لكل Epoch | "
+            f"{blocks:,} كتلة بطول {payload.get('block_size')} Token. "
+            f"كل Epoch = {steps_per_epoch:,} خطوة Optimizer؛ "
+            f"{epochs} Epoch = {total_steps:,} خطوة إضافية. "
+            f"BPE تلقائي: الهدف {vocab_target}، الفعلي {vocab_actual}."
+        )
+        if payload.get("starting_step"):
+            summary += f" استكمال من global step {payload['starting_step']}."
+        self.workload_label.setText(summary)
+        self._append_log(summary)
+        evaluation_split = str(payload.get("evaluation_split", "validation/test (held-out)"))
+        if evaluation_split == "train (in-sample)":
+            self._append_log(
+                "وضع كامل الكتاب: 100% من المقاطع المقبولة تدخل في Train في كل Epoch. "
+                "المقارنة التالية على Train نفسه وليست اختبارًا مستقلاً للتعميم."
+            )
+        else:
+            self._append_log(
+                "وضع التقييم المستقل: جميع كتل Train تدخل في كل Epoch؛ "
+                "Validation وTest للقياس فقط ولا تدخلان في تحديث الأوزان."
+            )
+        self._append_log(
+            f"خطة الذاكرة: micro-batch={payload.get('micro_batch_size')}, "
+            f"gradient accumulation={payload.get('gradient_accumulation_steps')}, "
+            f"block size={payload.get('block_size')}."
+        )
+
     def _on_progress(self, payload: dict) -> None:
         step = int(payload.get("step", 0))
         loss = float(payload.get("loss", 0.0))
         learning_rate = float(payload.get("learning_rate", 0.0))
+        epoch = int(payload.get("epoch", 1))
+        epochs = int(payload.get("epochs", 1))
         self.progress_bar.setValue(step)
-        self.step_label.setText(f"الخطوة: {step} / {self.progress_bar.maximum()}")
-        self.loss_label.setText(f"Loss: {loss:.4f}")
+        self.step_label.setText(
+            f"الخطوة الإضافية: {step:,} / {self.progress_bar.maximum():,} | "
+            f"Epoch: {epoch}/{epochs} | "
+            f"كتل: {int(payload.get('blocks_seen', 0)):,}/{int(payload.get('blocks_total', 0)):,}"
+        )
+        self.loss_label.setText(f"Training loss: {loss:.4f}")
         self.learning_rate_label.setText(f"Learning rate: {learning_rate:.3g}")
-        self._append_log(f"step={step} | loss={loss:.4f} | lr={learning_rate:.3g}")
+        self._append_log(
+            f"epoch={epoch}/{epochs} | step={step} | "
+            f"train blocks={payload.get('blocks_seen')}/{payload.get('blocks_total')} | "
+            f"tokens≈{int(payload.get('tokens_seen', 0)):,}/{int(payload.get('tokens_total', 0)):,} | "
+            f"loss={loss:.4f} | lr={learning_rate:.3g}"
+        )
+
+    @staticmethod
+    def _log_evaluation_change(label: str, before: dict | None, after: dict | None) -> str:
+        if not before or not after:
+            return f"{label}: لا تتوفر مقارنة كافية."
+        before_loss = float(before.get("loss", 0.0))
+        after_loss = float(after.get("loss", 0.0))
+        change = before_loss - after_loss
+        loss_state = "تحسن" if change > 0 else "تراجع" if change < 0 else "لم يتغير"
+        return (
+            f"{label}: Loss {before_loss:.4f} → {after_loss:.4f} "
+            f"({loss_state} بمقدار {change:+.4f}) | "
+            f"Next-token accuracy {float(before.get('next_token_accuracy', 0.0)):.1%} → "
+            f"{float(after.get('next_token_accuracy', 0.0)):.1%}."
+        )
 
     def _on_completed(self, payload: dict) -> None:
         stopped = bool(payload.get("stopped_early"))
-        state = "توقف التدريب بأمان" if stopped else "اكتمل التدريب"
-        validation = payload.get("validation") or {}
-        self.status_label.setText(state)
-        self._append_log(f"{state}: {payload.get('completed_steps')} خطوة")
-        if validation:
+        state = "توقف التدريب بأمان بعد حفظ الأوزان" if stopped else "اكتمل التدريب وحُفظ النموذج"
+        self.status_label.setText(state + " — أصبح متاحًا للمحادثة المحلية")
+        self._append_log(state)
+        self._append_log(
+            f"الخطوات المنفذة: {payload.get('completed_steps')} / "
+            f"{payload.get('requested_steps')} | Epochs مكتملة: "
+            f"{payload.get('epochs_completed')}/{payload.get('epochs_requested')} "
+            f"في هذه الجلسة | الإجمالي التراكمي: {payload.get('epochs_completed_total')}"
+        )
+        self._append_log(
+            f"البيانات في كل Epoch: {int(payload.get('train_records', 0)):,} مقطع | "
+            f"{int(payload.get('train_tokens_per_epoch', 0)):,} Token | "
+            f"{int(payload.get('train_blocks_per_epoch', 0)):,} كتلة"
+        )
+        self._append_log(
+            f"BPE vocabulary: {payload.get('tokenizer_vocab_size')} "
+            f"(target {payload.get('tokenizer_vocab_target')}) | "
+            f"Model parameters: {int(payload.get('model_parameters', 0)):,}"
+        )
+        if payload.get("evaluation_split") == "train (in-sample)":
             self._append_log(
-                f"Validation loss={validation.get('loss', float('nan')):.4f} | "
-                f"perplexity={validation.get('perplexity', float('nan')):.3f}"
+                self._log_evaluation_change(
+                    "Train in-sample قبل/بعد",
+                    payload.get("evaluation_before"),
+                    payload.get("evaluation_after"),
+                )
+            )
+            self._append_log(
+                "تنبيه: انخفاض Train Loss يثبت أن النموذج تحسّن على نصوص التدريب، "
+                "ولا يثبت وحده قدرته على التعميم أو الاستدلال."
+            )
+        else:
+            self._append_log(
+                self._log_evaluation_change(
+                    "Validation قبل/بعد", payload.get("validation_before"), payload.get("validation")
+                )
+            )
+            self._append_log(
+                self._log_evaluation_change(
+                    "Test قبل/بعد", payload.get("test_before"), payload.get("test")
+                )
             )
         self._append_log(f"Checkpoint: {payload.get('checkpoint_path')}")
-        self._append_log(f"Model parameters: {payload.get('model_parameters'):,}")
+        self._append_log(f"Tokenizer: {payload.get('tokenizer_path')}")
+        self._append_log(f"Inference artifact: {payload.get('inference_artifact_path')}")
+        self._append_log(f"النموذج الفعال للمحادثة: {payload.get('active_model_manifest_path')}")
+        self._refresh_active_model_status()
         self.stop_button.setEnabled(False)
 
     def _on_failed(self, message: str) -> None:
@@ -723,6 +939,6 @@ class ModelTrainingView(QWidget):
         self.browse_button.setEnabled(True)
         self.prepare_button.setEnabled(True)
         self.raw_browse_button.setEnabled(True)
-        self.steps_input.setEnabled(True)
-        self.vocab_input.setEnabled(True)
+        self.epochs_input.setEnabled(True)
+        self.resume_checkbox.setEnabled(True)
         self.stop_button.setEnabled(False)

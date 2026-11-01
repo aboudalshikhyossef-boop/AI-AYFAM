@@ -165,6 +165,15 @@ class CorpusReviewDialog(QDialog):
         self.train_ratio.setValue(90)
         self.validation_ratio.setValue(5)
         self.test_ratio.setValue(5)
+        self.full_corpus_checkbox = QCheckBox(
+            "تدريب كامل الكتاب: استخدام 100% من المقاطع المقبولة لتحديث الأوزان"
+        )
+        self.full_corpus_checkbox.setChecked(True)
+        self.full_corpus_checkbox.setToolTip(
+            "يستخدم كل مقطع مقبول في Train. تصبح المقاييس بعد التدريب قياسًا على بيانات التدريب نفسها، "
+            "وليست اختبارًا مستقلًا للتعميم."
+        )
+        split.addRow(self.full_corpus_checkbox)
         split.addRow("Train:", self.train_ratio)
         split.addRow("Validation:", self.validation_ratio)
         split.addRow("Test:", self.test_ratio)
@@ -184,6 +193,8 @@ class CorpusReviewDialog(QDialog):
                 "لأن التوزيع يتم على مستوى الكتب وليس عدد المقاطع."
             )
         split.addRow(self.split_notice)
+        self.full_corpus_checkbox.toggled.connect(self._update_split_mode)
+        self._update_split_mode(self.full_corpus_checkbox.isChecked())
         root.addWidget(split_group)
 
         self.error_label = QLabel("")
@@ -201,6 +212,23 @@ class CorpusReviewDialog(QDialog):
         self.scroll_area.setWidget(content)
         outer.addWidget(self.scroll_area, 1)
         outer.addWidget(buttons)
+
+    def _update_split_mode(self, full_corpus_training: bool) -> None:
+        for control in (self.train_ratio, self.validation_ratio, self.test_ratio):
+            control.setEnabled(not full_corpus_training)
+        if full_corpus_training:
+            self.split_notice.setText(
+                "وضع تدريب كامل الكتاب مفعّل: 100% من المقاطع المقبولة، من كل الصفحات التي استُخرج منها نص، "
+                "ستدخل في Train في كل Epoch. لن نحجز صفحات من هذا الكتاب لـValidation/Test. "
+                "لذلك سيقيس AYFAM Loss قبل/بعد على بيانات التدريب نفسها؛ هذا يثبت تغير التنبؤ على المادة "
+                "التي شاهدها، لكنه ليس اختبارًا مستقلًا للتعميم."
+            )
+        else:
+            self.split_notice.setText(
+                "وضع التقييم المستقل: تُحجز أجزاء Validation وTest ولا تُستخدم لتحديث الأوزان. "
+                "مع كتاب واحد تُقسّم المقاطع بالتتابع وتُستبعد مقاطع حدودية لتقليل تسرب النص المتداخل؛ "
+                "ومع ثلاثة كتب مستقلة أو أكثر يُعزل كل كتاب في مجموعة واحدة."
+            )
 
     def _populate_documents(self) -> None:
         self._loading = True
@@ -353,7 +381,11 @@ class CorpusReviewDialog(QDialog):
 
     def _accept_review(self) -> None:
         self._save_current()
-        if self.train_ratio.value() + self.validation_ratio.value() + self.test_ratio.value() != 100:
+        full_corpus_training = self.full_corpus_checkbox.isChecked()
+        if (
+            not full_corpus_training
+            and self.train_ratio.value() + self.validation_ratio.value() + self.test_ratio.value() != 100
+        ):
             self.error_label.setText("يجب أن يكون مجموع نسب Train وValidation وTest مساوياً 100%.")
             return
 
@@ -412,7 +444,11 @@ class CorpusReviewDialog(QDialog):
         if active_documents == 0:
             self.error_label.setText("لا توجد مقاطع متبقية في corpus بعد الاستبعاد.")
             return
-        if len(active_groups) < 3 and any(count < 5 for count in active_chunk_counts):
+        if (
+            not full_corpus_training
+            and len(active_groups) < 3
+            and any(count < 5 for count in active_chunk_counts)
+        ):
             self.error_label.setText(
                 "لديك أقل من ثلاثة كتب مستقلة. احتفظ بخمسة مقاطع على الأقل في كل كتاب "
                 "حتى يمكن إنشاء أجزاء Train وValidation وTest مع استبعاد المقاطع الحدودية المتداخلة."
@@ -423,9 +459,10 @@ class CorpusReviewDialog(QDialog):
             "excluded_documents": set(self.excluded_documents),
             "excluded_chunks": set(self.excluded_chunks),
             "metadata_overrides": {key: dict(value) for key, value in self.metadata_overrides.items()},
-            "train_ratio": self.train_ratio.value() / 100.0,
-            "validation_ratio": self.validation_ratio.value() / 100.0,
-            "test_ratio": self.test_ratio.value() / 100.0,
+            "train_ratio": 1.0 if full_corpus_training else self.train_ratio.value() / 100.0,
+            "validation_ratio": 0.0 if full_corpus_training else self.validation_ratio.value() / 100.0,
+            "test_ratio": 0.0 if full_corpus_training else self.test_ratio.value() / 100.0,
+            "full_corpus_training": full_corpus_training,
         }
         self.accept()
 

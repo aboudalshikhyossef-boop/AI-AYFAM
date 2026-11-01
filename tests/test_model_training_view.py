@@ -37,8 +37,40 @@ def test_training_view_does_not_start_import_or_training_on_construction():
     assert isinstance(view.scroll_area, QScrollArea)
     assert view.scroll_area.widget() is not None
     assert not view.stop_button.isEnabled()
-    assert view.steps_input.value() == 20
-    assert view.vocab_input.value() == 512
+    assert view.epochs_input.value() == 3
+    assert view.resume_checkbox.isChecked()
+    assert "تلقائي" in view.vocab_auto_label.text()
+    assert view.active_model_label.text()
+    assert not hasattr(view, "steps_input")
+    assert not hasattr(view, "vocab_input")
+    view.memory_timer.stop()
+    view.close()
+    view.deleteLater()
+    APP.processEvents()
+
+
+def test_training_workspace_displays_calculated_full_epoch_workload():
+    view = ModelTrainingView()
+    view._on_training_plan({
+        "train_records": 576,
+        "train_tokens": 75_000,
+        "train_blocks_per_epoch": 586,
+        "batches_per_epoch": 586,
+        "optimizer_steps_per_epoch": 147,
+        "epochs": 3,
+        "additional_steps": 441,
+        "starting_step": 0,
+        "block_size": 128,
+        "micro_batch_size": 1,
+        "gradient_accumulation_steps": 4,
+        "tokenizer_vocab_target": 512,
+        "tokenizer_vocab_actual": 512,
+    })
+
+    assert view.progress_bar.maximum() == 441
+    assert "576 مقطع" in view.workload_label.text()
+    assert "147 خطوة Optimizer" in view.workload_label.text()
+    assert "3 Epoch" in view.workload_label.text()
     view.memory_timer.stop()
     view.close()
     view.deleteLater()
@@ -104,7 +136,8 @@ def test_single_book_review_is_scrollable_and_accepts_license_after_extraction(t
 
     assert dialog.scroll_area.widget() is not None
     assert dialog.findChild(QDialogButtonBox) is not None
-    assert "أقل من 3 كتب مستقلة" in dialog.split_notice.text()
+    assert dialog.full_corpus_checkbox.isChecked()
+    assert "100%" in dialog.split_notice.text()
     assert dialog.license_input.text() == ""
 
     dialog.license_input.setText("1 One book")
@@ -116,7 +149,10 @@ def test_single_book_review_is_scrollable_and_accepts_license_after_extraction(t
     dialog._accept_review()
 
     selection = dialog.selection()
-    assert selection["train_ratio"] == 0.90
+    assert selection["full_corpus_training"] is True
+    assert selection["train_ratio"] == 1.0
+    assert selection["validation_ratio"] == 0.0
+    assert selection["test_ratio"] == 0.0
     assert selection["excluded_documents"] == set()
     assert selection["metadata_overrides"][document_id]["license"] == (
         "Written permission from the rights holder"
@@ -160,9 +196,11 @@ def test_corpus_review_dialog_previews_documents_and_accepts_valid_ratios(tmp_pa
     assert dialog.chunk_number.minimum() == 1
     assert dialog.chunk_number.maximum() == 1
 
+    dialog.full_corpus_checkbox.setChecked(False)
     dialog._accept_review()
 
     selection = dialog.selection()
+    assert selection["full_corpus_training"] is False
     assert selection["train_ratio"] == 0.90
     assert selection["validation_ratio"] == 0.05
     assert selection["test_ratio"] == 0.05

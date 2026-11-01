@@ -83,6 +83,8 @@ class AYFAMAgent(AgentV5Mixin):
         self.chat_engine = ConversationEngine(self.kb, self.nlp, self.phrases)
         self.last_answer_was_gap = False
         self.last_provider_error = ""
+        self.last_local_model_error = ""
+        self.last_local_model_report = None
 
         # ── Conversation state ──
         self._chat_history = []   # [(role, msg)]
@@ -183,6 +185,14 @@ class AYFAMAgent(AgentV5Mixin):
             if client:
                 client.close()
 
+    def has_trained_local_model(self) -> bool:
+        """Return whether a completed AYFAM neural artifact is active for chat."""
+        try:
+            from model_factory.local_chat import has_active_local_model
+            return has_active_local_model()
+        except Exception:
+            return False
+
     def ask_ai_or_local(self, prompt: str, history: list | None = None) -> str:
         """استشارة OpenAI أو Gemini بأمان، ثم التراجع إلى المحرك المحلي.
 
@@ -190,7 +200,82 @@ class AYFAMAgent(AgentV5Mixin):
         """
         self.last_answer_was_gap = False
         self.last_provider_error = ""
+        self.last_local_model_error = ""
+        self.last_local_model_report = None
         self.learning_governance.last_report = None
+
+        # The trained local checkpoint takes priority over online providers.
+        # Generated text and retrieved book excerpts are clearly separated.
+        try:
+            from model_factory.local_chat import answer_with_active_model
+            local_result = answer_with_active_model(prompt, history=history)
+        except Exception as exc:
+            local_result = None
+            self.last_local_model_error = str(exc)
+        if local_result is not None:
+            self.last_local_model_report = local_result
+            lines = [
+                "🧠 [AYFAM — النموذج العصبي المحلي المدرّب]",
+                (
+                    f"Checkpoint global step: {local_result['global_step']:,} | "
+                    f"Epochs تراكمية: {local_result['epochs_completed']} | "
+                    f"Parameters: {local_result['model_parameters']:,} | "
+                    f"Device: {local_result['device']}"
+                ),
+                (
+                    f"Prompt tokens: {local_result['prompt_tokens']} | "
+                    f"Generated tokens: {local_result['generated_tokens']}"
+                ),
+                "",
+                "النص الذي ولّده Transformer من أوزانه الحالية:",
+                local_result["generated_text"] or "لم ينتج النموذج رموزًا نصية في هذه المحاولة.",
+            ]
+            if local_result.get("evaluation_split") == "train (in-sample)":
+                before = local_result.get("evaluation_before") or {}
+                after = local_result.get("evaluation_after") or {}
+                if before and after:
+                    lines.append(
+                        "Train Loss (قياس على بيانات التدريب نفسها، وليس اختبارًا مستقلاً): "
+                        f"{float(before.get('loss', 0.0)):.4f} → "
+                        f"{float(after.get('loss', 0.0)):.4f}"
+                    )
+                    lines.append(
+                        "Train next-token accuracy: "
+                        f"{float(before.get('next_token_accuracy', 0.0)):.1%} → "
+                        f"{float(after.get('next_token_accuracy', 0.0)):.1%}"
+                    )
+            else:
+                for label, before_key, after_key in (
+                    ("Validation", "validation_before", "validation_after"),
+                    ("Test", "test_before", "test_after"),
+                ):
+                    before = local_result.get(before_key) or {}
+                    after = local_result.get(after_key) or {}
+                    if before and after:
+                        lines.append(
+                            f"{label} Loss (قبل ← بعد): "
+                            f"{float(before.get('loss', 0.0)):.4f} → "
+                            f"{float(after.get('loss', 0.0)):.4f}"
+                        )
+            passages = local_result.get("passages") or []
+            if passages:
+                lines.extend(["", "مقاطع عثر عليها AYFAM في Corpus المحلي (مصادر مساعدة، وليست النص المولّد):"])
+                for index, passage in enumerate(passages, start=1):
+                    page = passage.get("page") or "غير محددة"
+                    chapter = passage.get("chapter") or "فصل غير محدد"
+                    lines.append(
+                        f"{index}. {passage.get('title') or passage.get('source')} — "
+                        f"{chapter} — صفحة {page}"
+                    )
+                    lines.append(str(passage.get("excerpt") or ""))
+            else:
+                lines.extend(["", "لم يعثر البحث المحلي على مقطع واضح مطابق في Corpus المرتبط بهذا النموذج."])
+            lines.extend([
+                "",
+                "ملاحظة: هذا توليد عصبي محلي مباشر، وليس ضمانًا لصحة الإجابة أو دليلًا على الاستدلال المكتمل. "
+                "تُعرض مقتطفات المصدر منفصلة كي تستطيع مقارنة ما ولّده النموذج بما ورد في كتبك.",
+            ])
+            return "\n".join(lines)
         persona = (
             "أنت AI AYFAM، مساعد أمن معلومات على لينكس. أجب بلغة المستخدم بإيجاز ودقة. "
             "فكّر قبل الجواب: افهم قصد المستخدم، وإن كان في كلامه مفهوم خاطئ فصححه بلطف مع السبب. "
