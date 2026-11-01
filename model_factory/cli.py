@@ -11,6 +11,7 @@ from model_factory.corpus_tools import prepare_corpus, validate_prepared_corpus
 from model_factory.data import iter_records, validate_corpus
 from model_factory.hardware import HardwareProfile, build_training_plan
 from model_factory.tokenizer import ByteBPETokenizer
+from model_factory.active_model import ACTIVE_MODEL_MANIFEST
 from model_factory.runner import TrainingRunConfig, run_training
 
 
@@ -45,7 +46,13 @@ def _parser() -> argparse.ArgumentParser:
     train = commands.add_parser("train", help="train the randomly initialized AI AYFAM Transformer")
     train.add_argument("--corpus", type=Path, required=True)
     train.add_argument("--output", type=Path, default=Path("runs/ayfam-3m/latest.pt"))
-    train.add_argument("--steps", type=int, default=1_000)
+    train.add_argument(
+        "--steps",
+        type=int,
+        default=None,
+        help="explicit optimizer-step target; omit to calculate complete corpus epochs automatically",
+    )
+    train.add_argument("--epochs", type=int, default=3, help="complete passes over every train-split block")
     train.add_argument("--resume", type=Path)
     train.add_argument("--tokenizer-config", type=Path)
     train.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto")
@@ -150,8 +157,8 @@ def main(argv: list[str] | None = None) -> int:
             return 0
 
         if args.command == "train":
-            if args.steps <= 0:
-                print("--steps must be positive", file=sys.stderr)
+            if args.steps is not None and args.steps <= 0:
+                print("--steps must be positive when supplied", file=sys.stderr)
                 return 2
 
             def report_step(result):
@@ -163,14 +170,16 @@ def main(argv: list[str] | None = None) -> int:
                     corpus_path=args.corpus,
                     checkpoint_path=args.output,
                     max_steps=args.steps,
+                    epochs=args.epochs,
                     device=args.device,
                     tokenizer_config_path=args.tokenizer_config,
                     resume_checkpoint=args.resume,
+                    active_model_manifest_path=ACTIVE_MODEL_MANIFEST,
                 ),
                 on_step=report_step,
             )
             print(json.dumps(result.to_dict(), ensure_ascii=False, indent=2))
-            return 0 if result.completed_steps >= args.steps else 1
+            return 0 if not result.stopped_early else 1
 
         if args.command == "export-model":
             from model_factory.inference import export_inference_artifact

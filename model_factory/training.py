@@ -184,7 +184,12 @@ class Trainer:
         return list(history)
 
     @staticmethod
-    def evaluate(model, batch_factory: Callable[[], Iterable[tuple[Any, Any]]], device="cpu") -> dict[str, float]:
+    def evaluate(
+        model,
+        batch_factory: Callable[[], Iterable[tuple[Any, Any]]],
+        device="cpu",
+    ) -> dict[str, float]:
+        """Return token-weighted loss, perplexity and next-token accuracy."""
         try:
             import torch
         except ImportError as exc:
@@ -192,18 +197,35 @@ class Trainer:
         was_training = model.training
         model.eval()
         total_loss = 0.0
-        batches = 0
+        total_tokens = 0
+        total_correct = 0
         try:
-            with torch.no_grad():
+            with torch.inference_mode():
                 for input_ids, targets in batch_factory():
-                    output = model(input_ids.to(device), targets.to(device))
-                    loss = output["loss"]
-                    if loss is not None and bool(torch.isfinite(loss)):
-                        total_loss += float(loss.cpu())
-                        batches += 1
+                    inputs = input_ids.to(device)
+                    expected = targets.to(device)
+                    logits = model(inputs)["logits"]
+                    mask = expected.ne(256)
+                    token_count = int(mask.sum().item())
+                    if token_count == 0:
+                        continue
+                    summed_loss = torch.nn.functional.cross_entropy(
+                        logits.reshape(-1, logits.shape[-1]),
+                        expected.reshape(-1),
+                        ignore_index=256,
+                        reduction="sum",
+                    )
+                    total_loss += float(summed_loss.cpu())
+                    total_correct += int(((logits.argmax(dim=-1) == expected) & mask).sum().item())
+                    total_tokens += token_count
         finally:
             model.train(was_training)
-        if batches == 0:
-            raise ValueError("validation corpus produced no usable batches")
-        average = total_loss / batches
-        return {"loss": average, "perplexity": math.exp(min(average, 20.0))}
+        if total_tokens == 0:
+            raise ValueError("evaluation corpus produced no usable target tokens")
+        average = total_loss / total_tokens
+        return {
+            "loss": average,
+            "perplexity": math.exp(min(average, 20.0)),
+            "next_token_accuracy": total_correct / total_tokens,
+            "tokens_evaluated": float(total_tokens),
+        }

@@ -257,18 +257,24 @@ def prepare_reviewed_corpus(
     train_ratio: float = 0.90,
     validation_ratio: float = 0.05,
     test_ratio: float = 0.05,
+    full_corpus_training: bool = False,
     seed: int = 42,
 ) -> dict[str, object]:
-    """Apply review choices, split by document group, prepare data, and write a manifest."""
-    ratios = (train_ratio, validation_ratio, test_ratio)
-    if any(
-        isinstance(value, bool) or not isinstance(value, (int, float))
-        or not math.isfinite(float(value)) or value <= 0
-        for value in ratios
-    ):
-        raise ValueError("train, validation and test ratios must be positive finite numbers")
-    if not math.isclose(sum(ratios), 1.0, rel_tol=0.0, abs_tol=1e-8):
-        raise ValueError("train, validation and test ratios must sum to 1.0")
+    """Apply review choices, optionally using every approved chunk for optimizer training."""
+    if not isinstance(full_corpus_training, bool):
+        raise ValueError("full_corpus_training must be a boolean")
+    if full_corpus_training:
+        train_ratio, validation_ratio, test_ratio = 1.0, 0.0, 0.0
+    else:
+        ratios = (train_ratio, validation_ratio, test_ratio)
+        if any(
+            isinstance(value, bool) or not isinstance(value, (int, float))
+            or not math.isfinite(float(value)) or value <= 0
+            for value in ratios
+        ):
+            raise ValueError("train, validation and test ratios must be positive finite numbers")
+        if not math.isclose(sum(ratios), 1.0, rel_tol=0.0, abs_tol=1e-8):
+            raise ValueError("train, validation and test ratios must sum to 1.0")
     if isinstance(seed, bool) or not isinstance(seed, int):
         raise ValueError("seed must be an integer")
 
@@ -317,13 +323,15 @@ def prepare_reviewed_corpus(
         groups.add(group_id)
         document_counts[document_id] += 1
 
-    # Prefer strict book-level isolation when three or more independent books exist.
-    # With fewer books, divide their chunks into contiguous ranges and omit the first
-    # overlapping chunk at each boundary to avoid train/validation/test text leakage.
-    split_strategy = "document"
+    # Prefer strict book-level isolation for evaluation mode. Full-corpus mode
+    # deliberately assigns every approved record to Train and reports in-sample
+    # metrics later; it does not pretend those metrics are held-out evaluation.
+    split_strategy = "full_corpus" if full_corpus_training else "document"
     document_split_ranges: dict[str, tuple[int, int]] = {}
     group_splits: dict[str, str] = {}
-    if len(groups) >= 3:
+    if full_corpus_training:
+        group_splits = {group_id: "train" for group_id in groups}
+    elif len(groups) >= 3:
         ranked_groups = sorted(
             groups,
             key=lambda value: hashlib.sha256(f"{seed}\0{value}".encode("utf-8")).digest(),
@@ -390,7 +398,7 @@ def prepare_reviewed_corpus(
                         f"an explicit training license or owner permission is required for document {document_id}"
                     )
 
-                if split_strategy == "document":
+                if split_strategy in {"document", "full_corpus"}:
                     split = group_splits[group_id]
                     output_group = group_id
                 else:
@@ -427,7 +435,7 @@ def prepare_reviewed_corpus(
             train_ratio=train_ratio,
             validation_ratio=validation_ratio,
             test_ratio=test_ratio,
-            require_held_out=True,
+            require_held_out=not full_corpus_training,
         )
     finally:
         try:
@@ -444,6 +452,7 @@ def prepare_reviewed_corpus(
         "train_ratio": train_ratio,
         "validation_ratio": validation_ratio,
         "test_ratio": test_ratio,
+        "full_corpus_training": full_corpus_training,
         "split_strategy": split_strategy,
         "overlap_guard_chunks_removed": 2 * len(document_split_ranges),
     })
@@ -464,6 +473,7 @@ def prepare_reviewed_corpus(
             "validation": validation_ratio,
             "test": test_ratio,
         },
+        "full_corpus_training": full_corpus_training,
         "seed": seed,
         "split_strategy": split_strategy,
         "excluded_documents": sorted(excluded_document_ids),
