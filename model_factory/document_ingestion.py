@@ -35,7 +35,6 @@ MAX_CHUNKS_PER_DOCUMENT = 15_000
 MAX_TEXT_BLOCK_CHARS = 64_000
 DEFAULT_CHUNK_SIZE = 1_200
 DEFAULT_CHUNK_OVERLAP = 150
-_REJECTED_LICENSES = {"", "unknown", "unspecified", "none", "n/a", "na", "no-license"}
 _HEADING_RE = re.compile(r"^\s{0,3}(#{1,6})\s+(.+?)\s*#*\s*$")
 _TEXT_HEADING_RE = re.compile(
     r"^\s*(?:chapter\s+\d+\b|section\s+\d+\b|الفصل\s+[\d٠-٩]+\b|الباب\s+[\d٠-٩]+\b).*$",
@@ -110,8 +109,8 @@ def _validated_document(item: DocumentInput) -> tuple[Path, str, str, str, str]:
     title = item.title.strip() if isinstance(item.title, str) and item.title.strip() else path.stem
     if not source:
         raise DocumentIngestionError(f"source provenance is required for {path.name}")
-    if license_name.casefold() in _REJECTED_LICENSES:
-        raise DocumentIngestionError(f"an explicit training license or owner permission is required for {path.name}")
+    # Extraction and permission review are separate: an empty license is allowed
+    # in the raw staging JSONL, but corpus approval must supply explicit permission.
     if len(source) > 500 or len(license_name) > 200 or len(title) > 500:
         raise DocumentIngestionError(f"document metadata is too long for {path.name}")
     return path, source, license_name, title, extension

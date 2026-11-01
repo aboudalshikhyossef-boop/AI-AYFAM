@@ -179,12 +179,17 @@ def test_preparation_preserves_document_metadata_and_group_identity(tmp_path: Pa
     assert report.total_records == 1
 
 
-def test_ingestion_requires_explicit_license_and_supported_extension(tmp_path: Path):
+def test_ingestion_stages_text_before_license_review_and_checks_extension(tmp_path: Path):
     source = tmp_path / "book.txt"
     source.write_text("Some content.", encoding="utf-8")
 
-    with pytest.raises(DocumentIngestionError, match="explicit training license"):
-        ingest_documents([_doc(source, license_name="unknown")], tmp_path / "raw.jsonl")
+    report = ingest_documents(
+        [_doc(source, license_name="")],
+        tmp_path / "raw.jsonl",
+    )
+    assert report.chunks == 1
+    payload = json.loads((tmp_path / "raw.jsonl").read_text(encoding="utf-8").splitlines()[0])
+    assert payload["license"] == ""
 
     unsupported = tmp_path / "book.rtf"
     unsupported.write_text("Some content.", encoding="utf-8")
