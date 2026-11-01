@@ -38,3 +38,28 @@ def test_training_view_does_not_start_import_or_training_on_construction():
     view.close()
     view.deleteLater()
     APP.processEvents()
+
+
+def test_training_view_supports_multiple_document_inputs_and_license(monkeypatch, tmp_path):
+    first = tmp_path / "first.md"
+    second = tmp_path / "second.docx"
+    first.write_text("# First\nText", encoding="utf-8")
+    second.write_bytes(b"docx placeholder")
+    selected = [str(first), str(second)]
+    monkeypatch.setattr(
+        "ui.views.model_training.QFileDialog.getOpenFileNames",
+        lambda *args, **kwargs: (selected, ""),
+    )
+
+    view = ModelTrainingView()
+    view._browse_raw_corpus()
+
+    assert view.raw_document_paths == [first, second]
+    assert "2 file(s)" in view.raw_corpus_input.text()
+    assert view.license_input.text() == ""
+    assert view.prepare_worker is None
+    assert view.worker is None
+    view.memory_timer.stop()
+    view.close()
+    view.deleteLater()
+    APP.processEvents()

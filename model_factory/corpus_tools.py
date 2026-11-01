@@ -248,6 +248,25 @@ def prepare_corpus(
                 if not isinstance(record_id, str):
                     raise ValueError(f"line {line_number}: id must be a string")
                 language = detect_language(text)
+                metadata_fields = ("document_id", "title", "filename", "file_type", "chapter")
+                metadata = {
+                    name: payload.get(name, "")
+                    for name in metadata_fields
+                }
+                for name, value in metadata.items():
+                    if not isinstance(value, str):
+                        raise ValueError(f"line {line_number}: {name} must be a string when provided")
+                page = payload.get("page")
+                chunk_index = payload.get("chunk_index")
+                if page is not None and (
+                    isinstance(page, bool) or not isinstance(page, int) or page < 1
+                ):
+                    raise ValueError(f"line {line_number}: page must be a positive integer or null")
+                if chunk_index is not None and (
+                    isinstance(chunk_index, bool) or not isinstance(chunk_index, int) or chunk_index < 0
+                ):
+                    raise ValueError(f"line {line_number}: chunk_index must be a non-negative integer or null")
+
                 record = {
                     "id": record_id,
                     "text": text,
@@ -256,6 +275,9 @@ def prepare_corpus(
                     "group_id": group_key,
                     "split": split,
                     "language": language,
+                    **metadata,
+                    "page": page,
+                    "chunk_index": chunk_index,
                 }
                 serialized = json.dumps(record, ensure_ascii=False) + "\n"
                 if len(serialized.encode("utf-8")) > MAX_RECORD_BYTES:

@@ -25,6 +25,13 @@ class CorpusRecord:
     record_id: str = ""
     group_id: str = ""
     language: str = ""
+    document_id: str = ""
+    title: str = ""
+    filename: str = ""
+    file_type: str = ""
+    chapter: str = ""
+    page: int | None = None
+    chunk_index: int | None = None
 
 
 @dataclass(frozen=True)
@@ -59,8 +66,23 @@ def _parse_record(raw: str, line_number: int) -> CorpusRecord:
         raise ValueError(f"line {line_number}: id must be a string when provided")
     group_id = payload.get("group_id", "")
     language = payload.get("language", "")
+    metadata_fields = ("document_id", "title", "filename", "file_type", "chapter")
+    metadata = {name: payload.get(name, "") for name in metadata_fields}
     if not isinstance(group_id, str) or not isinstance(language, str):
         raise ValueError(f"line {line_number}: group_id and language must be strings when provided")
+    for name, value in metadata.items():
+        if not isinstance(value, str):
+            raise ValueError(f"line {line_number}: {name} must be a string when provided")
+    page = payload.get("page")
+    chunk_index = payload.get("chunk_index")
+    if page is not None and (
+        isinstance(page, bool) or not isinstance(page, int) or page < 1
+    ):
+        raise ValueError(f"line {line_number}: page must be a positive integer or null")
+    if chunk_index is not None and (
+        isinstance(chunk_index, bool) or not isinstance(chunk_index, int) or chunk_index < 0
+    ):
+        raise ValueError(f"line {line_number}: chunk_index must be a non-negative integer or null")
     return CorpusRecord(
         text=text,
         source=source.strip(),
@@ -69,6 +91,13 @@ def _parse_record(raw: str, line_number: int) -> CorpusRecord:
         record_id=record_id,
         group_id=group_id,
         language=language,
+        document_id=metadata["document_id"],
+        title=metadata["title"],
+        filename=metadata["filename"],
+        file_type=metadata["file_type"],
+        chapter=metadata["chapter"],
+        page=page,
+        chunk_index=chunk_index,
     )
 
 
