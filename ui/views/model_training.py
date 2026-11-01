@@ -22,9 +22,10 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from model_factory.corpus_tools import prepare_corpus
+from model_factory.corpus_review import inspect_raw_corpus, prepare_reviewed_corpus
 from model_factory.corpus_workspace import default_corpus_root, import_raw_corpus
 from model_factory.document_ingestion import DocumentInput, ingest_documents
+from ui.views.corpus_review_dialog import CorpusReviewDialog
 from model_factory.hardware import HardwareProfile, build_training_plan
 from model_factory.runner import TrainingRunConfig, run_training
 
@@ -32,7 +33,8 @@ from model_factory.runner import TrainingRunConfig, run_training
 _PHASE_LABELS = {
     "importing": "نسخ ملف JSONL الخام إلى مساحة AYFAM المحلية",
     "extracting_documents": "استخراج النصوص من المستندات وحفظ بيانات المصدر",
-    "preparing": "تنظيف البيانات وإزالة التكرارات وتجهيز التقسيمات",
+    "reviewing": "مراجعة الكتب والمقاطع وجودة النص قبل الاعتماد",
+    "preparing": "تطبيق اختيارات المراجعة وتجهيز تقسيمات corpus",
     "validating_corpus": "التحقق من corpus ومصدر البيانات والتقسيمات",
     "preparing_tokenizer": "تجهيز tokenizer من بيانات التدريب فقط",
     "resuming_checkpoint": "تحميل checkpoint السابق",
@@ -43,7 +45,7 @@ _PHASE_LABELS = {
 
 
 class CorpusPreparationWorker(QThread):
-    """Extract selected documents or import JSONL, then prepare a training corpus."""
+    """Import/extract documents and inspect them before any preparation or training."""
 
     phase_changed = pyqtSignal(str)
     completed = pyqtSignal(object)
@@ -52,13 +54,11 @@ class CorpusPreparationWorker(QThread):
     def __init__(
         self,
         source_paths: list[Path],
-        prepared_path: Path,
         license_name: str = "",
         parent: QWidget | None = None,
     ):
         super().__init__(parent)
         self.source_paths = [Path(path) for path in source_paths]
-        self.prepared_path = prepared_path
         self.license_name = license_name
 
     def run(self) -> None:
@@ -87,25 +87,61 @@ class CorpusPreparationWorker(QThread):
                 ingestion = ingest_documents(
                     documents,
                     raw_path,
-                    require_held_out=True,
+                    require_held_out=False,
                 )
                 imported_path = Path(ingestion.output_path)
                 ingestion_report = ingestion.to_dict()
 
-            self.phase_changed.emit("preparing")
-            report = prepare_corpus(
-                imported_path,
-                self.prepared_path,
-                require_held_out=True,
-            )
+            self.phase_changed.emit("reviewing")
+            review_report = inspect_raw_corpus(imported_path)
         except Exception as exc:
             self.failed.emit(str(exc))
         else:
             self.completed.emit({
                 "imported_path": str(imported_path),
-                "prepared_path": str(self.prepared_path),
-                "report": report.to_dict(),
                 "ingestion_report": ingestion_report,
+                "review_report": review_report,
+            })
+
+
+class CorpusReviewPreparationWorker(QThread):
+    """Apply explicit review choices and create a validated training corpus."""
+
+    phase_changed = pyqtSignal(str)
+    completed = pyqtSignal(object)
+    failed = pyqtSignal(str)
+
+    def __init__(
+        self,
+        raw_path: Path,
+        prepared_path: Path,
+        selection: dict[str, object],
+        parent: QWidget | None = None,
+    ):
+        super().__init__(parent)
+        self.raw_path = Path(raw_path)
+        self.prepared_path = Path(prepared_path)
+        self.selection = selection
+
+    def run(self) -> None:
+        try:
+            self.phase_changed.emit("preparing")
+            report = prepare_reviewed_corpus(
+                self.raw_path,
+                self.prepared_path,
+                excluded_documents=self.selection["excluded_documents"],
+                excluded_chunks=self.selection["excluded_chunks"],
+                metadata_overrides=self.selection["metadata_overrides"],
+                train_ratio=float(self.selection["train_ratio"]),
+                validation_ratio=float(self.selection["validation_ratio"]),
+                test_ratio=float(self.selection["test_ratio"]),
+            )
+        except Exception as exc:
+            self.failed.emit(str(exc))
+        else:
+            self.completed.emit({
+                "prepared_path": str(self.prepared_path),
+                "report": report,
             })
 
 
@@ -153,6 +189,9 @@ class ModelTrainingView(QWidget):
         super().__init__(parent)
         self.worker: ModelTrainingWorker | None = None
         self.prepare_worker: CorpusPreparationWorker | None = None
+        self.review_worker: CorpusReviewPreparationWorker | None = None
+        self.pending_review_path: Path | None = None
+        self.pending_review_report: dict[str, object] | None = None
         self.raw_document_paths: list[Path] = []
         self.profile = HardwareProfile.detect()
         self.plan = build_training_plan(self.profile)
@@ -218,7 +257,7 @@ class ModelTrainingView(QWidget):
         ))
         raw_layout.addWidget(self.license_input)
 
-        self.prepare_button = QPushButton("استخراج وتجهيز البيانات / Extract and prepare")
+        self.prepare_button = QPushButton("استخراج ومعاينة البيانات / Extract and review")
         self.prepare_button.clicked.connect(self.prepare_corpus)
         raw_layout.addWidget(self.prepare_button)
         seed_path = Path(__file__).resolve().parents[2] / "data" / "seed_corpus" / "v0.1" / "ayfam-seed-v0.1.jsonl"
@@ -331,6 +370,9 @@ class ModelTrainingView(QWidget):
             "PDF (*.pdf);;Text (*.txt);;Word (*.docx);;Markdown (*.md *.markdown);;JSON Lines (*.jsonl)",
         )
         if paths:
+            self.pending_review_path = None
+            self.pending_review_report = None
+            self.prepare_button.setText("استخراج ومعاينة البيانات / Extract and review")
             self.raw_document_paths = [Path(path) for path in paths]
             names = ", ".join(path.name for path in self.raw_document_paths[:3])
             if len(self.raw_document_paths) > 3:
@@ -352,7 +394,11 @@ class ModelTrainingView(QWidget):
     def prepare_corpus(self) -> None:
         if (self.prepare_worker is not None and self.prepare_worker.isRunning()) or (
             self.worker is not None and self.worker.isRunning()
-        ):
+        ) or (self.review_worker is not None and self.review_worker.isRunning()):
+            return
+
+        if self.pending_review_path is not None and self.pending_review_report is not None:
+            self._show_corpus_review()
             return
 
         source_paths = list(self.raw_document_paths)
@@ -373,27 +419,20 @@ class ModelTrainingView(QWidget):
             return
         if not jsonl_paths and not self.license_input.text().strip():
             self.status_label.setText(
-                "أدخل الترخيص أو إذن المالك قبل استيراد الكتب. / "
-                "Enter the license or owner's permission before importing documents."
+                "أدخل ترخيصًا افتراضيًا للكتب؛ يمكنك تعديله لكل كتاب في شاشة المراجعة. / "
+                "Enter a default license; each book can be edited in the review screen."
             )
             return
-
-        prepared_dir = default_corpus_root() / "prepared"
-        prepared_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
-        run_id = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
-        label = source_paths[0].stem[:48] if len(source_paths) == 1 else "document-batch"
-        prepared_path = prepared_dir / f"{label}-{run_id}-prepared.jsonl"
 
         self.prepare_button.setEnabled(False)
         self.raw_browse_button.setEnabled(False)
         self.browse_button.setEnabled(False)
         self.license_input.setEnabled(False)
         self.start_button.setEnabled(False)
-        self.status_label.setText("بدء استخراج المستندات وتجهيز البيانات…")
+        self.status_label.setText("بدء استخراج المستندات وفحص جودة النصوص…")
         self._append_log("الملفات المحددة: " + ", ".join(path.name for path in source_paths))
         self.prepare_worker = CorpusPreparationWorker(
             source_paths,
-            prepared_path,
             self.license_input.text().strip(),
             self,
         )
@@ -403,44 +442,85 @@ class ModelTrainingView(QWidget):
         self.prepare_worker.finished.connect(self._on_prepare_finished)
         self.prepare_worker.start()
 
+    def _show_corpus_review(self) -> None:
+        if self.pending_review_path is None or self.pending_review_report is None:
+            return
+        dialog = CorpusReviewDialog(
+            self.pending_review_path,
+            self.pending_review_report,
+            self,
+        )
+        if not dialog.exec():
+            self.status_label.setText(
+                "تم الاحتفاظ بالبيانات الخام محليًا. لم يتم اعتمادها أو تجهيزها للتدريب."
+            )
+            self.prepare_button.setText("إعادة فتح مراجعة البيانات")
+            return
+
+        selection = dialog.selection()
+        prepared_dir = default_corpus_root() / "prepared"
+        prepared_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+        run_id = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+        label = self.pending_review_path.stem[:48]
+        prepared_path = prepared_dir / f"{label}-{run_id}-prepared.jsonl"
+
+        self.prepare_button.setEnabled(False)
+        self.raw_browse_button.setEnabled(False)
+        self.browse_button.setEnabled(False)
+        self.license_input.setEnabled(False)
+        self.start_button.setEnabled(False)
+        self.status_label.setText("تطبيق قرارات المراجعة وتجهيز corpus المعتمد…")
+        self._append_log(
+            "المراجعة: "
+            f"استبعاد {len(selection['excluded_documents'])} كتاب و"
+            f"{len(selection['excluded_chunks'])} مقطع."
+        )
+        self.review_worker = CorpusReviewPreparationWorker(
+            self.pending_review_path,
+            prepared_path,
+            selection,
+            self,
+        )
+        self.review_worker.phase_changed.connect(self._on_prepare_phase_changed)
+        self.review_worker.completed.connect(self._on_review_prepared)
+        self.review_worker.failed.connect(self._on_review_failed)
+        self.review_worker.finished.connect(self._on_review_finished)
+        self.review_worker.start()
+
     def _on_prepare_phase_changed(self, phase: str) -> None:
         label = _PHASE_LABELS.get(phase, phase)
         self.status_label.setText(label)
         self._append_log(label)
 
     def _on_corpus_prepared(self, payload: dict) -> None:
-        report = payload.get("report") or {}
-        splits = report.get("records_by_split") or {}
-        languages = report.get("languages") or {}
-        self.corpus_input.setText(str(payload.get("prepared_path", "")))
-        self.status_label.setText("تم استيراد البيانات وتجهيزها واجتازت التدقيق.")
-        self._append_log(f"النسخة المحلية الخام: {payload.get('imported_path')}")
-        self._append_log(f"ملف التدريب الجاهز: {payload.get('prepared_path')}")
-        self._append_log(
-            "السجلات: "
-            f"train={splits.get('train', 0)}, "
-            f"validation={splits.get('validation', 0)}, "
-            f"test={splits.get('test', 0)}"
-        )
-        self._append_log(f"ملخص اللغة: {languages}")
-        self._append_log(f"المكررات المحذوفة: {report.get('duplicates_removed', 0)}")
-        self._append_log(f"SHA-256: {report.get('fingerprint', '')}")
+        self.pending_review_path = Path(str(payload.get("imported_path", "")))
+        self.pending_review_report = payload.get("review_report") or {}
+        self.status_label.setText("اكتمل الاستخراج. راجع الكتب والمقاطع قبل اعتمادها.")
+        self.raw_document_paths = []
+        self.raw_corpus_input.setText(str(self.pending_review_path))
+        self.prepare_button.setText("مراجعة البيانات وتجهيز Corpus")
+        self._append_log(f"النسخة الخام المحلية: {self.pending_review_path}")
+
         ingestion = payload.get("ingestion_report") or {}
         if ingestion:
             self._append_log(
-                "المستندات: "
-                f"{ingestion.get('documents', 0)} | "
-                f"الصفحات: {ingestion.get('pages', 0)} | "
-                f"المقاطع المستخرجة: {ingestion.get('chunks', 0)} | "
-                f"الأحرف: {ingestion.get('characters', 0):,}"
+                "الاستخراج: "
+                f"مستندات={ingestion.get('documents', 0)}, "
+                f"صفحات={ingestion.get('pages', 0)}, "
+                f"صفحات فارغة={ingestion.get('empty_pages', 0)}, "
+                f"مقاطع={ingestion.get('chunks', 0)}, "
+                f"أحرف={ingestion.get('characters', 0):,}"
             )
             self._append_log(f"لغات المستندات: {ingestion.get('languages', {})}")
-            self._append_log(f"بصمة الاستيراد: {ingestion.get('fingerprint', '')}")
-        self.raw_document_paths = []
-        imported_path = payload.get("imported_path")
-        if imported_path:
-            self.raw_corpus_input.setText(str(imported_path))
-        self.start_button.setEnabled(True)
+        review = self.pending_review_report
+        self._append_log(
+            "فحص الجودة: "
+            f"مكررات={review.get('duplicate_chunks', 0)}, "
+            f"قصيرة={review.get('tiny_chunks', 0)}, "
+            f"ترميز مشبوه={review.get('malformed_chunks', 0)}, "
+            f"تحتاج تطبيعًا={review.get('unnormalized_chunks', 0)}"
+        )
+        self._show_corpus_review()
 
     def _on_prepare_failed(self, message: str) -> None:
         self.status_label.setText("تعذر استيراد أو تجهيز مجموعة البيانات.")
@@ -452,11 +532,69 @@ class ModelTrainingView(QWidget):
         if worker is not None:
             worker.deleteLater()
         training_running = self.worker is not None and self.worker.isRunning()
-        self.prepare_button.setEnabled(not training_running)
-        self.raw_browse_button.setEnabled(not training_running)
-        self.browse_button.setEnabled(True)
-        self.license_input.setEnabled(not training_running)
-        self.start_button.setEnabled(not training_running)
+        review_running = self.review_worker is not None and self.review_worker.isRunning()
+        enabled = not training_running and not review_running
+        self.prepare_button.setEnabled(enabled)
+        self.raw_browse_button.setEnabled(enabled)
+        self.browse_button.setEnabled(enabled)
+        self.license_input.setEnabled(enabled)
+        prepared_text = self.corpus_input.text().strip()
+        prepared_ready = bool(prepared_text and Path(prepared_text).expanduser().is_file())
+        self.start_button.setEnabled(enabled and prepared_ready)
+        if self.pending_review_path is not None:
+            self.prepare_button.setText("إعادة فتح مراجعة البيانات")
+
+    def _on_review_prepared(self, payload: dict) -> None:
+        report = payload.get("report") or {}
+        splits = report.get("records_by_split") or {}
+        self.corpus_input.setText(str(payload.get("prepared_path", "")))
+        self.pending_review_path = None
+        self.pending_review_report = None
+        self.prepare_button.setText("استخراج ومعاينة البيانات / Extract and review")
+        self.status_label.setText("اعتمدت المراجعة وتم تجهيز corpus واجتاز التدقيق.")
+        self._append_log(f"ملف التدريب المعتمد: {payload.get('prepared_path')}")
+        self._append_log(
+            "السجلات النهائية: "
+            f"train={splits.get('train', 0)}, "
+            f"validation={splits.get('validation', 0)}, "
+            f"test={splits.get('test', 0)}"
+        )
+        self._append_log(
+            "قرارات المراجعة: "
+            f"سجلات={report.get('reviewed_records', 0)}, "
+            f"كتب مستبعدة={report.get('excluded_documents', 0)}, "
+            f"مقاطع مستبعدة={report.get('excluded_chunks', 0)}"
+        )
+        self._append_log(
+            "التقسيمات: "
+            f"Train={report.get('train_ratio', 0):.0%}, "
+            f"Validation={report.get('validation_ratio', 0):.0%}, "
+            f"Test={report.get('test_ratio', 0):.0%}"
+        )
+        self._append_log(f"SHA-256: {report.get('fingerprint', '')}")
+        self._append_log(f"Manifest: {report.get('manifest_path', '')}")
+
+    def _on_review_failed(self, message: str) -> None:
+        self.status_label.setText("لم يتم تجهيز corpus بعد المراجعة.")
+        self._append_log(f"خطأ اعتماد corpus: {message}")
+
+    def _on_review_finished(self) -> None:
+        worker = self.review_worker
+        self.review_worker = None
+        if worker is not None:
+            worker.deleteLater()
+        training_running = self.worker is not None and self.worker.isRunning()
+        importing_running = self.prepare_worker is not None and self.prepare_worker.isRunning()
+        enabled = not training_running and not importing_running
+        self.prepare_button.setEnabled(enabled)
+        self.raw_browse_button.setEnabled(enabled)
+        self.browse_button.setEnabled(enabled)
+        self.license_input.setEnabled(enabled)
+        prepared_text = self.corpus_input.text().strip()
+        prepared_ready = bool(prepared_text and Path(prepared_text).expanduser().is_file())
+        self.start_button.setEnabled(enabled and prepared_ready)
+        if self.pending_review_path is not None:
+            self.prepare_button.setText("إعادة فتح مراجعة البيانات")
 
     def _refresh_memory(self) -> None:
         try:
@@ -476,6 +614,8 @@ class ModelTrainingView(QWidget):
         if self.prepare_worker is not None and self.prepare_worker.isRunning():
             return
         if self.worker is not None and self.worker.isRunning():
+            return
+        if self.review_worker is not None and self.review_worker.isRunning():
             return
         corpus_path = Path(self.corpus_input.text().strip()).expanduser()
         if not corpus_path.is_file():
