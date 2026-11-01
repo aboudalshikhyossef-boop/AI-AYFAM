@@ -1,5 +1,6 @@
 """Tests for the desktop training workspace's safe idle state."""
 
+import json
 import os
 from pathlib import Path
 
@@ -9,6 +10,8 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 try:
     from PyQt6.QtWidgets import QApplication
+    from model_factory.corpus_review import inspect_raw_corpus
+    from ui.views.corpus_review_dialog import CorpusReviewDialog
     from ui.views.model_training import ModelTrainingView
 except (ImportError, OSError) as exc:
     pytest.skip(f"Qt runtime is unavailable ({exc})", allow_module_level=True)
@@ -62,4 +65,51 @@ def test_training_view_supports_multiple_document_inputs_and_license(monkeypatch
     view.memory_timer.stop()
     view.close()
     view.deleteLater()
+    APP.processEvents()
+
+
+
+def test_corpus_review_dialog_previews_documents_and_accepts_valid_ratios(tmp_path):
+    raw_path = tmp_path / "raw.jsonl"
+    rows = []
+    for index in range(3):
+        document_id = f"review-book-{index}"
+        rows.append({
+            "id": f"{document_id}-chunk-0",
+            "text": (
+                f"Unique training passage for book {index}. "
+                "This text is sufficiently long for a corpus review preview."
+            ),
+            "source": f"book-{index}.txt",
+            "license": "CC-BY-4.0",
+            "document_id": document_id,
+            "group_id": document_id,
+            "title": f"Book {index}",
+            "filename": f"book-{index}.txt",
+            "file_type": "txt",
+            "page": 1,
+            "chapter": "Introduction",
+            "chunk_index": 0,
+            "language": "en",
+        })
+    raw_path.write_text(
+        "".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows),
+        encoding="utf-8",
+    )
+
+    dialog = CorpusReviewDialog(raw_path, inspect_raw_corpus(raw_path))
+    assert dialog.table.rowCount() == 3
+    assert dialog.preview.toPlainText() == rows[0]["text"]
+    assert dialog.chunk_number.minimum() == 1
+    assert dialog.chunk_number.maximum() == 1
+
+    dialog._accept_review()
+
+    selection = dialog.selection()
+    assert selection["train_ratio"] == 0.90
+    assert selection["validation_ratio"] == 0.05
+    assert selection["test_ratio"] == 0.05
+    assert selection["excluded_documents"] == set()
+    dialog.close()
+    dialog.deleteLater()
     APP.processEvents()
