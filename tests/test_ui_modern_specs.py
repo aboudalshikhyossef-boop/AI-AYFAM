@@ -54,7 +54,9 @@ class TestModernUiSpecs(unittest.TestCase):
         with open(ROOT_DIR / "ui/gui_app.py", "r", encoding="utf-8") as f:
             code = f.read()
 
-        self.assertIn("NAV_ITEMS =", code)
+        self.assertIn("from ui.navigation import NAV_ITEMS", code)
+        navigation_code = (ROOT_DIR / "ui" / "navigation.py").read_text(encoding="utf-8")
+        self.assertIn("NAV_ITEMS =", navigation_code)
         self.assertIn("dashboard", code)
         self.assertIn("scans", code)
         self.assertIn("usb", code)

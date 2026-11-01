@@ -43,6 +43,7 @@ from ui.terminal import TerminalUI
 from ui.icons import ICON_COLORS, framed_icon, glyph_icon
 from ui.widgets import AccentLine, ChatView, SecurityGauge, StaticNavigationMenu, TelemetryChart
 from ui.performance import EVENT_POLL_INTERVAL_MS, TELEMETRY_REFRESH_MS
+from ui.navigation import NAV_ITEMS, NAV_ICON_KEYS, PAGE_TO_SECTION, build_navigation_sections
 from ui.intro_splash import AyfamIntroSplash, SystemOverviewDialog
 from ui.views.findings import FindingsView
 from ui.views.timeline import TimelineView
@@ -63,24 +64,6 @@ from utils.preflight import check_requirements, root_error, is_root
 
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
-
-# Navigation items: (key, icon, label_ar)
-NAV_ITEMS = [
-    ("dashboard", "غرفة العمليات"),
-    ("scans",     "الفحوصات الأمنية"),
-    ("findings",  "النتائج الموحدة"),
-    ("timeline",  "الخط الزمني"),
-    ("sentinel",  "الحارس اللحظي"),
-    ("attack_graph", "سلاسل الهجوم"),
-    ("usb",       "الأجهزة المتصلة"),
-    ("tools",     "ترسانة الأدوات"),
-    ("chat",      "المحادثة الأمنية"),
-    ("library",   "المكتبة المحلية"),
-    ("model_training", "تدريب نموذج AYFAM"),
-    ("playbooks", "خطط العمل"),
-    ("reports",   "التقارير"),
-    ("settings",  "إعدادات النظام"),
-]
 
 
 class GuiTerminalUI(TerminalUI):
@@ -349,12 +332,13 @@ class UnifiedCockpitWindow(QMainWindow):
         """شريط أوامر عائم زجاجي للوصول السريع للأدوات والوظائف."""
         items = [
             ("بدء فحص شامل", lambda: self.run_background_task(self.agent._full_scan, "الفحص الشامل")),
-            ("الانتقال لـ غرفة العمليات", lambda: self.switch_page("dashboard")),
-            ("الانتقال لـ الفحوصات الأمنية", lambda: self.switch_page("scans")),
-            ("الانتقال لـ ترسانة الأدوات", lambda: self.switch_page("tools")),
-            ("الانتقال لـ الأجهزة المتصلة USB", lambda: self.switch_page("usb")),
-            ("الانتقال لـ المحادثة الذكية", lambda: self.switch_page("chat")),
-            ("الانتقال لـ إعدادات النظام", lambda: self.switch_page("settings")),
+            ("غرفة العمليات", lambda: self.switch_page("dashboard")),
+            ("الفحوصات والأدوات", lambda: self.switch_page("scans")),
+            ("النتائج والتحليل والتقارير", lambda: self.switch_page("findings")),
+            ("المراقبة والحماية", lambda: self.switch_page("sentinel")),
+            ("المساعد والمعرفة", lambda: self.switch_page("chat")),
+            ("تدريب نموذج AYFAM", lambda: self.switch_page("model_training")),
+            ("إعدادات النظام", lambda: self.switch_page("settings")),
             ("تحديث الرادار والبيانات", self.update_live_telemetry),
         ]
         labels = [item[0] for item in items]
@@ -423,8 +407,12 @@ class UnifiedCockpitWindow(QMainWindow):
 
         labels = dict(NAV_ITEMS)
         wheel_items = [
-            (key, labels[key], glyph_icon(key, ICON_COLORS.get(key, ACCENT), 88),
-             PAGE_ACCENTS.get(key, ACCENT))
+            (
+                key,
+                labels[key],
+                glyph_icon(NAV_ICON_KEYS[key], ICON_COLORS.get(NAV_ICON_KEYS[key], ACCENT), 88),
+                PAGE_ACCENTS.get(key, ACCENT),
+            )
             for key, _label in NAV_ITEMS
         ]
         self.nav_wheel = StaticNavigationMenu(wheel_items, sidebar)
@@ -554,20 +542,24 @@ class UnifiedCockpitWindow(QMainWindow):
                     "}"
                 )
 
-        self.stack.addWidget(self.page_dashboard)
-        self.stack.addWidget(self.page_scans)
-        self.stack.addWidget(self.page_findings)
-        self.stack.addWidget(self.page_timeline)
-        self.stack.addWidget(self.page_sentinel)
-        self.stack.addWidget(self.page_attack_graph)
-        self.stack.addWidget(self.page_usb)
-        self.stack.addWidget(self.page_tools)
-        self.stack.addWidget(self.page_chat)
-        self.stack.addWidget(self.page_library)
-        self.stack.addWidget(self.page_playbooks)
-        self.stack.addWidget(self.page_reports)
-        self.stack.addWidget(self.page_settings)
-        self.stack.addWidget(self.page_model_training)
+        # Seven stable workspaces consolidate related screens without deleting
+        # their underlying capabilities or breaking existing internal routes.
+        navigation = build_navigation_sections(self.page_widgets_by_key, self)
+        self.section_widgets_by_key = navigation["sections"]
+        self.section_selectors = navigation["selectors"]
+        self._switching_navigation = False
+        for section_key, section_widget in self.section_widgets_by_key.items():
+            section_widget.setProperty("pageKey", section_key)
+            section_widget.setProperty("pageAccent", PAGE_ACCENTS.get(section_key, ACCENT))
+
+        for key, _label in NAV_ITEMS:
+            self.stack.addWidget(self.section_widgets_by_key[key])
+
+        for section_key, selector in self.section_selectors.items():
+            if selector is not None:
+                selector.currentIndexChanged.connect(
+                    lambda index, group=section_key: self._on_section_page_changed(group, index)
+                )
 
         # Wrap stack in scroll area for responsiveness
         scroll = QScrollArea()
@@ -685,52 +677,71 @@ class UnifiedCockpitWindow(QMainWindow):
         self.close()
 
     def switch_page(self, key: str) -> None:
-        page_map = {
-            "dashboard": self.page_dashboard, "scans": self.page_scans,
-            "findings": self.page_findings, "timeline": self.page_timeline,
-            "sentinel": self.page_sentinel, "attack_graph": self.page_attack_graph,
-            "usb": self.page_usb, "tools": self.page_tools,
-            "chat": self.page_chat, "library": self.page_library,
-            "playbooks": self.page_playbooks, "reports": self.page_reports,
-            "settings": self.page_settings,
-            "model_training": self.page_model_training,
-        }
-        title_map = {
-            "dashboard": "غرفة العمليات", "scans": "الفحوصات الأمنية",
-            "findings": "النتائج الأمنية الموحدة", "timeline": "الخط الزمني للحوادث",
-            "sentinel": "الحارس اللحظي", "attack_graph": "سلاسل الهجوم المرتبطة",
-            "usb": "الأجهزة المتصلة", "tools": "ترسانة الأدوات المتقدمة",
-            "chat": "المحادثة الذكية", "library": "مكتبة المعرفة",
-            "playbooks": "خطط العمل الأمنية", "reports": "التقارير",
-            "settings": "إعدادات النظام والمفاتيح",
-            "model_training": "تدريب نموذج AYFAM المحلي",
-        }
-        widget = page_map.get(key)
-        if widget:
-            changed = self.stack.currentWidget() is not widget
-            self.stack.setCurrentWidget(widget)
-            if changed:
-                self.content_scroll.verticalScrollBar().setValue(0)
-            self.page_title.setText(title_map.get(key, ""))
-            page_accent = PAGE_ACCENTS.get(key, ACCENT)
-            self.page_title.setStyleSheet(f"border-right: 2px solid {page_accent}; padding-right: 8px;")
-            self.nav_wheel.set_current(key)
-            self.accent_line.set_accent(page_accent)
-            for name, page in page_map.items():
-                page.setSizePolicy(QSizePolicy.Policy.Preferred if name == key else QSizePolicy.Policy.Ignored,
-                                   QSizePolicy.Policy.Preferred if name == key else QSizePolicy.Policy.Ignored)
-            self.stack.updateGeometry()
-            self._current_nav = key
-            if key == "usb" and not self.usb_inventory_loaded:
-                self.refresh_usb_inventory()
-            elif key == "findings":
-                self.page_findings.set_findings(self.all_findings)
-            elif key == "timeline":
-                self.refresh_timeline()
-            elif key == "sentinel":
-                self.refresh_sentinel_events()
-            elif key == "attack_graph":
-                self.refresh_attack_graph()
+        """Open one of the seven workspaces or a compatible grouped sub-page."""
+        if key not in self.page_widgets_by_key:
+            return
+
+        section_key = PAGE_TO_SECTION[key]
+        section = self.section_widgets_by_key[section_key]
+        selector = self.section_selectors.get(section_key)
+        self._switching_navigation = True
+        try:
+            if selector is not None:
+                target_index = selector.findData(key)
+                if target_index >= 0 and selector.currentIndex() != target_index:
+                    selector.setCurrentIndex(target_index)
+
+            changed = self.stack.currentWidget() is not section
+            self.stack.setCurrentWidget(section)
+        finally:
+            self._switching_navigation = False
+
+        if changed:
+            self.content_scroll.verticalScrollBar().setValue(0)
+
+        title_map = dict(NAV_ITEMS)
+        self.page_title.setText(title_map.get(section_key, ""))
+        page_accent = PAGE_ACCENTS.get(section_key, ACCENT)
+        self.page_title.setStyleSheet(
+            f"border-right: 2px solid {page_accent}; padding-right: 8px;"
+        )
+        self.nav_wheel.set_current(section_key)
+        self.accent_line.set_accent(page_accent)
+        for name, page in self.section_widgets_by_key.items():
+            policy = QSizePolicy.Policy.Preferred if name == section_key else QSizePolicy.Policy.Ignored
+            page.setSizePolicy(policy, QSizePolicy.Policy.Preferred if name == section_key else QSizePolicy.Policy.Ignored)
+        self.stack.updateGeometry()
+        self._current_nav = section_key
+        self._current_page_key = key
+        self._refresh_page_for_key(key)
+
+    def _on_section_page_changed(self, section_key: str, index: int) -> None:
+        """Keep compatibility routing while the user selects a grouped workspace."""
+        selector = self.section_selectors.get(section_key)
+        if selector is None or index < 0:
+            return
+        page_key = selector.itemData(index)
+        if not page_key:
+            return
+        self._current_page_key = str(page_key)
+        if not getattr(self, "_switching_navigation", False):
+            self._refresh_page_for_key(str(page_key))
+
+    def _refresh_page_for_key(self, key: str) -> None:
+        if key == "usb" and not self.usb_inventory_loaded:
+            self.refresh_usb_inventory()
+        elif key == "findings":
+            self.page_findings.set_findings(self.all_findings)
+        elif key == "timeline":
+            self.refresh_timeline()
+        elif key == "sentinel":
+            self.refresh_sentinel_events()
+        elif key == "attack_graph":
+            self.refresh_attack_graph()
+        elif key == "reports":
+            self.refresh_reports()
+        elif key == "library":
+            self.refresh_library()
 
     def _run_page_transition(self) -> None:
         """Compatibility hook: page navigation is an immediate native Qt switch."""

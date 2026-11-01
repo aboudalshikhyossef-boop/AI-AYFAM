@@ -78,7 +78,7 @@ print("\n[5] Low-resource static navigation")
 from ui.gui_app import NAV_ITEMS
 from ui.widgets import StaticNavigationMenu
 from PyQt6.QtWidgets import QPushButton
-check("navigation has 14 items", len(NAV_ITEMS) == 14)
+check("navigation has exactly 7 workspaces", len(NAV_ITEMS) == 7)
 check("static navigation exposes button selection", hasattr(StaticNavigationMenu, "page_selected"))
 check("static navigation exposes current-page selection", hasattr(StaticNavigationMenu, "set_current"))
 nav = StaticNavigationMenu([("dashboard", "Dashboard", QIcon(), "#2dd4bf"), ("chat", "Chat", QIcon(), "#a78bfa")])
