@@ -7,8 +7,8 @@ from pathlib import Path
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QCheckBox, QDialog, QDialogButtonBox, QFormLayout, QGroupBox,
-    QHBoxLayout, QLabel, QLineEdit, QPlainTextEdit, QSpinBox,
-    QTableWidget, QTableWidgetItem, QVBoxLayout,
+    QHBoxLayout, QLabel, QLineEdit, QPlainTextEdit, QScrollArea, QSpinBox,
+    QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
 from model_factory.corpus_review import get_document_chunk
@@ -37,13 +37,27 @@ class CorpusReviewDialog(QDialog):
         self._selection: dict[str, object] = {}
 
         self.setWindowTitle("مراجعة البيانات قبل تدريب AYFAM")
-        self.resize(1080, 780)
+        screen = self.screen()
+        available = screen.availableGeometry() if screen is not None else None
+        width = min(1120, available.width() - 48) if available is not None else 1080
+        height = min(860, available.height() - 72) if available is not None else 780
+        self.resize(max(720, width), max(520, height))
+        self.setMinimumSize(640, 480)
         self._build_ui(report)
         self._populate_documents()
 
     def _build_ui(self, report: dict[str, object]) -> None:
-        root = QVBoxLayout(self)
-        root.setContentsMargins(18, 16, 18, 16)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(12, 10, 12, 10)
+        outer.setSpacing(8)
+
+        self.scroll_area = QScrollArea(self)
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        content = QWidget()
+        root = QVBoxLayout(content)
+        root.setContentsMargins(8, 8, 8, 8)
         root.setSpacing(9)
 
         intro = QLabel(
@@ -89,10 +103,28 @@ class CorpusReviewDialog(QDialog):
         self.title_input.setMaxLength(500)
         self.source_input.setMaxLength(500)
         self.license_input.setMaxLength(200)
+        self.source_input.setPlaceholderText("مثال: اسم الناشر، الموقع، المكتبة أو رابط المصدر")
+        self.license_input.setPlaceholderText(
+            "مثال: Public Domain / CC BY 4.0 / إذن من المؤلف أو الناشر"
+        )
         metadata.addRow(self.include_document)
         metadata.addRow("عنوان الكتاب:", self.title_input)
-        metadata.addRow("المصدر:", self.source_input)
-        metadata.addRow("الترخيص أو إذن المالك:", self.license_input)
+        metadata.addRow("المصدر / الناشر:", self.source_input)
+        metadata.addRow("إذن الاستخدام للتدريب:", self.license_input)
+        self.license_help = QLabel(
+            "تنبيه: لا يمكن استنتاج حقوق النشر من PDF تلقائيًا. اكتب الترخيص الفعلي "
+            "أو الإذن الذي يسمح باستخدام هذا الكتاب لتدريب النموذج. لا تكتب عنوان الكتاب هنا."
+        )
+        self.license_help.setWordWrap(True)
+        self.license_help.setObjectName("secondaryText")
+        metadata.addRow(self.license_help)
+        self.source_help = QLabel(
+            "المصدر يعني الجهة أو المكان الذي حصلت منه على الكتاب. يبدأ الحقل باسم الملف "
+            "كتذكير فقط؛ استبدله باسم الناشر أو المكتبة أو الموقع عند معرفته."
+        )
+        self.source_help.setWordWrap(True)
+        self.source_help.setObjectName("secondaryText")
+        metadata.addRow(self.source_help)
         self.document_details = QLabel("اختر كتابًا من الجدول.")
         self.document_details.setWordWrap(True)
         self.document_details.setObjectName("secondaryText")
@@ -136,6 +168,22 @@ class CorpusReviewDialog(QDialog):
         split.addRow("Train:", self.train_ratio)
         split.addRow("Validation:", self.validation_ratio)
         split.addRow("Test:", self.test_ratio)
+        self.split_notice = QLabel()
+        self.split_notice.setWordWrap(True)
+        self.split_notice.setObjectName("secondaryText")
+        group_count = int(report.get("independent_groups", len(self.documents)))
+        if group_count < 3:
+            self.split_notice.setText(
+                "لأن البيانات الحالية تضم أقل من 3 كتب مستقلة، سيُقسّم AYFAM مقاطع كل كتاب "
+                "إلى أجزاء متتابعة للتدريب والتحقق والاختبار، مع حذف مقطع عند كل حد فاصل "
+                "لتقليل تداخل النص. هذا مناسب للتجربة الأولية؛ والأفضل لاحقًا إضافة كتب مستقلة."
+            )
+        else:
+            self.split_notice.setText(
+                "سيبقى كل كتاب مستقلًا بالكامل ضمن مجموعة واحدة. نسب التقسيم تقريبية "
+                "لأن التوزيع يتم على مستوى الكتب وليس عدد المقاطع."
+            )
+        split.addRow(self.split_notice)
         root.addWidget(split_group)
 
         self.error_label = QLabel("")
@@ -150,7 +198,9 @@ class CorpusReviewDialog(QDialog):
         buttons.button(QDialogButtonBox.StandardButton.Cancel).setText("إلغاء")
         buttons.accepted.connect(self._accept_review)
         buttons.rejected.connect(self.reject)
-        root.addWidget(buttons)
+        self.scroll_area.setWidget(content)
+        outer.addWidget(self.scroll_area, 1)
+        outer.addWidget(buttons)
 
     def _populate_documents(self) -> None:
         self._loading = True
@@ -308,12 +358,18 @@ class CorpusReviewDialog(QDialog):
             return
 
         active_documents = 0
+        active_chunk_counts: list[int] = []
+        active_groups: set[str] = set()
         for document_id, document in self.by_id.items():
             if document_id in self.excluded_documents:
                 continue
             count = int(document.get("chunks", 0))
-            excluded = sum(1 for doc_id, _record_id in self.excluded_chunks if doc_id == document_id)
-            if excluded >= count:
+            excluded = sum(
+                1 for doc_id, _record_id in self.excluded_chunks
+                if doc_id == document_id
+            )
+            remaining = count - excluded
+            if remaining <= 0:
                 continue
             fields = self.metadata_overrides.get(document_id, {
                 "title": str(document.get("title", "")),
@@ -321,20 +377,45 @@ class CorpusReviewDialog(QDialog):
                 "license": str(document.get("license", "")),
             })
             if not fields.get("source", "").strip():
-                self.error_label.setText(f"أدخل مصدر الكتاب: {fields.get('title', document_id)}")
+                self.error_label.setText(f"أدخل اسم المصدر أو الناشر للكتاب: {fields.get('title', document_id)}")
                 return
-            if fields.get("license", "").strip().casefold() in _REJECTED_LICENSES:
+            license_value = fields.get("license", "").strip()
+            if license_value.casefold() in _REJECTED_LICENSES:
                 self.error_label.setText(
-                    f"أدخل ترخيصًا أو إذنًا واضحًا لتدريب النموذج للكتاب: {fields.get('title', document_id)}"
+                    f"أدخل ترخيصًا أو إذنًا يسمح بالتدريب للكتاب: {fields.get('title', document_id)}"
+                )
+                return
+            title_value = str(fields.get("title", "")).strip()
+            normalized_title = " ".join(
+                title_value.casefold().replace("_", " ").replace("-", " ").split()
+            )
+            normalized_license = " ".join(
+                license_value.casefold().replace("_", " ").replace("-", " ").split()
+            )
+            if (
+                normalized_title
+                and normalized_license.endswith(normalized_title)
+                and len(normalized_license) <= len(normalized_title) + 8
+            ):
+                self.error_label.setText(
+                    "يبدو أنك كتبت عنوان الكتاب في خانة الترخيص. اكتب الترخيص الفعلي "
+                    "أو إذن صاحب الحقوق، وليس اسم الكتاب."
                 )
                 return
             if int(document.get("metadata_conflicts", 0)) and document_id not in self.metadata_overrides:
                 self.error_label.setText(f"وحّد بيانات المصدر والترخيص للمقاطع التابعة للكتاب: {document_id}")
                 return
             active_documents += 1
-        if active_documents < 3:
+            active_chunk_counts.append(remaining)
+            active_groups.add(str(document.get("group_id") or document_id))
+
+        if active_documents == 0:
+            self.error_label.setText("لا توجد مقاطع متبقية في corpus بعد الاستبعاد.")
+            return
+        if len(active_groups) < 3 and any(count < 5 for count in active_chunk_counts):
             self.error_label.setText(
-                "يجب الإبقاء على ثلاثة كتب/مجموعات مستقلة على الأقل لإنشاء Train وValidation وTest."
+                "لديك أقل من ثلاثة كتب مستقلة. احتفظ بخمسة مقاطع على الأقل في كل كتاب "
+                "حتى يمكن إنشاء أجزاء Train وValidation وTest مع استبعاد المقاطع الحدودية المتداخلة."
             )
             return
 

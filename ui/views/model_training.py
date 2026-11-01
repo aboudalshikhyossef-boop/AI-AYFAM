@@ -6,11 +6,12 @@ from datetime import datetime
 from pathlib import Path
 import threading
 
-from PyQt6.QtCore import QThread, QTimer, pyqtSignal
+from PyQt6.QtCore import QThread, QTimer, Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QFileDialog,
     QFormLayout,
     QGroupBox,
+    QScrollArea,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -203,7 +204,16 @@ class ModelTrainingView(QWidget):
         self._refresh_memory()
 
     def _build_ui(self) -> None:
-        root = QVBoxLayout(self)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+
+        self.scroll_area = QScrollArea(self)
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        content = QWidget()
+        root = QVBoxLayout(content)
         root.setContentsMargins(22, 20, 22, 22)
         root.setSpacing(14)
 
@@ -244,18 +254,13 @@ class ModelTrainingView(QWidget):
         raw_row.addWidget(self.raw_browse_button)
         raw_layout.addLayout(raw_row)
 
-        self.license_input = QLineEdit()
-        self.license_input.setPlaceholderText(
-            "الترخيص أو إذن المالك، مثل CC-BY-4.0 / License or owner's permission"
+        license_help = QLabel(
+            "تُستخرج النصوص أولاً. لا يمكن للبرنامج استنتاج حقوق النشر من الملف؛ "
+            "أدخل مصدر كل كتاب وترخيصه أو إذن التدريب في شاشة المراجعة التالية."
         )
-        self.license_input.setToolTip(
-            "يُطبّق هذا الترخيص على جميع المستندات المحددة. تحقق من حقك في استخدامها لتدريب النموذج."
-        )
-        raw_layout.addWidget(QLabel(
-            "ترخيص المستندات المحددة (مطلوب للكتب والملفات، وليس لملف JSONL موثق) / "
-            "Selected documents license (required for books/files)"
-        ))
-        raw_layout.addWidget(self.license_input)
+        license_help.setWordWrap(True)
+        license_help.setObjectName("secondaryText")
+        raw_layout.addWidget(license_help)
 
         self.prepare_button = QPushButton("استخراج ومعاينة البيانات / Extract and review")
         self.prepare_button.clicked.connect(self.prepare_corpus)
@@ -272,6 +277,7 @@ class ModelTrainingView(QWidget):
         self.corpus_input.setPlaceholderText("سيظهر هنا ملف JSONL بعد نجاح التجهيز والتدقيق")
         self.corpus_input.setClearButtonEnabled(True)
         self.corpus_input.setMinimumHeight(36)
+        self.corpus_input.textChanged.connect(self._refresh_start_button)
         self.browse_button = QPushButton("اختيار ملف جاهز")
         self.browse_button.clicked.connect(self._browse_corpus)
         prepared_row.addWidget(self.corpus_input, 1)
@@ -296,6 +302,7 @@ class ModelTrainingView(QWidget):
         actions = QHBoxLayout()
         self.start_button = QPushButton("بدء التدريب المحلي")
         self.start_button.setObjectName("primaryButton")
+        self.start_button.setEnabled(False)
         self.start_button.clicked.connect(self.start_training)
         self.stop_button = QPushButton("إيقاف آمن وحفظ checkpoint")
         self.stop_button.setEnabled(False)
@@ -346,6 +353,9 @@ class ModelTrainingView(QWidget):
         disclaimer.setObjectName("secondaryText")
         root.addWidget(disclaimer)
 
+        self.scroll_area.setWidget(content)
+        outer.addWidget(self.scroll_area, 1)
+
     def _refresh_hardware_summary(self) -> None:
         self.hardware_label.setText(
             f"RAM الكلية: {self.profile.total_ram_mb:,} MB | "
@@ -391,6 +401,16 @@ class ModelTrainingView(QWidget):
         if path:
             self.corpus_input.setText(path)
 
+    def _refresh_start_button(self) -> None:
+        """Enable training only when an existing prepared corpus is selected and workers are idle."""
+        corpus_text = self.corpus_input.text().strip()
+        prepared_ready = bool(corpus_text and Path(corpus_text).expanduser().is_file())
+        workers_idle = all(
+            worker is None or not worker.isRunning()
+            for worker in (self.worker, self.prepare_worker, self.review_worker)
+        )
+        self.start_button.setEnabled(prepared_ready and workers_idle)
+
     def prepare_corpus(self) -> None:
         if (self.prepare_worker is not None and self.prepare_worker.isRunning()) or (
             self.worker is not None and self.worker.isRunning()
@@ -417,23 +437,15 @@ class ModelTrainingView(QWidget):
                 "Select one JSONL file alone, or select document files only."
             )
             return
-        if not jsonl_paths and not self.license_input.text().strip():
-            self.status_label.setText(
-                "أدخل ترخيصًا افتراضيًا للكتب؛ يمكنك تعديله لكل كتاب في شاشة المراجعة. / "
-                "Enter a default license; each book can be edited in the review screen."
-            )
-            return
-
         self.prepare_button.setEnabled(False)
         self.raw_browse_button.setEnabled(False)
         self.browse_button.setEnabled(False)
-        self.license_input.setEnabled(False)
         self.start_button.setEnabled(False)
         self.status_label.setText("بدء استخراج المستندات وفحص جودة النصوص…")
         self._append_log("الملفات المحددة: " + ", ".join(path.name for path in source_paths))
         self.prepare_worker = CorpusPreparationWorker(
             source_paths,
-            self.license_input.text().strip(),
+            "",
             self,
         )
         self.prepare_worker.phase_changed.connect(self._on_prepare_phase_changed)
@@ -467,7 +479,6 @@ class ModelTrainingView(QWidget):
         self.prepare_button.setEnabled(False)
         self.raw_browse_button.setEnabled(False)
         self.browse_button.setEnabled(False)
-        self.license_input.setEnabled(False)
         self.start_button.setEnabled(False)
         self.status_label.setText("تطبيق قرارات المراجعة وتجهيز corpus المعتمد…")
         self._append_log(
@@ -537,7 +548,6 @@ class ModelTrainingView(QWidget):
         self.prepare_button.setEnabled(enabled)
         self.raw_browse_button.setEnabled(enabled)
         self.browse_button.setEnabled(enabled)
-        self.license_input.setEnabled(enabled)
         prepared_text = self.corpus_input.text().strip()
         prepared_ready = bool(prepared_text and Path(prepared_text).expanduser().is_file())
         self.start_button.setEnabled(enabled and prepared_ready)
@@ -589,7 +599,6 @@ class ModelTrainingView(QWidget):
         self.prepare_button.setEnabled(enabled)
         self.raw_browse_button.setEnabled(enabled)
         self.browse_button.setEnabled(enabled)
-        self.license_input.setEnabled(enabled)
         prepared_text = self.corpus_input.text().strip()
         prepared_ready = bool(prepared_text and Path(prepared_text).expanduser().is_file())
         self.start_button.setEnabled(enabled and prepared_ready)
@@ -648,7 +657,6 @@ class ModelTrainingView(QWidget):
         self.browse_button.setEnabled(False)
         self.prepare_button.setEnabled(False)
         self.raw_browse_button.setEnabled(False)
-        self.license_input.setEnabled(False)
         self.steps_input.setEnabled(False)
         self.vocab_input.setEnabled(False)
         self.stop_button.setEnabled(True)
@@ -711,11 +719,10 @@ class ModelTrainingView(QWidget):
         self.worker = None
         if worker is not None:
             worker.deleteLater()
-        self.start_button.setEnabled(True)
+        self._refresh_start_button()
         self.browse_button.setEnabled(True)
         self.prepare_button.setEnabled(True)
         self.raw_browse_button.setEnabled(True)
-        self.license_input.setEnabled(True)
         self.steps_input.setEnabled(True)
         self.vocab_input.setEnabled(True)
         self.stop_button.setEnabled(False)

@@ -19,6 +19,7 @@ from model_factory.data import MAX_RECORD_BYTES, fingerprint_file
 
 MIN_RECOMMENDED_CHUNK_CHARS = 80
 _ALLOWED_METADATA = {"title", "source", "license"}
+_REJECTED_LICENSES = {"", "unknown", "unspecified", "none", "n/a", "na", "no-license"}
 
 
 def _document_id(payload: dict[str, object]) -> str:
@@ -58,10 +59,12 @@ def _iter_raw_records(path: Path):
             text = payload.get("text")
             if not isinstance(text, str) or not text.strip():
                 raise ValueError(f"line {line_number}: text must be a non-empty string")
-            for field in ("source", "license"):
-                value = payload.get(field)
-                if not isinstance(value, str) or not value.strip():
-                    raise ValueError(f"line {line_number}: {field} provenance is required")
+            source = payload.get("source")
+            license_name = payload.get("license", "")
+            if not isinstance(source, str) or not source.strip():
+                raise ValueError(f"line {line_number}: source provenance is required")
+            if not isinstance(license_name, str):
+                raise ValueError(f"line {line_number}: license must be a string")
             _document_id(payload)
             yield line_number, payload
 
@@ -93,10 +96,16 @@ def inspect_raw_corpus(
     connection = sqlite3.connect(database_path)
     connection.execute("CREATE TABLE seen_text (digest TEXT PRIMARY KEY)")
     documents: dict[str, dict[str, object]] = {}
+    independent_groups: set[str] = set()
     totals = Counter()
     try:
         for line_number, payload in _iter_raw_records(source):
             document_id = _document_id(payload)
+            group_id = payload.get("group_id") or document_id
+            if not isinstance(group_id, str) or not group_id.strip():
+                raise ValueError(f"line {line_number}: group_id must be a non-empty string")
+            group_id = group_id.strip()
+            independent_groups.add(group_id)
             text = payload["text"]
             assert isinstance(text, str)
             title = payload.get("title") or Path(
@@ -105,12 +114,13 @@ def inspect_raw_corpus(
             filename = payload.get("filename") or str(title)
             file_type = payload.get("file_type") or Path(str(filename)).suffix.lstrip(".")
             source_name = str(payload["source"]).strip()
-            license_name = str(payload["license"]).strip()
+            license_name = str(payload.get("license", "")).strip()
             if not all(isinstance(item, str) for item in (title, filename, file_type)):
                 raise ValueError(f"line {line_number}: document metadata must be strings")
 
             entry = documents.setdefault(document_id, {
                 "document_id": document_id,
+                "group_id": group_id,
                 "title": str(title),
                 "filename": str(filename),
                 "file_type": str(file_type),
@@ -130,6 +140,7 @@ def inspect_raw_corpus(
                 entry["source"] != source_name
                 or entry["license"] != license_name
                 or entry["title"] != str(title)
+                or entry["group_id"] != group_id
             ):
                 entry["metadata_conflicts"] = int(entry["metadata_conflicts"]) + 1
 
@@ -186,6 +197,7 @@ def inspect_raw_corpus(
     return {
         "raw_path": str(source),
         "fingerprint": fingerprint_file(source),
+        "independent_groups": len(independent_groups),
         "documents": result_documents,
         **{key: int(totals[key]) for key in (
             "chunks", "characters", "duplicate_chunks", "tiny_chunks",
@@ -286,6 +298,7 @@ def prepare_reviewed_corpus(
 
     groups: set[str] = set()
     document_groups: dict[str, str] = {}
+    document_counts: Counter[str] = Counter()
     for line_number, payload in _iter_raw_records(source):
         document_id = _document_id(payload)
         record_id = _record_id(payload, line_number)
@@ -302,25 +315,47 @@ def prepare_reviewed_corpus(
                 "all chunks from one document must share a single split group"
             )
         groups.add(group_id)
-    if len(groups) < 3:
-        raise ValueError(
-            "at least three independent document groups must remain to create train, validation, and test splits"
-        )
+        document_counts[document_id] += 1
 
-    ranked_groups = sorted(
-        groups,
-        key=lambda value: hashlib.sha256(f"{seed}\0{value}".encode("utf-8")).digest(),
-    )
-    train_count, validation_count, test_count = _allocate_splits(len(ranked_groups), ratios)
+    # Prefer strict book-level isolation when three or more independent books exist.
+    # With fewer books, divide their chunks into contiguous ranges and omit the first
+    # overlapping chunk at each boundary to avoid train/validation/test text leakage.
+    split_strategy = "document"
+    document_split_ranges: dict[str, tuple[int, int]] = {}
     group_splits: dict[str, str] = {}
-    for index, group_id in enumerate(ranked_groups):
-        if index < train_count:
-            split = "train"
-        elif index < train_count + validation_count:
-            split = "validation"
-        else:
-            split = "test"
-        group_splits[group_id] = split
+    if len(groups) >= 3:
+        ranked_groups = sorted(
+            groups,
+            key=lambda value: hashlib.sha256(f"{seed}\0{value}".encode("utf-8")).digest(),
+        )
+        train_count, validation_count, test_count = _allocate_splits(len(ranked_groups), ratios)
+        for index, group_id in enumerate(ranked_groups):
+            if index < train_count:
+                split = "train"
+            elif index < train_count + validation_count:
+                split = "validation"
+            else:
+                split = "test"
+            group_splits[group_id] = split
+    else:
+        split_strategy = "sequential_chunks"
+        if not document_counts or any(count < 5 for count in document_counts.values()):
+            raise ValueError(
+                "fewer than three independent books are available. To split data inside each book, "
+                "keep at least five reviewed chunks per book so overlapping boundary chunks can be omitted."
+            )
+        for document_id, count in document_counts.items():
+            validation_count = max(2, int(math.floor(count * validation_ratio)))
+            test_count = max(2, int(math.floor(count * test_ratio)))
+            train_count = count - validation_count - test_count
+            if train_count < 1:
+                raise ValueError(
+                    f"document {document_id!r} needs at least five chunks for sequential splits"
+                )
+            document_split_ranges[document_id] = (
+                train_count,
+                train_count + validation_count,
+            )
 
     destination.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     descriptor, stage_name = tempfile.mkstemp(prefix=".ayfam-reviewed-", suffix=".jsonl", dir=destination.parent)
@@ -329,6 +364,7 @@ def prepare_reviewed_corpus(
     try:
         os.fchmod(descriptor, 0o600)
         with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as output:
+            sequential_positions: Counter[str] = Counter()
             for line_number, payload in _iter_raw_records(source):
                 document_id = _document_id(payload)
                 record_id = _record_id(payload, line_number)
@@ -341,13 +377,40 @@ def prepare_reviewed_corpus(
                     raise ValueError(
                         f"line {line_number}: document group identity changed during corpus preparation"
                     )
+
                 record = dict(payload)
-                record["group_id"] = group_id
-                record["split"] = group_splits[group_id]
                 for field, value in overrides.get(document_id, {}).items():
-                    if field in {"source", "license"} and not value:
-                        raise ValueError(f"{field} cannot be empty for document {document_id}")
                     record[field] = value
+                source_name = str(record.get("source", "")).strip()
+                license_name = str(record.get("license", "")).strip()
+                if not source_name:
+                    raise ValueError(f"source cannot be empty for document {document_id}")
+                if license_name.casefold() in _REJECTED_LICENSES:
+                    raise ValueError(
+                        f"an explicit training license or owner permission is required for document {document_id}"
+                    )
+
+                if split_strategy == "document":
+                    split = group_splits[group_id]
+                    output_group = group_id
+                else:
+                    position = sequential_positions[document_id]
+                    sequential_positions[document_id] += 1
+                    train_end, validation_end = document_split_ranges[document_id]
+                    if position in {train_end, validation_end}:
+                        continue
+                    if position < train_end:
+                        split = "train"
+                    elif position < validation_end:
+                        split = "validation"
+                    else:
+                        split = "test"
+                    output_group = f"{document_id}::{split}"
+
+                record["source"] = source_name
+                record["license"] = license_name
+                record["group_id"] = output_group
+                record["split"] = split
                 serialized = json.dumps(record, ensure_ascii=False) + "\n"
                 if len(serialized.encode("utf-8")) > MAX_RECORD_BYTES:
                     raise ValueError(f"line {line_number}: reviewed record exceeds {MAX_RECORD_BYTES} bytes")
@@ -381,6 +444,8 @@ def prepare_reviewed_corpus(
         "train_ratio": train_ratio,
         "validation_ratio": validation_ratio,
         "test_ratio": test_ratio,
+        "split_strategy": split_strategy,
+        "overlap_guard_chunks_removed": 2 * len(document_split_ranges),
     })
 
     manifest = {
@@ -400,6 +465,7 @@ def prepare_reviewed_corpus(
             "test": test_ratio,
         },
         "seed": seed,
+        "split_strategy": split_strategy,
         "excluded_documents": sorted(excluded_document_ids),
         "excluded_chunks": len(excluded_chunk_ids),
     }

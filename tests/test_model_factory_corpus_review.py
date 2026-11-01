@@ -136,11 +136,11 @@ def test_review_applies_exclusions_and_metadata_then_splits_by_document(tmp_path
     }
 
 
-def test_review_rejects_fewer_than_three_independent_documents(tmp_path: Path):
+def test_sequential_fallback_requires_enough_chunks_per_remaining_book(tmp_path: Path):
     source = tmp_path / "raw.jsonl"
     ids = _write_raw(source, 3)
 
-    with pytest.raises(ValueError, match="at least three independent"):
+    with pytest.raises(ValueError, match="at least five reviewed chunks"):
         prepare_reviewed_corpus(
             source,
             tmp_path / "prepared.jsonl",
@@ -176,6 +176,82 @@ def test_review_rejects_one_document_spanning_multiple_group_ids(tmp_path: Path)
 
     with pytest.raises(ValueError, match="more than one group_id"):
         prepare_reviewed_corpus(source, tmp_path / "prepared.jsonl")
+
+
+def test_single_book_uses_contiguous_chunk_splits_and_boundary_guards(tmp_path: Path):
+    source = tmp_path / "single-book.jsonl"
+    document_id = "one-large-book"
+    rows = []
+    for index in range(20):
+        rows.append({
+            "id": f"chunk-{index}",
+            "text": (
+                f"Unique long passage number {index} with independent detailed facts "
+                "for testing contiguous data partitions and preventing overlap leakage."
+            ),
+            "source": "publisher archive",
+            "license": "Written permission from the rights holder",
+            "document_id": document_id,
+            "group_id": document_id,
+            "title": "One large book",
+            "filename": "one-large-book.pdf",
+            "file_type": "pdf",
+            "page": index + 1,
+            "chapter": f"Chapter {index // 5 + 1}",
+            "chunk_index": index,
+            "language": "en",
+        })
+    source.write_text(
+        "".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows),
+        encoding="utf-8",
+    )
+
+    output = tmp_path / "single-book-prepared.jsonl"
+    report = prepare_reviewed_corpus(source, output)
+    records = list(iter_records(output))
+    document_splits = {record.split for record in records}
+    group_splits = {}
+    for record in records:
+        previous = group_splits.setdefault(record.group_id, record.split)
+        assert previous == record.split
+
+    assert report["split_strategy"] == "sequential_chunks"
+    assert report["overlap_guard_chunks_removed"] == 2
+    assert document_splits == {"train", "validation", "test"}
+    assert len(records) == 18
+    assert len({record.document_id for record in records}) == 1
+
+
+def test_raw_corpus_can_be_reviewed_before_license_is_provided(tmp_path: Path):
+    source = tmp_path / "staged-without-license.jsonl"
+    document_ids = _write_raw(source, 3)
+    rows = [json.loads(line) for line in source.read_text(encoding="utf-8").splitlines()]
+    for row in rows:
+        row["license"] = ""
+    source.write_text(
+        "".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows),
+        encoding="utf-8",
+    )
+
+    report = inspect_raw_corpus(source)
+    assert report["chunks"] == 6
+
+    with pytest.raises(ValueError, match="explicit training license"):
+        prepare_reviewed_corpus(source, tmp_path / "blocked.jsonl")
+
+    overrides = {
+        document_id: {
+            "source": f"Publisher {index}",
+            "license": "Written permission from the rights holder",
+        }
+        for index, document_id in enumerate(document_ids)
+    }
+    result = prepare_reviewed_corpus(
+        source,
+        tmp_path / "approved.jsonl",
+        metadata_overrides=overrides,
+    )
+    assert result["records_by_split"]
 
 
 def test_review_rejects_corrupt_jsonl(tmp_path: Path):
