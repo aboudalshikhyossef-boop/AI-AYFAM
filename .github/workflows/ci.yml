@@ -84,13 +84,13 @@ jobs:
       - name: Install test and audit tools
         run: |
           python -m pip install --upgrade pip
-          python -m pip install pytest==9.1.1 ruff==0.15.5 pip-audit==2.10.1
+          python -m pip install pytest==9.1.1 ruff==0.15.5 pip-audit==2.10.1 defusedxml==0.7.1 pypdf==6.21.4
       - name: Install optional CPU-only PyTorch
         run: |
           python -m pip install --index-url https://download.pytorch.org/whl/cpu -r requirements-training.txt
       - name: Lint model factory
         run: |
-          ruff check --select F811,F821,F601,E722 model_factory/ tests/test_model_factory_core.py tests/test_model_factory_torch.py tests/test_model_factory_bpe.py tests/test_model_factory_corpus_tools.py tests/test_model_factory_corpus_workspace.py tests/test_model_factory_seed_corpus.py tests/test_model_factory_inference.py tests/test_model_factory_runner.py
+          ruff check --select F811,F821,F601,E722 model_factory/ tests/test_model_factory_core.py tests/test_model_factory_torch.py tests/test_model_factory_bpe.py tests/test_model_factory_corpus_tools.py tests/test_model_factory_corpus_workspace.py tests/test_model_factory_document_ingestion.py tests/test_model_factory_seed_corpus.py tests/test_model_factory_inference.py tests/test_model_factory_runner.py
       - name: Audit optional training dependencies
         run: |
           pip-audit -r requirements-training.txt
@@ -100,4 +100,4 @@ jobs:
           MKL_NUM_THREADS: "2"
           PYTHONPATH: .
         run: |
-          python -m pytest -q tests/test_model_factory_core.py tests/test_model_factory_torch.py tests/test_model_factory_bpe.py tests/test_model_factory_corpus_tools.py tests/test_model_factory_corpus_workspace.py tests/test_model_factory_seed_corpus.py tests/test_model_factory_inference.py tests/test_model_factory_runner.py
+          python -m pytest -q tests/test_model_factory_core.py tests/test_model_factory_torch.py tests/test_model_factory_bpe.py tests/test_model_factory_corpus_tools.py tests/test_model_factory_corpus_workspace.py tests/test_model_factory_document_ingestion.py tests/test_model_factory_seed_corpus.py tests/test_model_factory_inference.py tests/test_model_factory_runner.py

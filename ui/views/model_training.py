@@ -24,12 +24,14 @@ from PyQt6.QtWidgets import (
 
 from model_factory.corpus_tools import prepare_corpus
 from model_factory.corpus_workspace import default_corpus_root, import_raw_corpus
+from model_factory.document_ingestion import DocumentInput, ingest_documents
 from model_factory.hardware import HardwareProfile, build_training_plan
 from model_factory.runner import TrainingRunConfig, run_training
 
 
 _PHASE_LABELS = {
-    "importing": "نسخ الملف إلى مساحة AYFAM المحلية",
+    "importing": "نسخ ملف JSONL الخام إلى مساحة AYFAM المحلية",
+    "extracting_documents": "استخراج النصوص من المستندات وحفظ بيانات المصدر",
     "preparing": "تنظيف البيانات وإزالة التكرارات وتجهيز التقسيمات",
     "validating_corpus": "التحقق من corpus ومصدر البيانات والتقسيمات",
     "preparing_tokenizer": "تجهيز tokenizer من بيانات التدريب فقط",
@@ -41,21 +43,55 @@ _PHASE_LABELS = {
 
 
 class CorpusPreparationWorker(QThread):
-    """Import and prepare a raw JSONL corpus without blocking the desktop UI."""
+    """Extract selected documents or import JSONL, then prepare a training corpus."""
 
     phase_changed = pyqtSignal(str)
     completed = pyqtSignal(object)
     failed = pyqtSignal(str)
 
-    def __init__(self, source_path: Path, prepared_path: Path, parent: QWidget | None = None):
+    def __init__(
+        self,
+        source_paths: list[Path],
+        prepared_path: Path,
+        license_name: str = "",
+        parent: QWidget | None = None,
+    ):
         super().__init__(parent)
-        self.source_path = source_path
+        self.source_paths = [Path(path) for path in source_paths]
         self.prepared_path = prepared_path
+        self.license_name = license_name
 
     def run(self) -> None:
         try:
-            self.phase_changed.emit("importing")
-            imported_path = import_raw_corpus(self.source_path)
+            if len(self.source_paths) == 1 and self.source_paths[0].suffix.casefold() == ".jsonl":
+                self.phase_changed.emit("importing")
+                imported_path = import_raw_corpus(self.source_paths[0])
+                ingestion_report = None
+            else:
+                if any(path.suffix.casefold() == ".jsonl" for path in self.source_paths):
+                    raise ValueError("Select one JSONL file by itself, or select document files only.")
+                self.phase_changed.emit("extracting_documents")
+                raw_dir = default_corpus_root() / "raw"
+                raw_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+                run_id = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+                raw_path = raw_dir / f"documents-{run_id}.jsonl"
+                documents = [
+                    DocumentInput(
+                        path=path,
+                        source=path.name,
+                        license=self.license_name,
+                        title=path.stem,
+                    )
+                    for path in self.source_paths
+                ]
+                ingestion = ingest_documents(
+                    documents,
+                    raw_path,
+                    require_held_out=True,
+                )
+                imported_path = Path(ingestion.output_path)
+                ingestion_report = ingestion.to_dict()
+
             self.phase_changed.emit("preparing")
             report = prepare_corpus(
                 imported_path,
@@ -69,6 +105,7 @@ class CorpusPreparationWorker(QThread):
                 "imported_path": str(imported_path),
                 "prepared_path": str(self.prepared_path),
                 "report": report.to_dict(),
+                "ingestion_report": ingestion_report,
             })
 
 
@@ -116,6 +153,7 @@ class ModelTrainingView(QWidget):
         super().__init__(parent)
         self.worker: ModelTrainingWorker | None = None
         self.prepare_worker: CorpusPreparationWorker | None = None
+        self.raw_document_paths: list[Path] = []
         self.profile = HardwareProfile.detect()
         self.plan = build_training_plan(self.profile)
         self._build_ui()
@@ -135,8 +173,9 @@ class ModelTrainingView(QWidget):
         root.addWidget(title)
 
         intro = QLabel(
-            "من هذه الصفحة تستورد ملف البيانات وتجهزه وتدققه، ثم تختاره لتدريب النموذج. "
-            "تُحفظ نسخ البيانات المستوردة محليًا في حسابك، ولا يبدأ الاستيراد أو التدريب تلقائيًا."
+            "اختر كتب PDF أو TXT أو DOCX أو Markdown، أو ملف JSONL جاهزًا. يستخرج AYFAM النصوص "
+            "ويحفظ المصدر ثم يجهز البيانات للتدريب. لا يبدأ التدريب تلقائيًا. "
+            "Select PDF, TXT, DOCX, Markdown, or an existing JSONL corpus. Training never starts automatically."
         )
         intro.setWordWrap(True)
         intro.setObjectName("secondaryText")
@@ -160,13 +199,26 @@ class ModelTrainingView(QWidget):
         self.raw_corpus_input.setReadOnly(True)
         self.raw_corpus_input.setPlaceholderText("اختر ملف JSONL خامًا يحتوي على النص والمصدر والترخيص")
         self.raw_corpus_input.setMinimumHeight(36)
-        self.raw_browse_button = QPushButton("اختيار ملف خام")
+        self.raw_browse_button = QPushButton("اختيار كتب / ملفات")
         self.raw_browse_button.clicked.connect(self._browse_raw_corpus)
         raw_row.addWidget(self.raw_corpus_input, 1)
         raw_row.addWidget(self.raw_browse_button)
         raw_layout.addLayout(raw_row)
 
-        self.prepare_button = QPushButton("استيراد وتجهيز البيانات")
+        self.license_input = QLineEdit()
+        self.license_input.setPlaceholderText(
+            "الترخيص أو إذن المالك، مثل CC-BY-4.0 / License or owner's permission"
+        )
+        self.license_input.setToolTip(
+            "يُطبّق هذا الترخيص على جميع المستندات المحددة. تحقق من حقك في استخدامها لتدريب النموذج."
+        )
+        raw_layout.addWidget(QLabel(
+            "ترخيص المستندات المحددة (مطلوب للكتب والملفات، وليس لملف JSONL موثق) / "
+            "Selected documents license (required for books/files)"
+        ))
+        raw_layout.addWidget(self.license_input)
+
+        self.prepare_button = QPushButton("استخراج وتجهيز البيانات / Extract and prepare")
         self.prepare_button.clicked.connect(self.prepare_corpus)
         raw_layout.addWidget(self.prepare_button)
         seed_path = Path(__file__).resolve().parents[2] / "data" / "seed_corpus" / "v0.1" / "ayfam-seed-v0.1.jsonl"
@@ -271,14 +323,21 @@ class ModelTrainingView(QWidget):
         )
 
     def _browse_raw_corpus(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(
+        paths, _ = QFileDialog.getOpenFileNames(
             self,
-            "اختيار ملف corpus خام",
+            "اختيار كتب أو ملف بيانات خام / Select books or a raw corpus",
             str(Path.home()),
-            "JSON Lines (*.jsonl);;All files (*)",
+            "AYFAM documents (*.pdf *.txt *.docx *.md *.markdown *.jsonl);;"
+            "PDF (*.pdf);;Text (*.txt);;Word (*.docx);;Markdown (*.md *.markdown);;JSON Lines (*.jsonl)",
         )
-        if path:
-            self.raw_corpus_input.setText(path)
+        if paths:
+            self.raw_document_paths = [Path(path) for path in paths]
+            names = ", ".join(path.name for path in self.raw_document_paths[:3])
+            if len(self.raw_document_paths) > 3:
+                names += f", +{len(self.raw_document_paths) - 3}"
+            self.raw_corpus_input.setText(
+                f"{len(self.raw_document_paths)} file(s): {names}"
+            )
 
     def _browse_corpus(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
@@ -295,22 +354,49 @@ class ModelTrainingView(QWidget):
             self.worker is not None and self.worker.isRunning()
         ):
             return
-        source = Path(self.raw_corpus_input.text().strip()).expanduser()
-        if not source.is_file():
-            self.status_label.setText("اختر ملف JSONL خامًا موجودًا أولًا.")
+
+        source_paths = list(self.raw_document_paths)
+        if not source_paths:
+            raw_text = self.raw_corpus_input.text().strip()
+            if raw_text:
+                source_paths = [Path(raw_text).expanduser()]
+        if not source_paths or any(not path.is_file() for path in source_paths):
+            self.status_label.setText("اختر ملفات موجودة أولًا / Select existing files first.")
             return
+
+        jsonl_paths = [path for path in source_paths if path.suffix.casefold() == ".jsonl"]
+        if jsonl_paths and (len(source_paths) != 1 or len(jsonl_paths) != 1):
+            self.status_label.setText(
+                "اختر ملف JSONL واحدًا وحده، أو اختر الكتب والمستندات فقط. / "
+                "Select one JSONL file alone, or select document files only."
+            )
+            return
+        if not jsonl_paths and not self.license_input.text().strip():
+            self.status_label.setText(
+                "أدخل الترخيص أو إذن المالك قبل استيراد الكتب. / "
+                "Enter the license or owner's permission before importing documents."
+            )
+            return
+
         prepared_dir = default_corpus_root() / "prepared"
         prepared_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
         run_id = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
-        prepared_path = prepared_dir / f"{source.stem[:48]}-{run_id}-prepared.jsonl"
+        label = source_paths[0].stem[:48] if len(source_paths) == 1 else "document-batch"
+        prepared_path = prepared_dir / f"{label}-{run_id}-prepared.jsonl"
 
         self.prepare_button.setEnabled(False)
         self.raw_browse_button.setEnabled(False)
         self.browse_button.setEnabled(False)
+        self.license_input.setEnabled(False)
         self.start_button.setEnabled(False)
-        self.status_label.setText("بدء استيراد وتجهيز ملف البيانات…")
-        self._append_log(f"المصدر المحدد: {source}")
-        self.prepare_worker = CorpusPreparationWorker(source, prepared_path, self)
+        self.status_label.setText("بدء استخراج المستندات وتجهيز البيانات…")
+        self._append_log("الملفات المحددة: " + ", ".join(path.name for path in source_paths))
+        self.prepare_worker = CorpusPreparationWorker(
+            source_paths,
+            prepared_path,
+            self.license_input.text().strip(),
+            self,
+        )
         self.prepare_worker.phase_changed.connect(self._on_prepare_phase_changed)
         self.prepare_worker.completed.connect(self._on_corpus_prepared)
         self.prepare_worker.failed.connect(self._on_prepare_failed)
@@ -339,6 +425,21 @@ class ModelTrainingView(QWidget):
         self._append_log(f"ملخص اللغة: {languages}")
         self._append_log(f"المكررات المحذوفة: {report.get('duplicates_removed', 0)}")
         self._append_log(f"SHA-256: {report.get('fingerprint', '')}")
+        ingestion = payload.get("ingestion_report") or {}
+        if ingestion:
+            self._append_log(
+                "المستندات: "
+                f"{ingestion.get('documents', 0)} | "
+                f"الصفحات: {ingestion.get('pages', 0)} | "
+                f"المقاطع المستخرجة: {ingestion.get('chunks', 0)} | "
+                f"الأحرف: {ingestion.get('characters', 0):,}"
+            )
+            self._append_log(f"لغات المستندات: {ingestion.get('languages', {})}")
+            self._append_log(f"بصمة الاستيراد: {ingestion.get('fingerprint', '')}")
+        self.raw_document_paths = []
+        imported_path = payload.get("imported_path")
+        if imported_path:
+            self.raw_corpus_input.setText(str(imported_path))
         self.start_button.setEnabled(True)
 
     def _on_prepare_failed(self, message: str) -> None:
@@ -354,6 +455,7 @@ class ModelTrainingView(QWidget):
         self.prepare_button.setEnabled(not training_running)
         self.raw_browse_button.setEnabled(not training_running)
         self.browse_button.setEnabled(True)
+        self.license_input.setEnabled(not training_running)
         self.start_button.setEnabled(not training_running)
 
     def _refresh_memory(self) -> None:
@@ -406,6 +508,7 @@ class ModelTrainingView(QWidget):
         self.browse_button.setEnabled(False)
         self.prepare_button.setEnabled(False)
         self.raw_browse_button.setEnabled(False)
+        self.license_input.setEnabled(False)
         self.steps_input.setEnabled(False)
         self.vocab_input.setEnabled(False)
         self.stop_button.setEnabled(True)
@@ -472,6 +575,7 @@ class ModelTrainingView(QWidget):
         self.browse_button.setEnabled(True)
         self.prepare_button.setEnabled(True)
         self.raw_browse_button.setEnabled(True)
+        self.license_input.setEnabled(True)
         self.steps_input.setEnabled(True)
         self.vocab_input.setEnabled(True)
         self.stop_button.setEnabled(False)
