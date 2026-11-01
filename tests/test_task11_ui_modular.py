@@ -17,6 +17,7 @@ try:
     from ui.views.settings import SettingsView
     from ui.views.attack_graph import AttackChainGraphView
     from ui.gui_app import NAV_ITEMS
+    from ui.navigation import NAV_GROUPS, PAGE_TO_SECTION, build_navigation_sections
     from ui.icons import ICON_COLORS
     from ui.widgets import SoundUX
 except (ImportError, OSError) as exc:
@@ -38,7 +39,26 @@ def test_tokens_definition():
 
 def test_views_are_reachable_from_main_navigation():
     nav_keys = {key for key, _label in NAV_ITEMS}
-    assert {"findings", "timeline", "sentinel", "attack_graph"}.issubset(nav_keys)
+    assert len(nav_keys) == 7
+    assert {"dashboard", "scans", "findings", "sentinel", "chat", "model_training", "settings"} == nav_keys
+    assert {"findings", "timeline", "sentinel", "attack_graph", "reports", "usb", "tools", "library", "playbooks"}.issubset(PAGE_TO_SECTION)
+    assert len(NAV_GROUPS) == 7
+    assert PAGE_TO_SECTION["timeline"] == "findings"
+    assert PAGE_TO_SECTION["usb"] == "sentinel"
+    assert PAGE_TO_SECTION["library"] == "chat"
+
+def test_navigation_builds_seven_workspaces_with_legacy_pages(qapp):
+    widgets = {page_key: QWidget() for page_key in PAGE_TO_SECTION}
+    navigation = build_navigation_sections(widgets)
+
+    assert set(navigation["sections"]) == {key for key, _label in NAV_ITEMS}
+    assert len(navigation["sections"]) == 7
+    assert navigation["stacks"]["scans"].count() == 2
+    assert navigation["stacks"]["findings"].count() == 4
+    assert navigation["stacks"]["sentinel"].count() == 2
+    assert navigation["stacks"]["chat"].count() == 3
+    assert navigation["selectors"]["chat"].itemData(1) == "library"
+
 
 def test_ui_views_instantiation(qapp):
     dashboard = DashboardView()
