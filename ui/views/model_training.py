@@ -100,6 +100,18 @@ class CorpusPreparationWorker(QThread):
 
             self.phase_changed.emit("reviewing")
             review_report = inspect_raw_corpus(imported_path)
+            if ingestion_report:
+                page_total = int(ingestion_report.get("pages", 0))
+                empty_pages = int(ingestion_report.get("empty_pages", 0))
+                review_report["extraction"] = {
+                    "pages": page_total,
+                    "text_pages": max(0, page_total - empty_pages),
+                    "empty_pages": empty_pages,
+                    "text_coverage": (
+                        round((page_total - empty_pages) / page_total, 4)
+                        if page_total else 0.0
+                    ),
+                }
         except Exception as exc:
             self.failed.emit(str(exc))
         else:

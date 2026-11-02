@@ -73,6 +73,34 @@ def test_inspection_reports_document_quality_and_duplicates(tmp_path: Path):
     assert len(report["fingerprint"]) == 64
     assert documents[ids[0]]["chunks"] == 4
     assert documents[ids[0]]["pages_with_text"] == 2
+    assert report["quality_summary"]["status"] == "attention"
+    assert report["quality_summary"]["counts"]["duplicate_chunks"] == 1
+    assert report["quality_summary"]["rates"]["duplicate_chunks"] == 0.1
+
+
+
+def test_quality_summary_flags_missing_license_and_non_monotonic_source_order(tmp_path: Path):
+    source = tmp_path / "quality-order.jsonl"
+    _write_raw(source, 1)
+    rows = [json.loads(line) for line in source.read_text(encoding="utf-8").splitlines()]
+    rows[0]["license"] = ""
+    rows[1]["chunk_index"] = rows[0]["chunk_index"]
+    rows[1]["page"] = rows[0]["page"]
+    source.write_text(
+        "".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows),
+        encoding="utf-8",
+    )
+
+    report = inspect_raw_corpus(source)
+    document = report["documents"][0]
+    summary = report["quality_summary"]
+
+    assert document["missing_license"] is True
+    assert document["chunk_order_anomalies"] == 1
+    assert document["page_order_anomalies"] == 0
+    assert summary["status"] == "attention"
+    assert summary["counts"]["missing_license_documents"] == 1
+    assert summary["counts"]["chunk_order_anomalies"] == 1
 
 
 def test_preview_returns_text_and_location_for_one_chunk(tmp_path: Path):

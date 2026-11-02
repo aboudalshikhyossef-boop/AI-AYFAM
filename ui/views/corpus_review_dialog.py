@@ -69,17 +69,98 @@ class CorpusReviewDialog(QDialog):
 
         self.summary = QLabel(
             f"المستندات: {len(self.documents)} | المقاطع: {int(report.get('chunks', 0)):,} | "
-            f"الأحرف: {int(report.get('characters', 0)):,}\n"
-            f"تكرارات: {int(report.get('duplicate_chunks', 0)):,} | "
-            f"مقاطع قصيرة: {int(report.get('tiny_chunks', 0)):,} | "
-            f"ترميز مشبوه: {int(report.get('malformed_chunks', 0)):,} | "
-            f"تحتاج تطبيعًا: {int(report.get('unnormalized_chunks', 0)):,}"
+            f"الأحرف: {int(report.get('characters', 0)):,}"
         )
         self.summary.setWordWrap(True)
         self.summary.setObjectName("secondaryText")
         root.addWidget(self.summary)
 
-        docs_group = QGroupBox("1. المستندات المستوردة")
+        quality_group = QGroupBox("1. خلاصة جودة البيانات المستوردة")
+        quality_layout = QVBoxLayout(quality_group)
+        quality = report.get("quality_summary") or {}
+        quality_counts = quality.get("counts") or {}
+        quality_rates = quality.get("rates") or {}
+        quality_status = str(quality.get("status", "warnings"))
+        status_labels = {
+            "attention": "الحالة: تحتاج البيانات إلى معالجة أو مراجعة قبل اعتمادها.",
+            "warnings": "الحالة: توجد ملاحظات جودة يُفضّل مراجعتها قبل التدريب.",
+            "clear": "الحالة: لم يرصد الفحص مؤشرات الجودة الأساسية المحددة.",
+        }
+        self.quality_status = QLabel(status_labels.get(
+            quality_status, "الحالة: تعذّر تحديد حالة الجودة الآلية."
+        ))
+        self.quality_status.setWordWrap(True)
+        self.quality_status.setObjectName("secondaryText")
+        quality_layout.addWidget(self.quality_status)
+
+        self.quality_details = QLabel(
+            "مقاطع مكررة: "
+            f"{int(quality_counts.get('duplicate_chunks', report.get('duplicate_chunks', 0))):,} "
+            f"({float(quality_rates.get('duplicate_chunks', 0.0)):.1%}) | "
+            "قصيرة: "
+            f"{int(quality_counts.get('tiny_chunks', report.get('tiny_chunks', 0))):,} "
+            f"({float(quality_rates.get('tiny_chunks', 0.0)):.1%}) | "
+            "ترميز مشبوه: "
+            f"{int(quality_counts.get('malformed_chunks', report.get('malformed_chunks', 0))):,} | "
+            "تحتاج تطبيعًا: "
+            f"{int(quality_counts.get('unnormalized_chunks', report.get('unnormalized_chunks', 0))):,} | "
+            "ترخيص غير محدد: "
+            f"{int(quality_counts.get('missing_license_documents', 0))} كتاب | "
+            "تعارض metadata: "
+            f"{int(quality_counts.get('metadata_conflicts', 0))} | "
+            "مشكلات ترتيب المقاطع/الصفحات: "
+            f"{int(quality_counts.get('chunk_order_anomalies', 0))}/"
+            f"{int(quality_counts.get('page_order_anomalies', 0))}"
+        )
+        self.quality_details.setWordWrap(True)
+        self.quality_details.setObjectName("secondaryText")
+        quality_layout.addWidget(self.quality_details)
+
+        language_counts = quality.get("language_chunks") or {}
+        language_text = " | ".join(
+            f"{name}: {int(count):,}" for name, count in sorted(language_counts.items())
+        )
+        self.language_details = QLabel(
+            "توزيع المقاطع حسب اللغة: " + (language_text or "غير متاح")
+        )
+        self.language_details.setWordWrap(True)
+        self.language_details.setObjectName("secondaryText")
+        quality_layout.addWidget(self.language_details)
+
+        extraction = report.get("extraction") or {}
+        if extraction:
+            total_pages = int(extraction.get("pages", 0))
+            text_pages = int(extraction.get("text_pages", 0))
+            empty_pages = int(extraction.get("empty_pages", 0))
+            extraction_text = (
+                f"الصفحات التي ظهر فيها نص: {text_pages:,} من أصل {total_pages:,} "
+                f"({float(extraction.get('text_coverage', 0.0)):.1%})؛ "
+                f"صفحات لم يظهر فيها نص: {empty_pages:,}."
+            )
+            if empty_pages:
+                extraction_text += (
+                    " قد تكون هذه الصفحات فارغة أو مصوّرة؛ راجعها بصريًا، "
+                    "فدعم OCR للصفحات المصوّرة غير مفعّل حاليًا."
+                )
+            else:
+                extraction_text += " لا يعني ذلك التحقق من دقة النص المستخرج."
+            self.extraction_details = QLabel(extraction_text)
+            self.extraction_details.setWordWrap(True)
+            self.extraction_details.setObjectName("secondaryText")
+            quality_layout.addWidget(self.extraction_details)
+        else:
+            self.extraction_details = None
+
+        quality_note = QLabel(
+            "الفحص آلي ومحدود: يرصد مؤشرات مثل التكرار وقصر المقاطع وبعض أخطاء الترميز والترتيب، "
+            "لكنه لا يثبت صحة المعنى أو اكتمال النص. اقرأ المعاينة قبل اعتماد الكتاب."
+        )
+        quality_note.setWordWrap(True)
+        quality_note.setObjectName("secondaryText")
+        quality_layout.addWidget(quality_note)
+        root.addWidget(quality_group)
+
+        docs_group = QGroupBox("2. المستندات المستوردة")
         docs_layout = QVBoxLayout(docs_group)
         self.table = QTableWidget(0, 7)
         self.table.setHorizontalHeaderLabels(
@@ -93,7 +174,7 @@ class CorpusReviewDialog(QDialog):
         docs_layout.addWidget(self.table)
         root.addWidget(docs_group)
 
-        metadata_group = QGroupBox("2. بيانات الكتاب المحدد")
+        metadata_group = QGroupBox("3. بيانات الكتاب المحدد")
         metadata = QFormLayout(metadata_group)
         self.include_document = QCheckBox("إدراج الكتاب في corpus")
         self.include_document.toggled.connect(self._toggle_document)
@@ -131,7 +212,7 @@ class CorpusReviewDialog(QDialog):
         metadata.addRow(self.document_details)
         root.addWidget(metadata_group)
 
-        chunks_group = QGroupBox("3. معاينة المقاطع واستبعاد غير المناسب")
+        chunks_group = QGroupBox("4. معاينة المقاطع واستبعاد غير المناسب")
         chunks_layout = QVBoxLayout(chunks_group)
         controls = QHBoxLayout()
         controls.addWidget(QLabel("رقم المقطع:"))
@@ -154,7 +235,7 @@ class CorpusReviewDialog(QDialog):
         chunks_layout.addWidget(self.preview)
         root.addWidget(chunks_group, 1)
 
-        split_group = QGroupBox("4. توزيع الكتب على مجموعات البيانات")
+        split_group = QGroupBox("5. توزيع الكتب على مجموعات البيانات")
         split = QFormLayout(split_group)
         self.train_ratio = QSpinBox()
         self.validation_ratio = QSpinBox()
@@ -243,6 +324,8 @@ class CorpusReviewDialog(QDialog):
                     ("malformed_chunks", "ترميز مشبوه"),
                     ("unnormalized_chunks", "تطبيع"),
                     ("metadata_conflicts", "تعارض بيانات"),
+                    ("chunk_order_anomalies", "ترتيب المقاطع"),
+                    ("page_order_anomalies", "ترتيب الصفحات"),
                 ):
                     count = int(document.get(field, 0))
                     if count:
@@ -251,6 +334,8 @@ class CorpusReviewDialog(QDialog):
                 language_text = ", ".join(
                     f"{name}:{count}" for name, count in sorted(languages.items())
                 )
+                if document.get("missing_license"):
+                    issues.append("ترخيص غير محدد")
                 values = [
                     str(document.get("title") or document.get("filename") or document_id),
                     str(document.get("file_type") or "—"),
@@ -312,11 +397,22 @@ class CorpusReviewDialog(QDialog):
             enabled = document_id not in self.excluded_documents and int(document.get("chunks", 0)) > 0
             self.chunk_number.setEnabled(enabled)
             self.include_chunk.setEnabled(enabled)
+            quality_labels = {
+                "attention": "تحتاج انتباهًا",
+                "warnings": "توجد ملاحظات",
+                "clear": "لا توجد مؤشرات أساسية",
+            }
+            document_quality = quality_labels.get(
+                str(document.get("quality_status", "warnings")), "غير محددة"
+            )
             self.document_details.setText(
                 f"الملف: {document.get('filename', '—')} | "
                 f"صفحات ظهر فيها نص: {document.get('pages_with_text', 0)} | "
                 f"المقاطع: {document.get('chunks', 0)} | "
-                f"تعارض metadata بين المقاطع: {document.get('metadata_conflicts', 0)}\n"
+                f"حالة الجودة: {document_quality}\n"
+                f"تعارض metadata: {document.get('metadata_conflicts', 0)} | "
+                f"ترتيب المقاطع: {document.get('chunk_order_anomalies', 0)} | "
+                f"ترتيب الصفحات: {document.get('page_order_anomalies', 0)}\n"
                 "قد يكون ترقيم صفحات DOCX تقريبياً وفق علامات فواصل الصفحات المتاحة في الملف."
             )
         finally:

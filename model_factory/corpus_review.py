@@ -98,6 +98,7 @@ def inspect_raw_corpus(
     documents: dict[str, dict[str, object]] = {}
     independent_groups: set[str] = set()
     totals = Counter()
+    language_totals = Counter()
     try:
         for line_number, payload in _iter_raw_records(source):
             document_id = _document_id(payload)
@@ -135,6 +136,11 @@ def inspect_raw_corpus(
                 "malformed_chunks": 0,
                 "unnormalized_chunks": 0,
                 "metadata_conflicts": 0,
+                "missing_license": False,
+                "chunk_order_anomalies": 0,
+                "page_order_anomalies": 0,
+                "_last_chunk_index": None,
+                "_last_page": None,
             })
             if (
                 entry["source"] != source_name
@@ -149,11 +155,35 @@ def inspect_raw_corpus(
                 if isinstance(page, bool) or not isinstance(page, int) or page < 1:
                     raise ValueError(f"line {line_number}: page must be a positive integer or null")
                 entry["pages"].add(page)
+                previous_page = entry["_last_page"]
+                if previous_page is not None and page < previous_page:
+                    entry["page_order_anomalies"] = int(entry["page_order_anomalies"]) + 1
+                    totals["page_order_anomalies"] += 1
+                entry["_last_page"] = page
+
+            chunk_index = payload.get("chunk_index")
+            if chunk_index is not None:
+                previous_index = entry["_last_chunk_index"]
+                if (
+                    isinstance(chunk_index, bool)
+                    or not isinstance(chunk_index, int)
+                    or chunk_index < 0
+                    or (previous_index is not None and chunk_index <= previous_index)
+                ):
+                    entry["chunk_order_anomalies"] = int(entry["chunk_order_anomalies"]) + 1
+                    totals["chunk_order_anomalies"] += 1
+                else:
+                    entry["_last_chunk_index"] = chunk_index
+
+            if license_name.casefold() in _REJECTED_LICENSES:
+                entry["missing_license"] = True
+                totals["missing_license_chunks"] += 1
 
             language = payload.get("language")
             if not isinstance(language, str) or language not in {"ar", "en", "mixed", "other"}:
                 language = detect_language(text)
             entry["languages"][language] += 1
+            language_totals[language] += 1
             entry["chunks"] = int(entry["chunks"]) + 1
             entry["characters"] = int(entry["characters"]) + len(text)
             totals["chunks"] += 1
@@ -190,9 +220,68 @@ def inspect_raw_corpus(
     ):
         pages = entry.pop("pages")
         languages = entry.pop("languages")
+        entry.pop("_last_chunk_index", None)
+        entry.pop("_last_page", None)
         entry["pages_with_text"] = len(pages)
         entry["languages"] = dict(sorted(languages.items()))
+        issues = []
+        if entry["missing_license"]:
+            issues.append("missing_license")
+        if int(entry["malformed_chunks"]):
+            issues.append("malformed_text")
+        if int(entry["metadata_conflicts"]):
+            issues.append("metadata_conflicts")
+        if int(entry["chunk_order_anomalies"]):
+            issues.append("chunk_order")
+        if int(entry["page_order_anomalies"]):
+            issues.append("page_order")
+        if int(entry["duplicate_chunks"]):
+            issues.append("duplicates")
+        if int(entry["tiny_chunks"]):
+            issues.append("short_chunks")
+        if int(entry["unnormalized_chunks"]):
+            issues.append("normalization")
+        entry["quality_issues"] = issues
+        entry["quality_status"] = (
+            "attention" if any(code in issues for code in (
+                "missing_license", "malformed_text", "metadata_conflicts", "chunk_order", "page_order"
+            )) else "warnings" if issues else "clear"
+        )
         result_documents.append(dict(entry))
+
+    missing_license_documents = sum(1 for row in result_documents if row["missing_license"])
+    metadata_conflicts = sum(int(row["metadata_conflicts"]) for row in result_documents)
+    quality_counts = {
+        "missing_license_documents": missing_license_documents,
+        "metadata_conflicts": metadata_conflicts,
+        "malformed_chunks": int(totals["malformed_chunks"]),
+        "chunk_order_anomalies": int(totals["chunk_order_anomalies"]),
+        "page_order_anomalies": int(totals["page_order_anomalies"]),
+        "duplicate_chunks": int(totals["duplicate_chunks"]),
+        "tiny_chunks": int(totals["tiny_chunks"]),
+        "unnormalized_chunks": int(totals["unnormalized_chunks"]),
+    }
+    blocking = any(quality_counts[key] for key in (
+        "missing_license_documents", "metadata_conflicts", "malformed_chunks",
+        "chunk_order_anomalies", "page_order_anomalies",
+    ))
+    warnings = any(quality_counts[key] for key in (
+        "duplicate_chunks", "tiny_chunks", "unnormalized_chunks",
+    ))
+    chunk_total = int(totals["chunks"])
+    quality_summary = {
+        "status": "attention" if blocking else "warnings" if warnings else "clear",
+        "documents_with_issues": sum(1 for row in result_documents if row["quality_issues"]),
+        "counts": quality_counts,
+        "rates": {
+            key: round(quality_counts[key] / max(1, chunk_total), 4)
+            for key in (
+                "malformed_chunks", "duplicate_chunks", "tiny_chunks", "unnormalized_chunks",
+                "chunk_order_anomalies", "page_order_anomalies",
+            )
+        },
+        "language_chunks": dict(sorted(language_totals.items())),
+    }
 
     return {
         "raw_path": str(source),
@@ -201,8 +290,10 @@ def inspect_raw_corpus(
         "documents": result_documents,
         **{key: int(totals[key]) for key in (
             "chunks", "characters", "duplicate_chunks", "tiny_chunks",
-            "malformed_chunks", "unnormalized_chunks"
+            "malformed_chunks", "unnormalized_chunks", "missing_license_chunks",
+            "chunk_order_anomalies", "page_order_anomalies"
         )},
+        "quality_summary": quality_summary,
     }
 
 

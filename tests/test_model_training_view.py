@@ -190,7 +190,17 @@ def test_corpus_review_dialog_previews_documents_and_accepts_valid_ratios(tmp_pa
         encoding="utf-8",
     )
 
-    dialog = CorpusReviewDialog(raw_path, inspect_raw_corpus(raw_path))
+    report = inspect_raw_corpus(raw_path)
+    report["extraction"] = {
+        "pages": 3,
+        "text_pages": 2,
+        "empty_pages": 1,
+        "text_coverage": 2 / 3,
+    }
+    dialog = CorpusReviewDialog(raw_path, report)
+    assert dialog.quality_status.text().startswith("الحالة: لم يرصد")
+    assert dialog.extraction_details is not None
+    assert "OCR" in dialog.extraction_details.text()
     assert dialog.table.rowCount() == 3
     assert dialog.preview.toPlainText() == rows[0]["text"]
     assert dialog.chunk_number.minimum() == 1
