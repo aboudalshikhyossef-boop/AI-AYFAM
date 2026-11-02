@@ -36,6 +36,28 @@ def test_bpe_learns_merges_and_round_trips_arabic_english_and_symbols():
     assert tokenizer.decode(encoded) == sample
 
 
+def test_token_bytes_preserve_original_utf8_payloads():
+    samples = ["مرحباً", "AI AYFAM — cybersecurity 🔐", "اختبار UTF-8"]
+    tokenizers = [
+        ByteTokenizer(),
+        ByteBPETokenizer.train_from_iterator(samples * 2, vocab_size=320, min_frequency=2),
+    ]
+    for tokenizer in tokenizers:
+        for sample in samples:
+            payload = b"".join(
+                tokenizer.token_bytes(token_id) for token_id in tokenizer.encode(sample)
+            )
+            assert payload == sample.encode("utf-8")
+
+
+def test_token_bytes_reject_invalid_ids():
+    for tokenizer in (ByteTokenizer(), ByteBPETokenizer()):
+        with pytest.raises(ValueError, match="out of range"):
+            tokenizer.token_bytes(tokenizer.vocab_size)
+        with pytest.raises(TypeError, match="integers"):
+            tokenizer.token_bytes(True)
+
+
 def test_bpe_training_is_deterministic():
     first = ByteBPETokenizer.train_from_iterator(_texts(), vocab_size=340, min_frequency=2)
     second = ByteBPETokenizer.train_from_iterator(_texts(), vocab_size=340, min_frequency=2)

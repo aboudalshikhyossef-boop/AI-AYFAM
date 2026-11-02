@@ -41,9 +41,16 @@ See [CORPUS_WORKSPACE.md](CORPUS_WORKSPACE.md) for the GUI workflow and the
 seed corpus manifest, and [CORPUS_AND_BPE.md](CORPUS_AND_BPE.md) for the raw
 schema, preparation checks, data splits, and BPE tokenizer workflow.
 
+Document ingestion extracts text locally from PDF, TXT, DOCX and Markdown files.
+PDF extraction requires selectable text; image-only/scanned PDF pages need OCR,
+which is not enabled yet. Review the extracted preview before approving a source.
+
 The byte-level BPE tokenizer learns merge rules from the train split only.
 Validation and test text do not contribute to the tokenizer vocabulary. Keep
-the exact versioned tokenizer configuration with its checkpoint.
+the exact versioned tokenizer configuration with its checkpoint. Inference now
+constrains generated token bytes to valid UTF-8 prefixes, preventing malformed
+byte sequences from becoming replacement characters. This is an encoding
+safeguard only; it does not guarantee that generated sentences are meaningful.
 
 ## Training
 

@@ -28,6 +28,16 @@ class ByteTokenizer:
     def vocab_size(self) -> int:
         return self.VOCAB_SIZE
 
+    def token_bytes(self, token_id: int) -> bytes:
+        """Return the UTF-8 payload represented by an ordinary token ID."""
+        if isinstance(token_id, bool) or not isinstance(token_id, int):
+            raise TypeError("token IDs must be integers")
+        if 0 <= token_id <= 255:
+            return bytes((token_id,))
+        if token_id in (self.PAD, self.BOS, self.EOS, self.UNK):
+            return b""
+        raise ValueError(f"token ID out of range: {token_id}")
+
     def encode(self, text: str, *, add_bos: bool = False, add_eos: bool = False) -> list[int]:
         if not isinstance(text, str):
             raise TypeError("text must be a string")
@@ -162,6 +172,18 @@ class ByteBPETokenizer:
     @property
     def vocab_size(self) -> int:
         return self.BASE_VOCAB_SIZE + len(self.merges)
+
+    def token_bytes(self, token_id: int) -> bytes:
+        """Return the UTF-8 payload represented by an ordinary token ID."""
+        if isinstance(token_id, bool) or not isinstance(token_id, int):
+            raise TypeError("token IDs must be integers")
+        if 0 <= token_id < 256:
+            return bytes((token_id,))
+        if token_id in (self.PAD, self.BOS, self.EOS, self.UNK):
+            return b""
+        if self.BASE_VOCAB_SIZE <= token_id < self.vocab_size:
+            return self._token_bytes[token_id]
+        raise ValueError(f"token ID out of range: {token_id}")
 
     @classmethod
     def train_from_iterator(

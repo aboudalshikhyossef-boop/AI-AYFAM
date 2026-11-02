@@ -1,5 +1,6 @@
 """CPU tests for model-only artifacts, local generation and held-out evaluation."""
 
+import codecs
 import json
 
 import pytest
@@ -14,6 +15,8 @@ from model_factory.corpus_tools import prepare_corpus
 from model_factory.evaluation import evaluate_model
 from model_factory.hardware import HardwareProfile, TrainingPlan
 from model_factory.inference import (
+    _decode_complete_utf8,
+    _utf8_safe_token_mask,
     export_inference_artifact,
     generate_text,
     load_inference_model,
@@ -118,6 +121,57 @@ def test_loader_rejects_invalid_artifact_schema(tmp_path):
     torch.save({"artifact_schema_version": 999}, path)
     with pytest.raises(ValueError, match="schema"):
         load_inference_model(path)
+
+
+def test_utf8_generation_mask_preserves_arabic_character_boundaries():
+    tokenizer = ByteTokenizer()
+    decoder = codecs.getincrementaldecoder("utf-8")("strict")
+
+    initial_mask = _utf8_safe_token_mask(tokenizer, decoder, tokenizer.vocab_size)
+    assert initial_mask[ord("A")]
+    assert not initial_mask[0xAF]
+
+    # Arabic letter "د" is encoded as D8 AF; the second byte is valid only
+    # after its leading byte has already been emitted.
+    decoder.decode(bytes([0xD8]), final=False)
+    continuation_mask = _utf8_safe_token_mask(tokenizer, decoder, tokenizer.vocab_size)
+    assert continuation_mask[0xAF]
+    assert not continuation_mask[ord("A")]
+
+
+def test_utf8_decoder_drops_only_an_incomplete_trailing_character():
+    tokenizer = ByteTokenizer()
+    assert _decode_complete_utf8(tokenizer, [0xD8]) == ""
+    assert _decode_complete_utf8(tokenizer, [0xD8, 0xAF]) == "د"
+    assert _decode_complete_utf8(tokenizer, list("AYFAM".encode("utf-8"))) == "AYFAM"
+
+
+@pytest.mark.parametrize("use_bpe", [False, True])
+def test_generation_never_returns_malformed_utf8(tmp_path, use_bpe):
+    tokenizer = (
+        ByteBPETokenizer.train_from_iterator(
+            ["اللغة العربية AI AYFAM"] * 4,
+            vocab_size=280,
+            min_frequency=2,
+        )
+        if use_bpe
+        else ByteTokenizer()
+    )
+    _, _, _, loaded = _export_small_artifact(tmp_path, tokenizer)
+
+    result = generate_text(
+        loaded,
+        "سؤال باللغة العربية",
+        max_new_tokens=32,
+        temperature=0.8,
+        top_k=40,
+        top_p=0.9,
+        seed=23,
+        stop_on_eos=False,
+    )
+
+    assert "\ufffd" not in result.text
+    assert result.text.encode("utf-8").decode("utf-8") == result.text
 
 
 def test_generation_is_seeded_and_restores_model_mode(tmp_path):
